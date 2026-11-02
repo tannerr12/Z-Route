@@ -329,7 +329,7 @@ def dark_strip_candidates(image, cfg):
         # Require two independent image variants to agree on the full text.
         parsed = []
         for raw in readings:
-            match = re.match(r"^\\[([A-Za-z0-9]{2,8})\\]\\s*(.+)$", raw)
+            match = re.match(r"^\[([A-Za-z0-9]{2,8})\]\s*(.+)$", raw)
             guild = match.group(1) if match else None
             username = (match.group(2) if match else raw).strip(" |[]")
             if not (3 <= len(username) <= 30) or not re.search(r"[A-Za-z]", username):

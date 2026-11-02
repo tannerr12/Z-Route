@@ -397,7 +397,7 @@ def middle_scan_rectangle(image, cfg):
     """Conservative central scan region, normalized to screen resolution."""
     height, width = image.shape[:2]
     ratios = cfg.get("ocr", {}).get("middle_scan_region",
-                                    [0.13, 0.075, 0.70, 0.82])
+                                    [0.13, 0.16, 0.70, 0.82])
     if len(ratios) != 4 or not (0 <= ratios[0] < ratios[2] <= 1 and
                                0 <= ratios[1] < ratios[3] <= 1):
         raise ValueError("Invalid ocr.middle_scan_region")

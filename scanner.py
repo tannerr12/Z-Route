@@ -701,7 +701,26 @@ def debug_ollama(cfg):
         headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=180) as response:
         answer = json.load(response)
-    players = json.loads(answer["message"]["content"]).get("players", [])
+    content = answer.get("message", {}).get("content", "")
+    try:
+        parsed = json.loads(content)
+        if not isinstance(parsed, dict) or not isinstance(parsed.get("players"), list):
+            raise ValueError("Ollama response did not contain a players list")
+        players = parsed["players"]
+    except (json.JSONDecodeError, ValueError) as exc:
+        folder = ROOT / "screenshots"
+        folder.mkdir(exist_ok=True)
+        stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
+        diagnostic = folder / f"ollama_invalid_{stamp}.json"
+        diagnostic.write_text(json.dumps({
+            "content": content, "done_reason": answer.get("done_reason"),
+            "eval_count": answer.get("eval_count"),
+            "prompt_eval_count": answer.get("prompt_eval_count")
+        }, indent=2, ensure_ascii=False), encoding="utf-8")
+        raise RuntimeError(
+            f"Ollama returned invalid or empty JSON (done_reason={answer.get('done_reason')!r}). "
+            f"Response saved to {diagnostic}. No swipe performed."
+        ) from exc
     print("Ollama raw player candidates:", len(players))
     for player in players:
         if not isinstance(player, dict):

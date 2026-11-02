@@ -196,7 +196,7 @@ def line_player_candidates(image, tokens, cfg):
     """Second-pass single-line OCR; guildless results are provisional."""
     height, width = image.shape[:2]
     masks = ui_mask_rectangles(image, cfg)
-    top = int(height * cfg.get("ocr", {}).get("top_exclusion_ratio", 0.08))
+    top = int(height * max(0.15625, cfg.get("ocr", {}).get("top_exclusion_ratio", 0.08)))
     bottom = int(height * (1-cfg.get("ocr", {}).get("bottom_exclusion_ratio", 0.09)))
     # Build horizontal word clusters, including untagged text.
     rows = []
@@ -264,7 +264,7 @@ def dark_strip_candidates(image, cfg):
     assume a particular border colour or require a guild tag.
     """
     height, width = image.shape[:2]
-    top = int(height * cfg.get("ocr", {}).get("top_exclusion_ratio", .08))
+    top = int(height * max(0.15625, cfg.get("ocr", {}).get("top_exclusion_ratio", .08)))
     bottom = int(height * (1-cfg.get("ocr", {}).get("bottom_exclusion_ratio", .09)))
     masks = ui_mask_rectangles(image, cfg)
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -323,35 +323,54 @@ def dark_strip_candidates(image, cfg):
 
 
 def read_base_level(image, box):
-    """Look for a one/two-digit base level centered immediately below a nameplate."""
+    """Locate the dark oval badge and OCR its digits; return None if uncertain."""
     height, width = image.shape[:2]
     x1, y1, x2, y2 = box
     center = (x1 + x2) // 2
-    # Level badge sits below the nameplate; exclude the name itself.
-    left, right = max(0, center - 34), min(width, center + 34)
-    top, bottom = max(0, y2 + 1), min(height, y2 + 37)
+    # Search a wider region to allow for variable nameplate decoration/height.
+    left, right = max(0, center - 42), min(width, center + 42)
+    top, bottom = max(0, y2 + 2), min(height, y2 + 48)
     if right <= left or bottom <= top:
         return None
-    crop = image[top:bottom, left:right]
-    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-    scaled = cv2.resize(gray, None, fx=4, fy=4,
-                        interpolation=cv2.INTER_CUBIC)
-    readings = []
-    for variant in (scaled, cv2.equalizeHist(scaled)):
-        data = pytesseract.image_to_data(
-            variant, config="--psm 6 -c tessedit_char_whitelist=0123456789",
-            output_type=pytesseract.Output.DICT)
-        for i, value in enumerate(data["text"]):
-            value = value.strip()
-            if not re.fullmatch(r"\d{1,2}", value):
-                continue
-            level = int(value)
-            if not 1 <= level <= 40:
-                continue
-            cx = left + (data["left"][i] + data["width"][i] / 2) / 4
-            if abs(cx - center) <= 28:
-                readings.append(level)
-    return max(set(readings), key=readings.count) if readings else None
+    region = image[top:bottom, left:right]
+    gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
+    # Badge should be a compact, relatively dark shape under the nameplate.
+    binary = cv2.threshold(gray, 95, 255, cv2.THRESH_BINARY_INV)[1]
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL,
+                                   cv2.CHAIN_APPROX_SIMPLE)
+    badges = []
+    for contour in contours:
+        bx, by, bw, bh = cv2.boundingRect(contour)
+        if 25 <= bw <= 75 and 13 <= bh <= 35 and 1.2 <= bw / bh <= 4.0:
+            if abs(left + bx + bw / 2 - center) <= 22:
+                badges.append((bx, by, bw, bh))
+    # Fall back to a centered crop when the translucent badge has weak edges.
+    if not badges:
+        badges = [(max(0, center-left-27), 0, min(54, right-left), min(35, bottom-top))]
+    votes = []
+    for bx, by, bw, bh in badges:
+        crop = gray[by:by+bh, bx:bx+bw]
+        if crop.size == 0:
+            continue
+        scaled = cv2.resize(crop, None, fx=5, fy=5,
+                            interpolation=cv2.INTER_CUBIC)
+        variants = [scaled, cv2.equalizeHist(scaled),
+                    cv2.threshold(scaled, 0, 255,
+                                  cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]]
+        for variant in variants:
+            for psm in (7, 8):
+                value = pytesseract.image_to_string(
+                    variant, config=f"--psm {psm} -c tessedit_char_whitelist=0123456789").strip()
+                if re.fullmatch(r"\d{1,2}", value) and 1 <= int(value) <= 40:
+                    votes.append(int(value))
+    if not votes:
+        return None
+    counts = {value: votes.count(value) for value in set(votes)}
+    best = max(counts, key=counts.get)
+    # A single ambiguous digit (e.g. 5 instead of 25) is not sufficient evidence.
+    if counts[best] < 2 or (best < 10 and len(votes) < 3):
+        return None
+    return best
 
 
 def combined_player_candidates(image, tokens, cfg):
@@ -394,6 +413,7 @@ def combined_player_candidates(image, tokens, cfg):
         ):
             continue
         merged.append(item)
+    merged = [item for item in merged if item["box"][1] >= int(height * .15625)]
     for item in merged:
         item["level"] = read_base_level(image, item["box"])
         item["level_supported"] = item["level"] is not None

@@ -701,7 +701,10 @@ def debug_ollama(cfg):
         headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=180) as response:
         answer = json.load(response)
-    content = answer.get("message", {}).get("content", "")
+    message = answer.get("message") or {}
+    content = message.get("content") or ""
+    # Some vision models emit a separate thinking field; never treat that
+    # field as verified player data.
     try:
         parsed = json.loads(content)
         if not isinstance(parsed, dict) or not isinstance(parsed.get("players"), list):
@@ -713,9 +716,9 @@ def debug_ollama(cfg):
         stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
         diagnostic = folder / f"ollama_invalid_{stamp}.json"
         diagnostic.write_text(json.dumps({
-            "content": content, "done_reason": answer.get("done_reason"),
-            "eval_count": answer.get("eval_count"),
-            "prompt_eval_count": answer.get("prompt_eval_count")
+            "response": answer,
+            "request_model": request_data["model"],
+            "image_dimensions": [crop.shape[1], crop.shape[0]]
         }, indent=2, ensure_ascii=False), encoding="utf-8")
         raise RuntimeError(
             f"Ollama returned invalid or empty JSON (done_reason={answer.get('done_reason')!r}). "

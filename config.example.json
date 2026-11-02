@@ -1,0 +1,30 @@
+{
+  "server": 125,
+  "adb_path": "adb",
+  "adb_serial": "127.0.0.1:5555",
+  "tesseract_path": "",
+  "safety": {
+    "dry_run": true,
+    "coordinates_verified_by_user": false
+  },
+  "ui": {
+    "popup_name_roi": [
+      0.1,
+      0.1,
+      0.9,
+      0.6
+    ],
+    "favorites_coordinates_roi": [
+      0.1,
+      0,
+      0.9,
+      0.2
+    ]
+  },
+  "scan": {
+    "delay_seconds": 1.5,
+    "rows": 2,
+    "columns": 2,
+    "overlap": 0.2
+  }
+}

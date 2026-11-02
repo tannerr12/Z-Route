@@ -255,13 +255,55 @@ def line_player_candidates(image, tokens, cfg):
     return sorted(output, key=lambda r: (r["box"][1],r["box"][0]))
 
 
+
+def combined_player_candidates(image, tokens, cfg):
+    """Fuse guild-anchored OCR with line OCR; suppress weak untagged noise.
+
+    Candidate-only diagnostics; no player database writes.
+    """
+    anchored = grouped_player_candidates(tokens)
+    lines = line_player_candidates(image, tokens, cfg)
+    height, width = image.shape[:2]
+    result = []
+    for item in anchored:
+        result.append({**item, "source": "guild-anchor", "verified": False})
+    for item in lines:
+        x1, y1, x2, y2 = item["box"]
+        w, h = x2-x1, y2-y1
+        # Single tiny fragments and overly wide announcements aren't nameplates.
+        if not (42 <= w <= min(250, width * .30) and 10 <= h <= 34):
+            continue
+        if not item["guild"]:
+            # Untagged names require stronger visual evidence, pending popup verification.
+            if not (55 <= w <= 190 and 12 <= h <= 28 and
+                    len(item["username"]) >= 4 and
+                    re.fullmatch(r"[\\w .~'-]{4,30}", item["username"])):
+                continue
+        result.append({**item, "source": "line-ocr", "verified": False})
+    # Deduplicate by spatial overlap and name similarity; prefer anchored guild tags.
+    def priority(item):
+        return (item["source"] == "guild-anchor", bool(item["guild"]),
+                item["confidence"])
+    merged = []
+    for item in sorted(result, key=priority, reverse=True):
+        ax1, ay1, ax2, ay2 = item["box"]
+        if any(
+            abs((ax1+ax2)/2 - (b["box"][0]+b["box"][2])/2) < 40
+            and abs((ay1+ay2)/2 - (b["box"][1]+b["box"][3])/2) < 16
+            for b in merged
+        ):
+            continue
+        merged.append(item)
+    return sorted(merged, key=lambda g: (g["box"][1], g["box"][0]))
+
+
 def debug_nameplates(cfg):
     """Write an annotated image; no base clicks or database writes."""
     image = screenshot(cfg)
     output = image.copy()
     masks = ui_mask_rectangles(image, cfg)
     candidates = nameplate_candidates(image, cfg.get("ocr", {}).get("bottom_exclusion_ratio", 0.09), cfg.get("ocr", {}).get("top_exclusion_ratio", 0.08), masks)
-    groups = line_player_candidates(image, candidates, cfg)
+    groups = combined_player_candidates(image, candidates, cfg)
     for group in groups:
         x1, y1, x2, y2 = group["box"]
         cv2.rectangle(output, (x1, y1), (x2, y2), (0, 255, 0) if group["guild"] else (255, 165, 0), 2)

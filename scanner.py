@@ -700,7 +700,33 @@ def debug_ollama(cfg):
         data=json.dumps(request_data).encode("utf-8"),
         headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=180) as response:
-        answer = json.load(response)
+        raw_response = response.read().decode("utf-8")
+    # Normally stream=false produces one JSON object. Some local servers
+    # unexpectedly return newline-delimited streaming chunks instead.
+    try:
+        answer = json.loads(raw_response)
+    except json.JSONDecodeError:
+        chunks = []
+        for line in raw_response.splitlines():
+            if line.strip():
+                chunks.append(json.loads(line))
+        if not chunks:
+            raise RuntimeError("Ollama returned no response data")
+        if not chunks[-1].get("done"):
+            raise RuntimeError("Ollama stream ended without a completed response")
+        answer = dict(chunks[-1])
+        answer["message"] = {
+            "role": "assistant",
+            "content": "".join(
+                (chunk.get("message") or {}).get("content") or ""
+                for chunk in chunks
+            )
+        }
+    if not answer.get("done", False):
+        raise RuntimeError(
+            "Ollama returned an incomplete response (done=false). "
+            "Check Ollama logs and restart Ollama before retrying."
+        )
     message = answer.get("message") or {}
     content = message.get("content") or ""
     # Some vision models emit a separate thinking field; never treat that

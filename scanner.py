@@ -537,6 +537,65 @@ def combined_player_candidates(image, tokens, cfg):
     return sorted(accepted, key=lambda g: (g["box"][1], g["box"][0]))
 
 
+def calibrate_movement(cfg):
+    """One vertical swipe; compare before/after images without touching database."""
+    before = screenshot(cfg)
+    height, width = before.shape[:2]
+    x1, y1, x2, y2 = middle_scan_rectangle(before, cfg)
+    cx = (x1 + x2) // 2
+    start_y = int(y1 + (y2-y1)*0.72)
+    end_y = int(y1 + (y2-y1)*0.32)
+    print("One upward finger swipe to move map downward.")
+    print("Swipe:", (cx, start_y), "to", (cx, end_y))
+    adb(cfg, "shell", "input", "swipe", str(cx), str(start_y),
+        str(cx), str(end_y), "650")
+    time.sleep(1.5)
+    after = screenshot(cfg)
+    folder = ROOT / "screenshots"
+    folder.mkdir(exist_ok=True)
+    stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
+    before_path = folder / f"movement_before_{stamp}.png"
+    after_path = folder / f"movement_after_{stamp}.png"
+    cv2.imwrite(str(before_path), before)
+    cv2.imwrite(str(after_path), after)
+    # Compare central terrain features using RANSAC; UI and animations can
+    # create false matches, so report a confidence indicator.
+    gray1 = cv2.cvtColor(before[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(after[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
+    orb = cv2.ORB_create(nfeatures=1200)
+    k1, d1 = orb.detectAndCompute(gray1, None)
+    k2, d2 = orb.detectAndCompute(gray2, None)
+    if d1 is None or d2 is None:
+        print("Not enough visual features to estimate movement.")
+    else:
+        pairs = cv2.BFMatcher(cv2.NORM_HAMMING).knnMatch(d1, d2, k=2)
+        good = [a for pair in pairs if len(pair) == 2
+                for a, b in [pair] if a.distance < 0.72*b.distance]
+        if len(good) < 8:
+            print("Insufficient feature matches:", len(good))
+        else:
+            src = np.float32([k1[m.queryIdx].pt for m in good])
+            dst = np.float32([k2[m.trainIdx].pt for m in good])
+            matrix, inliers = cv2.estimateAffinePartial2D(
+                src, dst, method=cv2.RANSAC, ransacReprojThreshold=4)
+            if matrix is None:
+                print("Movement estimation failed.")
+            else:
+                dx, dy = float(matrix[0, 2]), float(matrix[1, 2])
+                count = int(inliers.sum()) if inliers is not None else 0
+                print(f"Terrain screen displacement: dx={dx:.1f}px dy={dy:.1f}px")
+                print(f"Inliers: {count}/{len(good)}")
+                if count < 10 or count/len(good) < 0.45:
+                    print("LOW CONFIDENCE: do not use this estimate for navigation.")
+                elif abs(dy) < 8 and abs(dx) < 8:
+                    print("Little movement detected; possibly at a hard boundary.")
+                else:
+                    print("Movement detected; repeat at a different map position to validate.")
+    print("Before:", before_path)
+    print("After:", after_path)
+    print("Calibration only: one swipe, no base clicks or database writes.")
+
+
 def debug_ollama(cfg):
     """Read-only screenshot analysis using a local Ollama vision model."""
     image = screenshot(cfg)

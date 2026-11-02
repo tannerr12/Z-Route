@@ -544,9 +544,11 @@ def scan_column(cfg):
     stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
     observations = []
     seen = set()
+    previous_players = []
     previous = None
     max_swipes = 1
     for step in range(max_swipes + 1):
+        dx = dy = None
         image = screenshot(cfg)
         if previous is not None:
             x1, y1, x2, y2 = middle_scan_rectangle(image, cfg)
@@ -589,6 +591,8 @@ def scan_column(cfg):
                 break
         print(f"Analyzing map view {step + 1} of {max_swipes + 1}...")
         players = debug_ollama(cfg)
+        current_players = []
+        matched_previous = set()
         for player in players:
             if not isinstance(player, dict):
                 continue
@@ -596,9 +600,49 @@ def scan_column(cfg):
             if not isinstance(name, str) or not name.strip():
                 continue
             key = (str(player.get("guild") or "").casefold(), name.strip().casefold())
-            if key not in seen:
-                seen.add(key)
+            box = player.get("box")
+            valid_box = (isinstance(box, list) and len(box) == 4
+                         and all(isinstance(v, (int, float)) for v in box)
+                         and box[2] > box[0] and box[3] > box[1])
+            matched_key = None
+            if dx is not None and valid_box:
+                cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+                candidates = []
+                for i, (prior, prior_key) in enumerate(previous_players):
+                    if i in matched_previous:
+                        continue
+                    old_box = prior.get("box")
+                    if not (isinstance(old_box, list) and len(old_box) == 4
+                            and all(isinstance(v, (int, float)) for v in old_box)):
+                        continue
+                    if prior.get("level") != player.get("level"):
+                        continue
+                    old_guild = str(prior.get("guild") or "").casefold()
+                    new_guild = str(player.get("guild") or "").casefold()
+                    if old_guild and new_guild and old_guild != new_guild:
+                        continue
+                    predicted_x = (old_box[0] + old_box[2]) / 2 + dx
+                    predicted_y = (old_box[1] + old_box[3]) / 2 + dy
+                    distance = ((cx - predicted_x) ** 2 + (cy - predicted_y) ** 2) ** .5
+                    if abs(cx - predicted_x) <= 65 and abs(cy - predicted_y) <= 85:
+                        candidates.append((distance, i, prior_key))
+                if candidates:
+                    candidates.sort()
+                    if len(candidates) == 1 or candidates[1][0] - candidates[0][0] > 25:
+                        distance, i, matched_key = candidates[0]
+                        matched_previous.add(i)
+                        if matched_key != key:
+                            print(f"Position-matched likely OCR variant: {name!r} "
+                                  f"to {previous_players[i][0]['username']!r} "
+                                  f"(offset {distance:.1f}px)")
+            if matched_key is None and key in seen:
+                matched_key = key
+            canonical_key = matched_key if matched_key is not None else key
+            if canonical_key not in seen:
+                seen.add(canonical_key)
                 observations.append({"view": step, **player})
+            current_players.append((player, canonical_key))
+        previous_players = current_players
         print(f"Unique provisional players so far: {len(seen)}")
         if step == max_swipes:
             break

@@ -78,6 +78,60 @@ def recognize(image):
     return pytesseract.image_to_string(gray, config="--psm 11")
 
 
+def nameplate_candidates(image):
+    """Find text-like regions without depending on decorative nameplate borders.
+
+    Returns candidate crops for OCR and manual review. This is a heuristic,
+    not a trained building detector; click locations are not inferred here.
+    """
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    enlarged = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+    variants = [
+        cv2.equalizeHist(enlarged),
+        cv2.adaptiveThreshold(enlarged, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                              cv2.THRESH_BINARY, 31, 9),
+    ]
+    results = []
+    for variant in variants:
+        # Text detection via OCR boxes; decorative frames are not required.
+        data = pytesseract.image_to_data(
+            variant, config="--psm 11",
+            output_type=pytesseract.Output.DICT)
+        for i, token in enumerate(data["text"]):
+            token = token.strip()
+            if not token or len(token) < 3:
+                continue
+            try:
+                confidence = float(data["conf"][i])
+            except (ValueError, TypeError):
+                continue
+            if confidence < 25:
+                continue
+            x, y = data["left"][i] // 2, data["top"][i] // 2
+            w, h = max(1, data["width"][i] // 2), max(1, data["height"][i] // 2)
+            results.append((x, y, w, h, token, confidence))
+    return results
+
+
+def debug_nameplates(cfg):
+    """Write an annotated image; no base clicks or database writes."""
+    image = screenshot(cfg)
+    output = image.copy()
+    candidates = nameplate_candidates(image)
+    for x, y, w, h, token, confidence in candidates:
+        cv2.rectangle(output, (x, y), (x+w, y+h), (0, 255, 255), 1)
+    folder = ROOT / "screenshots"
+    folder.mkdir(exist_ok=True)
+    path = folder / "nameplate_candidates.png"
+    cv2.imwrite(str(path), output)
+    print("OCR text candidates:", len(candidates))
+    print("Annotated screenshot:", path)
+    for x, y, w, h, token, confidence in candidates:
+        if "[" in token or "]" in token or re.search(r"D3AD", token, re.I):
+            print(f"Candidate {token!r} at ({x},{y}) confidence={confidence:.0f}")
+    print("Note: boxes are text candidates, not verified player bases.")
+
+
 def connect(cfg):
     exe = cfg.get("adb_path") or "adb"
     serial = cfg.get("adb_serial") or "127.0.0.1:5555"
@@ -135,12 +189,12 @@ def record(db, server, username, tag, x=None, y=None, evidence=""):
 def main():
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("test", "probe", "scan", "guilds", "export"):
+    for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates"):
         commands.add_parser(name)
     query = commands.add_parser("search")
     query.add_argument("username")
     args = parser.parse_args()
-    if args.command in ("test", "probe", "scan"):
+    if args.command in ("test", "probe", "scan", "debug-nameplates"):
         cfg = load_config()
         if args.command == "test":
             test(cfg)

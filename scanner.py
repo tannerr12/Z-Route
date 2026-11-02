@@ -723,9 +723,20 @@ def debug_ollama(cfg):
             )
         }
     if not answer.get("done", False):
+        folder = ROOT / "screenshots"
+        folder.mkdir(exist_ok=True)
+        stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
+        diagnostic = folder / f"ollama_incomplete_{stamp}.json"
+        diagnostic.write_text(json.dumps({
+            "response": answer,
+            "request_model": request_data["model"],
+            "image_dimensions": [crop.shape[1], crop.shape[0]],
+            "request_options": request_data.get("options"),
+            "response_bytes": len(raw_response)
+        }, indent=2, ensure_ascii=False), encoding="utf-8")
         raise RuntimeError(
-            "Ollama returned an incomplete response (done=false). "
-            "Check Ollama logs and restart Ollama before retrying."
+            f"Ollama returned an incomplete response (done=false). "
+            f"Diagnostic saved to {diagnostic}. No swipe performed."
         )
     message = answer.get("message") or {}
     content = message.get("content") or ""

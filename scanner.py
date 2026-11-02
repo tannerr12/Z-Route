@@ -196,7 +196,7 @@ def line_player_candidates(image, tokens, cfg):
     """Second-pass single-line OCR; guildless results are provisional."""
     height, width = image.shape[:2]
     masks = ui_mask_rectangles(image, cfg)
-    top = int(height * max(0.15625, cfg.get("ocr", {}).get("top_exclusion_ratio", 0.08)))
+    top = int(height * max(0.234375, cfg.get("ocr", {}).get("top_exclusion_ratio", 0.08)))
     bottom = int(height * (1-cfg.get("ocr", {}).get("bottom_exclusion_ratio", 0.09)))
     # Build horizontal word clusters, including untagged text.
     rows = []
@@ -264,7 +264,7 @@ def dark_strip_candidates(image, cfg):
     assume a particular border colour or require a guild tag.
     """
     height, width = image.shape[:2]
-    top = int(height * max(0.15625, cfg.get("ocr", {}).get("top_exclusion_ratio", .08)))
+    top = int(height * max(0.234375, cfg.get("ocr", {}).get("top_exclusion_ratio", .08)))
     bottom = int(height * (1-cfg.get("ocr", {}).get("bottom_exclusion_ratio", .09)))
     masks = ui_mask_rectangles(image, cfg)
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)

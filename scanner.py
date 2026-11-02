@@ -411,6 +411,9 @@ def debug_nameplates(cfg):
         x1, y1, x2, y2 = group["box"]
         color = (255, 0, 255) if group.get("source") == "dark-strip" else ((0, 255, 0) if group["guild"] else (255, 165, 0))
         cv2.rectangle(output, (x1, y1), (x2, y2), color, 2)
+        if group["level"] is not None:
+            cv2.putText(output, "Lv." + str(group["level"]), (x1, min(image.shape[0]-4, y2+34)),
+                        cv2.FONT_HERSHEY_SIMPLEX, .55, (0, 255, 0), 2)
     for x1, y1, x2, y2 in masks:
         cv2.rectangle(output, (x1, y1), (x2, y2), (0, 0, 255), 2)
     cutoff = int(image.shape[0] * (1 - cfg.get("ocr", {}).get("bottom_exclusion_ratio", 0.09)))
@@ -427,8 +430,9 @@ def debug_nameplates(cfg):
     print("Grouped player candidates:", len(groups))
     print("Dark-strip candidates:", sum(g["source"] == "dark-strip" for g in groups))
     for group in groups:
-        print("  [{}] {} confidence={} box={}".format(
-            group["guild"], group["username"], group["confidence"], group["box"]))
+        print("  [{}] {} confidence={} level={} source={} box={}".format(
+            group["guild"], group["username"], group["confidence"],
+            group["level"], group["source"], group["box"]))
     print("Annotated screenshot:", path)
     for x, y, w, h, token, confidence in candidates:
         if "[" in token or "]" in token or re.search(r"D3AD", token, re.I):

@@ -233,7 +233,7 @@ def line_player_candidates(image, tokens, cfg):
             raw = " ".join(raw.split())
             if not raw or len(raw) > 40:
                 continue
-            guild_match = re.match(r"^\\[([A-Za-z0-9]{2,8})\\]\\s*(.+)$", raw)
+            guild_match = re.match(r"^\[([A-Za-z0-9]{2,8})\]\s*(.+)$", raw)
             guild = guild_match.group(1) if guild_match else None
             name = (guild_match.group(2) if guild_match else raw).strip(" |[]")
             if not (2 <= len(name) <= 30) or not re.search("[A-Za-z]", name):

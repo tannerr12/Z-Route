@@ -78,13 +78,14 @@ def recognize(image):
     return pytesseract.image_to_string(gray, config="--psm 11")
 
 
-def nameplate_candidates(image):
+def nameplate_candidates(image, bottom_exclusion_ratio=0.09):
     """Find text-like regions without depending on decorative nameplate borders.
 
     Returns candidate crops for OCR and manual review. This is a heuristic,
     not a trained building detector; click locations are not inferred here.
     """
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    cutoff = int(image.shape[0] * (1 - bottom_exclusion_ratio))
+    gray = cv2.cvtColor(image[:cutoff], cv2.COLOR_BGR2GRAY)
     enlarged = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
     variants = [
         cv2.equalizeHist(enlarged),
@@ -117,7 +118,9 @@ def debug_nameplates(cfg):
     """Write an annotated image; no base clicks or database writes."""
     image = screenshot(cfg)
     output = image.copy()
-    candidates = nameplate_candidates(image)
+    candidates = nameplate_candidates(image, cfg.get("ocr", {}).get("bottom_exclusion_ratio", 0.09))
+    cutoff = int(image.shape[0] * (1 - cfg.get("ocr", {}).get("bottom_exclusion_ratio", 0.09)))
+    cv2.line(output, (0, cutoff), (image.shape[1], cutoff), (0, 0, 255), 2)
     for x, y, w, h, token, confidence in candidates:
         cv2.rectangle(output, (x, y), (x+w, y+h), (0, 255, 255), 1)
     folder = ROOT / "screenshots"

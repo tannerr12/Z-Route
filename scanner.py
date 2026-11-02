@@ -7,6 +7,7 @@ import json
 import re
 import sqlite3
 import subprocess
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -699,14 +700,17 @@ def record(db, server, username, tag, x=None, y=None, evidence=""):
 def main():
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama"):
+    for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama", "calibrate-movement"):
         commands.add_parser(name)
     query = commands.add_parser("search")
     query.add_argument("username")
     args = parser.parse_args()
     if args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama"):
         cfg = load_config()
-        if args.command == "debug-ollama":
+        if args.command == "calibrate-movement":
+            connect(cfg)
+            calibrate_movement(cfg)
+        elif args.command == "debug-ollama":
             connect(cfg)
             debug_ollama(cfg)
         elif args.command == "test":

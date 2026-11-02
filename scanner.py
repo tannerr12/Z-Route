@@ -412,49 +412,64 @@ def middle_scan_rectangle(image, cfg):
 
 
 def anchored_nameplate_ocr(image, tokens, cfg):
-    """Re-read the full nameplate row around each detected guild tag.
+    """OCR full nameplate rows, seeded by any text token, not only guild tags.
 
-    OCR often splits a guild and username into separate boxes or misses the
-    username altogether. A second pass over the full row is more reliable.
+    Multiple OCR passes help recover names whose guild tags were segmented.
+    Candidates still require a level badge in combined_player_candidates.
     """
     height, width = image.shape[:2]
+    rx1, ry1, rx2, ry2 = middle_scan_rectangle(image, cfg)
     results = []
+    seeds = []
     for x, y, w, h, word, confidence in tokens:
-        match = GUILD_RE.fullmatch(word.strip())
-        if not match or confidence < 55:
+        if confidence < 35 or not (rx1 + 8 <= x < rx2 - 40 and
+                                   ry1 + 8 <= y < ry2 - 55):
             continue
-        # Nameplate text is horizontally aligned; decorations can vary.
-        left = max(0, x - 8)
-        right = min(width, x + max(205, w + 155))
-        top = max(0, y - 7)
-        bottom = min(height, y + h + 7)
+        if h > 32 or w > 210:
+            continue
+        if any(abs(x - sx) < 35 and abs(y - sy) < 16 for sx, sy in seeds):
+            continue
+        seeds.append((x, y))
+        # The text may start at the guild tag or at the username.
+        # Expand to both sides, but never beyond the safe central rectangle.
+        left = max(rx1 + 6, x - 65)
+        right = min(rx2 - 6, x + max(190, w + 105))
+        top = max(ry1 + 6, y - 7)
+        bottom = min(ry2 - 48, y + h + 8)
+        if bottom <= top or right <= left:
+            continue
         crop = image[top:bottom, left:right]
-        if crop.size == 0:
-            continue
-        enlarged = cv2.resize(crop, None, fx=4, fy=4,
+        enlarged = cv2.resize(crop, None, fx=3, fy=3,
                                interpolation=cv2.INTER_CUBIC)
         gray = cv2.cvtColor(enlarged, cv2.COLOR_BGR2GRAY)
         variants = [gray, cv2.equalizeHist(gray),
                     cv2.threshold(gray, 0, 255,
                                   cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]]
+        readings = []
         for variant in variants:
             raw = " ".join(pytesseract.image_to_string(
                 variant, config="--psm 7").split())
-            found = re.search(r"\[([A-Za-z0-9]{2,8})\]\s*(.{3,30})", raw)
-            if not found or found.group(1).casefold() != match.group(1).casefold():
-                continue
-            name = found.group(2).strip(" |[]")
+            match = re.search(r"\\[([A-Za-z0-9]{2,8})\\]\\s*(.{3,30})", raw)
+            if match:
+                guild, name = match.group(1), match.group(2).strip(" |[]")
+            else:
+                guild, name = None, raw.strip(" |[]")
             if not (3 <= len(name) <= 30 and re.search(r"[A-Za-z]", name)):
                 continue
             if any(p in name.casefold() for p in IGNORE_PHRASES):
                 continue
-            # Keep the OCR box conservative so the badge remains directly below.
-            box = (left, top, min(right, x + w + max(35, len(name) * 11)),
-                   bottom)
-            results.append({"guild": match.group(1), "username": name,
-                            "box": box, "confidence": float(confidence),
-                            "source": "full-row-ocr", "verified": False})
-            break
+            readings.append((guild, name))
+        if len(readings) < 2:
+            continue
+        # Require agreement across preprocessing variants; do not invent names.
+        from collections import Counter
+        (guild, name), count = Counter(readings).most_common(1)[0]
+        if count < 2:
+            continue
+        results.append({"guild": guild, "username": name,
+                        "box": (left, top, right, bottom),
+                        "confidence": 82.0 if guild else 76.0,
+                        "source": "full-row-ocr", "verified": False})
     return results
 
 

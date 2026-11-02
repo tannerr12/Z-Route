@@ -393,54 +393,72 @@ def read_base_level(image, box):
     return best
 
 
-def combined_player_candidates(image, tokens, cfg):
-    """Fuse guild-anchored OCR with line OCR; suppress weak untagged noise.
+def middle_scan_rectangle(image, cfg):
+    """Conservative central scan region, normalized to screen resolution."""
+    height, width = image.shape[:2]
+    ratios = cfg.get("ocr", {}).get("middle_scan_region",
+                                    [0.16, 0.11, 0.68, 0.82])
+    if len(ratios) != 4 or not (0 <= ratios[0] < ratios[2] <= 1 and
+                               0 <= ratios[1] < ratios[3] <= 1):
+        raise ValueError("Invalid ocr.middle_scan_region")
+    return (int(width * ratios[0]), int(height * ratios[1]),
+            int(width * ratios[2]), int(height * ratios[3]))
 
-    Candidate-only diagnostics; no player database writes.
+
+def combined_player_candidates(image, tokens, cfg):
+    """Only complete, high-confidence central nameplates with level evidence.
+
+    Read-only diagnostics. These candidates must still be verified before
+    any database write or automated base interaction.
     """
+    region = middle_scan_rectangle(image, cfg)
+    rx1, ry1, rx2, ry2 = region
+    masks = ui_mask_rectangles(image, cfg)
     anchored = grouped_player_candidates(tokens)
     lines = line_player_candidates(image, tokens, cfg)
     dark_strips = dark_strip_candidates(image, cfg)
-    height, width = image.shape[:2]
-    result = []
-    for item in anchored:
-        result.append({**item, "source": "guild-anchor", "verified": False})
-    for item in lines:
+    proposals = ([dict(item, source="guild-anchor") for item in anchored] +
+                 [dict(item, source="line-ocr") for item in lines] +
+                 dark_strips)
+    accepted = []
+    for item in proposals:
         x1, y1, x2, y2 = item["box"]
-        w, h = x2-x1, y2-y1
-        # Single tiny fragments and overly wide announcements aren't nameplates.
-        if not (42 <= w <= min(250, width * .30) and 10 <= h <= 34):
+        # Leave room for the level badge and avoid clipped nameplates.
+        if not (rx1 + 5 <= x1 < x2 <= rx2 - 5 and
+                ry1 + 5 <= y1 < y2 + 42 <= ry2 - 5):
             continue
-        if not item["guild"]:
-            # Untagged names require stronger visual evidence, pending popup verification.
-            if not (55 <= w <= 190 and 12 <= h <= 28 and
-                    len(item["username"]) >= 4 and
-                    re.fullmatch(r"[\\w .~'-]{4,30}", item["username"])):
+        if any(x1 < b and x2 > a and y1 < d and y2 + 42 > c
+               for a, c, b, d in masks):
+            continue
+        name = item["username"].strip()
+        if not (3 <= len(name) <= 30 and re.search(r"[A-Za-z]", name)):
+            continue
+        if any(phrase in name.casefold() for phrase in IGNORE_PHRASES):
+            continue
+        # Reject OCR fragments and decorative punctuation; allow Unicode names.
+        if name.startswith(("[", "]", "|")) or name.endswith(("[", "]", "|")):
+            continue
+        confidence = float(item["confidence"])
+        if item["source"] == "guild-anchor":
+            if confidence < 75:
                 continue
-        result.append({**item, "source": "line-ocr", "verified": False})
-    result.extend(dark_strips)
-    # Deduplicate by spatial overlap and name similarity; prefer anchored guild tags.
-    def priority(item):
-        return (item["source"] == "guild-anchor", bool(item["guild"]),
-                item["confidence"])
-    merged = []
-    for item in sorted(result, key=priority, reverse=True):
-        ax1, ay1, ax2, ay2 = item["box"]
-        if any(
-            abs((ax1+ax2)/2 - (b["box"][0]+b["box"][2])/2) < 40
-            and abs((ay1+ay2)/2 - (b["box"][1]+b["box"][3])/2) < 16
-            for b in merged
-        ):
+        elif item["source"] == "line-ocr":
+            if not item.get("guild") or confidence < 0.60:
+                continue
+        else:
+            # Dark-strip OCR has no calibrated confidence: diagnostic only.
             continue
-        merged.append(item)
-    safe_top, safe_bottom = safe_scan_bounds(image, cfg)
-    masks = ui_mask_rectangles(image, cfg)
-    merged = [item for item in merged if within_safe_area(
-        item["box"], safe_top, safe_bottom, masks, 0)]
-    for item in merged:
-        item["level"] = read_base_level(image, item["box"])
-        item["level_supported"] = item["level"] is not None
-    return sorted(merged, key=lambda g: (g["box"][1], g["box"][0]))
+        level = read_base_level(image, item["box"])
+        if level is None:
+            continue
+        candidate = {**item, "level": level, "level_supported": True,
+                     "verified": False}
+        if any(abs((x1+x2)/2 - (v["box"][0]+v["box"][2])/2) < 45
+               and abs((y1+y2)/2 - (v["box"][1]+v["box"][3])/2) < 20
+               for v in accepted):
+            continue
+        accepted.append(candidate)
+    return sorted(accepted, key=lambda g: (g["box"][1], g["box"][0]))
 
 
 def debug_nameplates(cfg):
@@ -449,6 +467,7 @@ def debug_nameplates(cfg):
     output = image.copy()
     masks = ui_mask_rectangles(image, cfg)
     safe_top, safe_bottom = safe_scan_bounds(image, cfg)
+    scan_x1, scan_y1, scan_x2, scan_y2 = middle_scan_rectangle(image, cfg)
     # Preserve OCR context around nameplates; safe bounds apply to final groups,
     # not individual tokens (which may extend outside a clickable nameplate).
     candidates = nameplate_candidates(image,
@@ -464,6 +483,7 @@ def debug_nameplates(cfg):
                         cv2.FONT_HERSHEY_SIMPLEX, .55, (0, 255, 0), 2)
     for x1, y1, x2, y2 in masks:
         cv2.rectangle(output, (x1, y1), (x2, y2), (0, 0, 255), 2)
+    cv2.rectangle(output, (scan_x1, scan_y1), (scan_x2, scan_y2), (0, 0, 255), 2)
     cutoff = safe_bottom
     cv2.line(output, (0, cutoff), (image.shape[1], cutoff), (0, 0, 255), 2)
     top = safe_top
@@ -475,6 +495,7 @@ def debug_nameplates(cfg):
     path = folder / "nameplate_candidates.png"
     cv2.imwrite(str(path), output)
     print(f"Safe scan area: y={safe_top}..{safe_bottom} (height={image.shape[0]})")
+    print("Middle scan region:", (scan_x1, scan_y1, scan_x2, scan_y2))
     print("OCR text candidates:", len(candidates))
     print("Grouped player candidates:", len(groups))
     print("Dark-strip candidates:", sum(g["source"] == "dark-strip" for g in groups))

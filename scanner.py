@@ -494,8 +494,10 @@ def debug_nameplates(cfg):
     cv2.rectangle(output, (scan_x1, scan_y1), (scan_x2, scan_y2), (0, 0, 255), 2)
     folder = ROOT / "screenshots"
     folder.mkdir(exist_ok=True)
-    path = folder / "nameplate_candidates.png"
-    cv2.imwrite(str(path), output)
+    timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
+    path = folder / f"nameplate_candidates_{timestamp}.png"
+    if not cv2.imwrite(str(path), output):
+        raise RuntimeError(f"Failed to save annotated screenshot: {path}")
     print(f"Safe scan area: y={safe_top}..{safe_bottom} (height={image.shape[0]})")
     print("Middle scan region:", (scan_x1, scan_y1, scan_x2, scan_y2))
     print("OCR text candidates:", len(candidates))

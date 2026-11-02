@@ -569,6 +569,16 @@ def debug_ollama(cfg):
     players = json.loads(answer["message"]["content"]).get("players", [])
     print("Ollama raw player candidates:", len(players))
     for player in players:
+        if not isinstance(player, dict):
+            continue
+        name = player.get("username")
+        if not isinstance(name, str):
+            continue
+        # Vision models often include the guild tag inside username.
+        match = re.match(r"^\\[([A-Za-z0-9]{2,8})\\]\\s*(.+)$", name.strip())
+        if match:
+            player["guild"] = match.group(1)
+            player["username"] = match.group(2).strip()
         print(player)
     folder = ROOT / "screenshots"
     folder.mkdir(exist_ok=True)

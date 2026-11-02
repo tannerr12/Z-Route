@@ -570,7 +570,13 @@ def scan_column(cfg):
                 src, dst, method=cv2.RANSAC, ransacReprojThreshold=4)
             inliers = int(mask.sum()) if mask is not None else 0
             if transform is None or inliers < 12 or inliers / len(good) < .5:
-                print("Low-confidence movement estimate; stopping.")
+                diagnostic_stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
+                before_path = folder / f"column_movement_before_{diagnostic_stamp}.png"
+                after_path = folder / f"column_movement_after_{diagnostic_stamp}.png"
+                cv2.imwrite(str(before_path), previous)
+                cv2.imwrite(str(after_path), image)
+                print(f"Low-confidence movement estimate ({inliers}/{len(good)} inliers); stopping.")
+                print("Movement screenshots:", before_path, after_path)
                 break
             dx, dy = float(transform[0, 2]), float(transform[1, 2])
             print(f"Step {step}: map shifted dx={dx:.1f}, dy={dy:.1f} pixels "

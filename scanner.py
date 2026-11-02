@@ -326,17 +326,23 @@ def dark_strip_candidates(image, cfg):
                 readings.append(raw)
         if not readings:
             continue
-        raw = max(readings, key=lambda value: len(value))
-        match = re.match(r"^\[([A-Za-z0-9]{2,8})\]\s*(.+)$", raw)
-        guild = match.group(1) if match else None
-        username = (match.group(2) if match else raw).strip(" |[]")
-        if not (3 <= len(username) <= 30) or not re.search(r"[A-Za-z]", username):
+        # Require two independent image variants to agree on the full text.
+        parsed = []
+        for raw in readings:
+            match = re.match(r"^\\[([A-Za-z0-9]{2,8})\\]\\s*(.+)$", raw)
+            guild = match.group(1) if match else None
+            username = (match.group(2) if match else raw).strip(" |[]")
+            if not (3 <= len(username) <= 30) or not re.search(r"[A-Za-z]", username):
+                continue
+            if any(phrase in raw.casefold() for phrase in IGNORE_PHRASES):
+                continue
+            parsed.append((guild, username))
+        if len(parsed) < 2 or parsed[0] != parsed[1]:
             continue
-        if any(phrase in raw.casefold() for phrase in IGNORE_PHRASES):
-            continue
+        guild, username = parsed[0]
         proposals.append({"guild": guild, "username": username,
                           "box": (x1, y1, x2, y2),
-                          "confidence": 0.0, "source": "dark-strip",
+                          "confidence": 85.0, "source": "dark-strip",
                           "verified": False, "readings": readings})
     return proposals
 
@@ -494,8 +500,11 @@ def combined_player_candidates(image, tokens, cfg):
         elif item["source"] == "line-ocr":
             if not item.get("guild") or confidence < 0.60:
                 continue
+        elif item["source"] == "dark-strip":
+            # Independent OCR agreement plus a level badge is required.
+            if confidence < 80:
+                continue
         else:
-            # Dark-strip OCR has no calibrated confidence: diagnostic only.
             continue
         level = read_base_level(image, item["box"])
         if level is None:

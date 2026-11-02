@@ -256,6 +256,71 @@ def line_player_candidates(image, tokens, cfg):
 
 
 
+
+def dark_strip_candidates(image, cfg):
+    """Experimental dark nameplate detector; candidates are NOT verified bases.
+
+    Finds horizontal low-luminance strips, then OCRs the whole strip. Does not
+    assume a particular border colour or require a guild tag.
+    """
+    height, width = image.shape[:2]
+    top = int(height * cfg.get("ocr", {}).get("top_exclusion_ratio", .08))
+    bottom = int(height * (1-cfg.get("ocr", {}).get("bottom_exclusion_ratio", .09)))
+    masks = ui_mask_rectangles(image, cfg)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # Local darkness handles terrain showing through translucent backgrounds.
+    local = cv2.GaussianBlur(gray, (0, 0), 21)
+    dark = ((gray.astype(np.int16) < local.astype(np.int16) - 12) &
+            (gray < 115)).astype(np.uint8) * 255
+    dark[:top] = 0
+    dark[bottom:] = 0
+    for x1, y1, x2, y2 in masks:
+        dark[y1:y2, x1:x2] = 0
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (23, 5))
+    joined = cv2.morphologyEx(dark, cv2.MORPH_CLOSE, kernel)
+    contours, _ = cv2.findContours(joined, cv2.RETR_EXTERNAL,
+                                   cv2.CHAIN_APPROX_SIMPLE)
+    proposals = []
+    for contour in contours:
+        x, y, w, h = cv2.boundingRect(contour)
+        if not (48 <= w <= 240 and 12 <= h <= 42 and w / h >= 2.4):
+            continue
+        x1, y1 = max(0, x-5), max(top, y-3)
+        x2, y2 = min(width, x+w+5), min(bottom, y+h+3)
+        if any(x1 < b and x2 > a and y1 < d and y2 > c
+               for a, c, b, d in masks):
+            continue
+        crop = image[y1:y2, x1:x2]
+        enlarged = cv2.resize(crop, None, fx=3, fy=3,
+                               interpolation=cv2.INTER_CUBIC)
+        gray_crop = cv2.cvtColor(enlarged, cv2.COLOR_BGR2GRAY)
+        variants = [cv2.equalizeHist(gray_crop),
+                    cv2.adaptiveThreshold(gray_crop, 255,
+                        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                        cv2.THRESH_BINARY, 31, 8)]
+        readings = []
+        for variant in variants:
+            raw = " ".join(pytesseract.image_to_string(
+                variant, config="--psm 7").split())
+            if raw:
+                readings.append(raw)
+        if not readings:
+            continue
+        raw = max(readings, key=lambda value: len(value))
+        match = re.match(r"^\[([A-Za-z0-9]{2,8})\]\s*(.+)$", raw)
+        guild = match.group(1) if match else None
+        username = (match.group(2) if match else raw).strip(" |[]")
+        if not (3 <= len(username) <= 30) or not re.search(r"[A-Za-z]", username):
+            continue
+        if any(phrase in raw.casefold() for phrase in IGNORE_PHRASES):
+            continue
+        proposals.append({"guild": guild, "username": username,
+                          "box": (x1, y1, x2, y2),
+                          "confidence": 0.0, "source": "dark-strip",
+                          "verified": False, "readings": readings})
+    return proposals
+
+
 def combined_player_candidates(image, tokens, cfg):
     """Fuse guild-anchored OCR with line OCR; suppress weak untagged noise.
 
@@ -263,6 +328,7 @@ def combined_player_candidates(image, tokens, cfg):
     """
     anchored = grouped_player_candidates(tokens)
     lines = line_player_candidates(image, tokens, cfg)
+    dark_strips = dark_strip_candidates(image, cfg)
     height, width = image.shape[:2]
     result = []
     for item in anchored:
@@ -280,6 +346,7 @@ def combined_player_candidates(image, tokens, cfg):
                     re.fullmatch(r"[\\w .~'-]{4,30}", item["username"])):
                 continue
         result.append({**item, "source": "line-ocr", "verified": False})
+    result.extend(dark_strips)
     # Deduplicate by spatial overlap and name similarity; prefer anchored guild tags.
     def priority(item):
         return (item["source"] == "guild-anchor", bool(item["guild"]),
@@ -306,7 +373,8 @@ def debug_nameplates(cfg):
     groups = combined_player_candidates(image, candidates, cfg)
     for group in groups:
         x1, y1, x2, y2 = group["box"]
-        cv2.rectangle(output, (x1, y1), (x2, y2), (0, 255, 0) if group["guild"] else (255, 165, 0), 2)
+        color = (255, 0, 255) if group.get("source") == "dark-strip" else ((0, 255, 0) if group["guild"] else (255, 165, 0))
+        cv2.rectangle(output, (x1, y1), (x2, y2), color, 2)
     for x1, y1, x2, y2 in masks:
         cv2.rectangle(output, (x1, y1), (x2, y2), (0, 0, 255), 2)
     cutoff = int(image.shape[0] * (1 - cfg.get("ocr", {}).get("bottom_exclusion_ratio", 0.09)))
@@ -321,6 +389,7 @@ def debug_nameplates(cfg):
     cv2.imwrite(str(path), output)
     print("OCR text candidates:", len(candidates))
     print("Grouped player candidates:", len(groups))
+    print("Dark-strip candidates:", sum(g["source"] == "dark-strip" for g in groups))
     for group in groups:
         print("  [{}] {} confidence={} box={}".format(
             group["guild"], group["username"], group["confidence"], group["box"]))

@@ -321,6 +321,39 @@ def dark_strip_candidates(image, cfg):
     return proposals
 
 
+
+def read_base_level(image, box):
+    """Look for a one/two-digit base level centered immediately below a nameplate."""
+    height, width = image.shape[:2]
+    x1, y1, x2, y2 = box
+    center = (x1 + x2) // 2
+    # Level badge sits below the nameplate; exclude the name itself.
+    left, right = max(0, center - 34), min(width, center + 34)
+    top, bottom = max(0, y2 + 1), min(height, y2 + 37)
+    if right <= left or bottom <= top:
+        return None
+    crop = image[top:bottom, left:right]
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    scaled = cv2.resize(gray, None, fx=4, fy=4,
+                        interpolation=cv2.INTER_CUBIC)
+    readings = []
+    for variant in (scaled, cv2.equalizeHist(scaled)):
+        data = pytesseract.image_to_data(
+            variant, config="--psm 6 -c tessedit_char_whitelist=0123456789",
+            output_type=pytesseract.Output.DICT)
+        for i, value in enumerate(data["text"]):
+            value = value.strip()
+            if not re.fullmatch(r"\d{1,2}", value):
+                continue
+            level = int(value)
+            if not 1 <= level <= 40:
+                continue
+            cx = left + (data["left"][i] + data["width"][i] / 2) / 4
+            if abs(cx - center) <= 28:
+                readings.append(level)
+    return max(set(readings), key=readings.count) if readings else None
+
+
 def combined_player_candidates(image, tokens, cfg):
     """Fuse guild-anchored OCR with line OCR; suppress weak untagged noise.
 
@@ -361,6 +394,9 @@ def combined_player_candidates(image, tokens, cfg):
         ):
             continue
         merged.append(item)
+    for item in merged:
+        item["level"] = read_base_level(image, item["box"])
+        item["level_supported"] = item["level"] is not None
     return sorted(merged, key=lambda g: (g["box"][1], g["box"][0]))
 
 

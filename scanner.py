@@ -191,16 +191,80 @@ def grouped_player_candidates(tokens):
     return groups
 
 
+
+def line_player_candidates(image, tokens, cfg):
+    """Second-pass single-line OCR; guildless results are provisional."""
+    height, width = image.shape[:2]
+    masks = ui_mask_rectangles(image, cfg)
+    top = int(height * cfg.get("ocr", {}).get("top_exclusion_ratio", 0.08))
+    bottom = int(height * (1-cfg.get("ocr", {}).get("bottom_exclusion_ratio", 0.09)))
+    # Build horizontal word clusters, including untagged text.
+    rows = []
+    for t in sorted(tokens, key=lambda t: (t[1]+t[3]/2, t[0])):
+        cy = t[1]+t[3]/2
+        row = next((row for row in rows if abs(row["cy"]-cy) < 9), None)
+        if row is None:
+            row = {"cy": cy, "tokens": []}
+            rows.append(row)
+        row["tokens"].append(t)
+    results = []
+    for row in rows:
+        ordered = sorted(row["tokens"], key=lambda t: t[0])
+        clusters = []
+        for t in ordered:
+            if not clusters or t[0] - max(v[0]+v[2] for v in clusters[-1]) > 24:
+                clusters.append([])
+            clusters[-1].append(t)
+        for cluster in clusters:
+            x1 = max(0, min(t[0] for t in cluster)-5)
+            y1 = max(top, min(t[1] for t in cluster)-5)
+            x2 = min(width, max(t[0]+t[2] for t in cluster)+5)
+            y2 = min(bottom, max(t[1]+t[3] for t in cluster)+5)
+            if x2-x1 < 22 or y2-y1 < 8 or y2-y1 > 35:
+                continue
+            if any(x1 < b and x2 > a and y1 < d and y2 > c
+                   for a,c,b,d in masks):
+                continue
+            crop = image[y1:y2, x1:x2]
+            enlarged = cv2.resize(crop, None, fx=3, fy=3,
+                                   interpolation=cv2.INTER_CUBIC)
+            gray = cv2.cvtColor(enlarged, cv2.COLOR_BGR2GRAY)
+            raw = pytesseract.image_to_string(gray, config="--psm 7").strip()
+            raw = " ".join(raw.split())
+            if not raw or len(raw) > 40:
+                continue
+            guild_match = re.match(r"^\\[([A-Za-z0-9]{2,8})\\]\\s*(.+)$", raw)
+            guild = guild_match.group(1) if guild_match else None
+            name = (guild_match.group(2) if guild_match else raw).strip(" |[]")
+            if not (2 <= len(name) <= 30) or not re.search("[A-Za-z]", name):
+                continue
+            if any(phrase in raw.casefold() for phrase in IGNORE_PHRASES):
+                continue
+            # Guildless candidates are deliberately low-trust pending popup verification.
+            score = 0.65 if guild else 0.30
+            results.append({"guild": guild, "username": name,
+                            "box": (x1,y1,x2,y2), "confidence": score,
+                            "verified": False})
+    # Deduplicate by spatial proximity, prefer guilded candidates.
+    output = []
+    for item in sorted(results, key=lambda r: -r["confidence"]):
+        if any(abs(item["box"][0]-old["box"][0]) < 22 and
+               abs(item["box"][1]-old["box"][1]) < 14 for old in output):
+            continue
+        output.append(item)
+    return sorted(output, key=lambda r: (r["box"][1],r["box"][0]))
+
+
 def debug_nameplates(cfg):
     """Write an annotated image; no base clicks or database writes."""
     image = screenshot(cfg)
     output = image.copy()
     masks = ui_mask_rectangles(image, cfg)
     candidates = nameplate_candidates(image, cfg.get("ocr", {}).get("bottom_exclusion_ratio", 0.09), cfg.get("ocr", {}).get("top_exclusion_ratio", 0.08), masks)
-    groups = grouped_player_candidates(candidates)
+    groups = line_player_candidates(image, candidates, cfg)
     for group in groups:
         x1, y1, x2, y2 = group["box"]
-        cv2.rectangle(output, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        cv2.rectangle(output, (x1, y1), (x2, y2), (0, 255, 0) if group["guild"] else (255, 165, 0), 2)
     for x1, y1, x2, y2 in masks:
         cv2.rectangle(output, (x1, y1), (x2, y2), (0, 0, 255), 2)
     cutoff = int(image.shape[0] * (1 - cfg.get("ocr", {}).get("bottom_exclusion_ratio", 0.09)))

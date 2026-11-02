@@ -764,7 +764,7 @@ def main():
     query = commands.add_parser("search")
     query.add_argument("username")
     args = parser.parse_args()
-    if args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama"):
+    if args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama", "calibrate-movement"):
         cfg = load_config()
         if args.command == "calibrate-movement":
             connect(cfg)

@@ -198,6 +198,9 @@ def main():
         cfg = load_config()
         if args.command == "test":
             test(cfg)
+        elif args.command == "debug-nameplates":
+            connect(cfg)
+            debug_nameplates(cfg)
         else:
             raise SystemExit(
                 "Not calibrated: base-click and map navigation are intentionally "

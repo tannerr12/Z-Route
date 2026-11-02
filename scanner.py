@@ -710,7 +710,7 @@ def debug_ollama(cfg):
         if not isinstance(name, str):
             continue
         # Vision models often include the guild tag inside username.
-        match = re.match(r"^\\[([A-Za-z0-9]{2,8})\\]\\s*(.+)$", name.strip())
+        match = re.match(r"^\[([A-Za-z0-9]{2,8})\]\s*(.+)$", name.strip())
         if match:
             player["guild"] = match.group(1)
             player["username"] = match.group(2).strip()

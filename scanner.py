@@ -436,7 +436,7 @@ def combined_player_candidates(image, tokens, cfg):
     safe_top, safe_bottom = safe_scan_bounds(image, cfg)
     masks = ui_mask_rectangles(image, cfg)
     merged = [item for item in merged if within_safe_area(
-        item["box"], safe_top, safe_bottom, masks)]
+        item["box"], safe_top, safe_bottom, masks, 0)]
     for item in merged:
         item["level"] = read_base_level(image, item["box"])
         item["level_supported"] = item["level"] is not None
@@ -449,9 +449,11 @@ def debug_nameplates(cfg):
     output = image.copy()
     masks = ui_mask_rectangles(image, cfg)
     safe_top, safe_bottom = safe_scan_bounds(image, cfg)
-    candidates = nameplate_candidates(image, 1 - safe_bottom / image.shape[0], safe_top / image.shape[0], masks)
-    candidates = [t for t in candidates if within_safe_area(
-        (t[0], t[1], t[0]+t[2], t[1]+t[3]), safe_top, safe_bottom, masks, 0)]
+    # Preserve OCR context around nameplates; safe bounds apply to final groups,
+    # not individual tokens (which may extend outside a clickable nameplate).
+    candidates = nameplate_candidates(image,
+        cfg.get("ocr", {}).get("bottom_exclusion_ratio", 0.09),
+        cfg.get("ocr", {}).get("top_exclusion_ratio", 0.08), masks)
     groups = combined_player_candidates(image, candidates, cfg)
     for group in groups:
         x1, y1, x2, y2 = group["box"]

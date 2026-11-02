@@ -840,7 +840,7 @@ def main():
     query = commands.add_parser("search")
     query.add_argument("username")
     args = parser.parse_args()
-    if args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama", "calibrate-movement"):
+    if args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama", "calibrate-movement", "scan-column"):
         cfg = load_config()
         if args.command == "scan-column":
             connect(cfg)

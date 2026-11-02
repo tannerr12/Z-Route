@@ -537,6 +537,81 @@ def combined_player_candidates(image, tokens, cfg):
     return sorted(accepted, key=lambda g: (g["box"][1], g["box"][0]))
 
 
+def scan_column(cfg):
+    """Bounded vertical test: three observations and at most two swipes."""
+    folder = ROOT / "screenshots"
+    folder.mkdir(exist_ok=True)
+    stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
+    observations = []
+    seen = set()
+    previous = None
+    max_swipes = 2
+    for step in range(max_swipes + 1):
+        image = screenshot(cfg)
+        if previous is not None:
+            x1, y1, x2, y2 = middle_scan_rectangle(image, cfg)
+            first = cv2.cvtColor(previous[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
+            second = cv2.cvtColor(image[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
+            orb = cv2.ORB_create(nfeatures=1400)
+            k1, d1 = orb.detectAndCompute(first, None)
+            k2, d2 = orb.detectAndCompute(second, None)
+            if d1 is None or d2 is None:
+                print("Cannot verify map movement; stopping.")
+                break
+            pairs = cv2.BFMatcher(cv2.NORM_HAMMING).knnMatch(d1, d2, k=2)
+            good = [a for pair in pairs if len(pair) == 2
+                    for a, b in [pair] if a.distance < 0.72 * b.distance]
+            if len(good) < 12:
+                print("Too few matching landmarks; stopping:", len(good))
+                break
+            src = np.float32([k1[m.queryIdx].pt for m in good])
+            dst = np.float32([k2[m.trainIdx].pt for m in good])
+            transform, mask = cv2.estimateAffinePartial2D(
+                src, dst, method=cv2.RANSAC, ransacReprojThreshold=4)
+            inliers = int(mask.sum()) if mask is not None else 0
+            if transform is None or inliers < 12 or inliers / len(good) < .5:
+                print("Low-confidence movement estimate; stopping.")
+                break
+            dx, dy = float(transform[0, 2]), float(transform[1, 2])
+            print(f"Step {step}: map shifted dx={dx:.1f}, dy={dy:.1f} pixels "
+                  f"({inliers}/{len(good)} inliers)")
+            if abs(dx) < 10 and abs(dy) < 10:
+                print("Likely hard boundary: stopping.")
+                break
+            if abs(dx) > 80 or dy > -25 or dy < -950:
+                print("Unexpected movement direction or size; stopping.")
+                break
+        print(f"Analyzing map view {step + 1} of {max_swipes + 1}...")
+        players = debug_ollama(cfg)
+        for player in players:
+            if not isinstance(player, dict):
+                continue
+            name = player.get("username")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            key = (str(player.get("guild") or "").casefold(), name.strip().casefold())
+            if key not in seen:
+                seen.add(key)
+                observations.append({"view": step, **player})
+        print(f"Unique provisional players so far: {len(seen)}")
+        if step == max_swipes:
+            break
+        previous = image
+        x1, y1, x2, y2 = middle_scan_rectangle(image, cfg)
+        cx = (x1 + x2) // 2
+        sy = int(y1 + (y2-y1)*.72)
+        ey = int(y1 + (y2-y1)*.32)
+        print("Performing one upward swipe...")
+        adb(cfg, "shell", "input", "swipe",
+            str(cx), str(sy), str(cx), str(ey), "650")
+        time.sleep(1.5)
+    path = folder / f"column_scan_{stamp}.json"
+    path.write_text(json.dumps(observations, indent=2, ensure_ascii=False),
+                    encoding="utf-8")
+    print(f"Saved {len(observations)} unique provisional observations:", path)
+    print("Read-only test complete; no player database writes or base clicks.")
+
+
 def calibrate_movement(cfg):
     """One vertical swipe; compare before/after images without touching database."""
     before = screenshot(cfg)

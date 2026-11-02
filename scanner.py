@@ -688,7 +688,6 @@ def debug_ollama(cfg):
     request_data = {
         "model": cfg.get("ollama", {}).get("model", "qwen2.5vl:3b"),
         "stream": False,
-        "format": "json",
         "messages": [{
             "role": "user",
             "content": ("Read player nameplates in this Z Route map image. "

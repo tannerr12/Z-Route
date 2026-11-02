@@ -144,12 +144,63 @@ def nameplate_candidates(image, bottom_exclusion_ratio=0.09, top_exclusion_ratio
     return results
 
 
+
+GUILD_RE = re.compile(r"^\\[([A-Za-z0-9]{2,8})\\]$")
+IGNORE_PHRASES = ("item expiring", "merit special", "upgrade highway",
+                  "value pack", "return to city")
+
+
+def grouped_player_candidates(tokens):
+    """Conservative guild-anchored grouping, with spatial deduplication."""
+    unique = []
+    for t in sorted(tokens, key=lambda v: -v[5]):
+        if any(abs(t[0]-u[0]) < 12 and abs(t[1]-u[1]) < 10
+               and abs(t[2]-u[2]) < 15 for u in unique):
+            continue
+        unique.append(t)
+    groups = []
+    for x, y, w, h, word, confidence in unique:
+        match = GUILD_RE.fullmatch(word.strip())
+        if not match:
+            continue
+        words = sorted((t for t in unique
+                        if t[0] >= x+w-4 and t[0] < x+w+145
+                        and abs((t[1]+t[3]/2)-(y+h/2)) < 13),
+                       key=lambda t: t[0])
+        selected = []
+        end = x+w
+        for t in words:
+            if t[0]-end > 18:
+                break
+            selected.append(t)
+            end = t[0]+t[2]
+        name = "".join(t[4] for t in selected).strip(" []|")
+        if len(name) < 2 or len(name) > 32:
+            continue
+        if any(p in name.lower() for p in IGNORE_PHRASES):
+            continue
+        box = (x, min([y]+[t[1] for t in selected]),
+               max(t[0]+t[2] for t in selected),
+               max([y+h]+[t[1]+t[3] for t in selected]))
+        if any(g["guild"] == match.group(1) and
+               abs(g["box"][0]-x) < 20 and abs(g["box"][1]-y) < 16
+               for g in groups):
+            continue
+        groups.append({"guild": match.group(1), "username": name,
+                       "box": box, "confidence": round(confidence, 1)})
+    return groups
+
+
 def debug_nameplates(cfg):
     """Write an annotated image; no base clicks or database writes."""
     image = screenshot(cfg)
     output = image.copy()
     masks = ui_mask_rectangles(image, cfg)
     candidates = nameplate_candidates(image, cfg.get("ocr", {}).get("bottom_exclusion_ratio", 0.09), cfg.get("ocr", {}).get("top_exclusion_ratio", 0.08), masks)
+    groups = grouped_player_candidates(candidates)
+    for group in groups:
+        x1, y1, x2, y2 = group["box"]
+        cv2.rectangle(output, (x1, y1), (x2, y2), (0, 255, 0), 2)
     for x1, y1, x2, y2 in masks:
         cv2.rectangle(output, (x1, y1), (x2, y2), (0, 0, 255), 2)
     cutoff = int(image.shape[0] * (1 - cfg.get("ocr", {}).get("bottom_exclusion_ratio", 0.09)))
@@ -163,6 +214,10 @@ def debug_nameplates(cfg):
     path = folder / "nameplate_candidates.png"
     cv2.imwrite(str(path), output)
     print("OCR text candidates:", len(candidates))
+    print("Grouped player candidates:", len(groups))
+    for group in groups:
+        print("  [{}] {} confidence={} box={}".format(
+            group["guild"], group["username"], group["confidence"], group["box"]))
     print("Annotated screenshot:", path)
     for x, y, w, h, token, confidence in candidates:
         if "[" in token or "]" in token or re.search(r"D3AD", token, re.I):

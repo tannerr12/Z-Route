@@ -78,7 +78,31 @@ def recognize(image):
     return pytesseract.image_to_string(gray, config="--psm 11")
 
 
-def nameplate_candidates(image, bottom_exclusion_ratio=0.09, top_exclusion_ratio=0.08):
+DEFAULT_UI_MASKS = [
+    [0.00, 0.56, 0.15, 0.88],  # left-side controls
+    [0.70, 0.09, 1.00, 0.53],  # variable event icons, conservative envelope
+    [0.75, 0.66, 1.00, 0.94],  # right-side alliance, bag and city controls
+]
+
+
+def ui_mask_rectangles(image, cfg):
+    """Return normalized rectangles mapped to screenshot pixel coordinates."""
+    height, width = image.shape[:2]
+    raw = cfg.get("ocr", {}).get("ui_masks", DEFAULT_UI_MASKS)
+    rectangles = []
+    for coords in raw:
+        if len(coords) != 4 or not all(isinstance(v, (int, float)) for v in coords):
+            raise ValueError("Each OCR UI mask must contain four numeric ratios")
+        x1, y1, x2, y2 = coords
+        if not (0 <= x1 < x2 <= 1 and 0 <= y1 < y2 <= 1):
+            raise ValueError(f"Invalid OCR mask: {coords}")
+        rectangles.append((int(x1 * width), int(y1 * height),
+                           int(x2 * width), int(y2 * height)))
+    return rectangles
+
+
+def nameplate_candidates(image, bottom_exclusion_ratio=0.09, top_exclusion_ratio=0.08,
+                         ui_rectangles=None):
     """Find text-like regions without depending on decorative nameplate borders.
 
     Returns candidate crops for OCR and manual review. This is a heuristic,
@@ -87,6 +111,8 @@ def nameplate_candidates(image, bottom_exclusion_ratio=0.09, top_exclusion_ratio
     cutoff = int(image.shape[0] * (1 - bottom_exclusion_ratio))
     top = int(image.shape[0] * top_exclusion_ratio)
     gray = cv2.cvtColor(image[top:cutoff], cv2.COLOR_BGR2GRAY)
+    for x1, y1, x2, y2 in (ui_rectangles or []):
+        gray[max(0, y1-top):min(cutoff-top, y2), x1:x2] = 127
     enlarged = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
     variants = [
         cv2.equalizeHist(enlarged),
@@ -111,6 +137,9 @@ def nameplate_candidates(image, bottom_exclusion_ratio=0.09, top_exclusion_ratio
                 continue
             x, y = data["left"][i] // 2, top + data["top"][i] // 2
             w, h = max(1, data["width"][i] // 2), max(1, data["height"][i] // 2)
+            if any(x < x2 and x + w > x1 and y < y2 and y + h > y1
+                   for x1, y1, x2, y2 in (ui_rectangles or [])):
+                continue
             results.append((x, y, w, h, token, confidence))
     return results
 
@@ -119,7 +148,10 @@ def debug_nameplates(cfg):
     """Write an annotated image; no base clicks or database writes."""
     image = screenshot(cfg)
     output = image.copy()
-    candidates = nameplate_candidates(image, cfg.get("ocr", {}).get("bottom_exclusion_ratio", 0.09), cfg.get("ocr", {}).get("top_exclusion_ratio", 0.08))
+    masks = ui_mask_rectangles(image, cfg)
+    candidates = nameplate_candidates(image, cfg.get("ocr", {}).get("bottom_exclusion_ratio", 0.09), cfg.get("ocr", {}).get("top_exclusion_ratio", 0.08), masks)
+    for x1, y1, x2, y2 in masks:
+        cv2.rectangle(output, (x1, y1), (x2, y2), (0, 0, 255), 2)
     cutoff = int(image.shape[0] * (1 - cfg.get("ocr", {}).get("bottom_exclusion_ratio", 0.09)))
     cv2.line(output, (0, cutoff), (image.shape[1], cutoff), (0, 0, 255), 2)
     top = int(image.shape[0] * cfg.get("ocr", {}).get("top_exclusion_ratio", 0.08))

@@ -397,7 +397,7 @@ def middle_scan_rectangle(image, cfg):
     """Conservative central scan region, normalized to screen resolution."""
     height, width = image.shape[:2]
     ratios = cfg.get("ocr", {}).get("middle_scan_region",
-                                    [0.16, 0.11, 0.68, 0.82])
+                                    [0.14, 0.09, 0.56, 0.70])
     if len(ratios) != 4 or not (0 <= ratios[0] < ratios[2] <= 1 and
                                0 <= ratios[1] < ratios[3] <= 1):
         raise ValueError("Invalid ocr.middle_scan_region")
@@ -413,7 +413,7 @@ def combined_player_candidates(image, tokens, cfg):
     """
     region = middle_scan_rectangle(image, cfg)
     rx1, ry1, rx2, ry2 = region
-    masks = ui_mask_rectangles(image, cfg)
+    masks = []  # The middle region already excludes fixed UI panels.
     anchored = grouped_player_candidates(tokens)
     lines = line_player_candidates(image, tokens, cfg)
     dark_strips = dark_strip_candidates(image, cfg)
@@ -481,15 +481,17 @@ def debug_nameplates(cfg):
         if group["level"] is not None:
             cv2.putText(output, "Lv." + str(group["level"]), (x1, min(image.shape[0]-4, y2+34)),
                         cv2.FONT_HERSHEY_SIMPLEX, .55, (0, 255, 0), 2)
-    for x1, y1, x2, y2 in masks:
-        cv2.rectangle(output, (x1, y1), (x2, y2), (0, 0, 255), 2)
+    # Diagnostics show the actual acceptance window, not every OCR token.
     cv2.rectangle(output, (scan_x1, scan_y1), (scan_x2, scan_y2), (0, 0, 255), 2)
-    cutoff = safe_bottom
-    cv2.line(output, (0, cutoff), (image.shape[1], cutoff), (0, 0, 255), 2)
-    top = safe_top
-    cv2.line(output, (0, top), (image.shape[1], top), (0, 0, 255), 2)
-    for x, y, w, h, token, confidence in candidates:
-        cv2.rectangle(output, (x, y), (x+w, y+h), (0, 255, 255), 1)
+    # Dim the excluded screen area to make the active region unmistakable.
+    overlay = output.copy()
+    shade = (35, 35, 35)
+    cv2.rectangle(overlay, (0, 0), (image.shape[1], scan_y1), shade, -1)
+    cv2.rectangle(overlay, (0, scan_y2), (image.shape[1], image.shape[0]), shade, -1)
+    cv2.rectangle(overlay, (0, scan_y1), (scan_x1, scan_y2), shade, -1)
+    cv2.rectangle(overlay, (scan_x2, scan_y1), (image.shape[1], scan_y2), shade, -1)
+    output = cv2.addWeighted(overlay, 0.65, output, 0.35, 0)
+    cv2.rectangle(output, (scan_x1, scan_y1), (scan_x2, scan_y2), (0, 0, 255), 2)
     folder = ROOT / "screenshots"
     folder.mkdir(exist_ok=True)
     path = folder / "nameplate_candidates.png"

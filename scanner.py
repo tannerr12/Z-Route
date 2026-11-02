@@ -434,7 +434,7 @@ def anchored_nameplate_ocr(image, tokens, cfg):
         for variant in variants:
             raw = " ".join(pytesseract.image_to_string(
                 variant, config="--psm 7").split())
-            found = re.search(r"\\[([A-Za-z0-9]{2,8})\\]\\s*(.{3,30})", raw)
+            found = re.search(r"\[([A-Za-z0-9]{2,8})\]\s*(.{3,30})", raw)
             if not found or found.group(1).casefold() != match.group(1).casefold():
                 continue
             name = found.group(2).strip(" |[]")

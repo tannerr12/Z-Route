@@ -101,6 +101,26 @@ def ui_mask_rectangles(image, cfg):
     return rectangles
 
 
+def safe_scan_bounds(image, cfg):
+    """Shared vertical safe area for OCR, grouping and diagnostics."""
+    height = image.shape[0]
+    ocr = cfg.get("ocr", {})
+    top = int(height * max(0.234375, float(ocr.get("top_exclusion_ratio", 0.08))))
+    bottom = int(height * (1 - float(ocr.get("bottom_exclusion_ratio", 0.09))))
+    if top >= bottom:
+        raise ValueError("OCR safe area is empty: check exclusion ratios")
+    return top, bottom
+
+
+def within_safe_area(box, top, bottom, masks, level_clearance=48):
+    """Require the nameplate and potential level badge to fit in usable space."""
+    x1, y1, x2, y2 = box
+    if y1 < top or y2 + level_clearance > bottom:
+        return False
+    return not any(x1 < b and x2 > a and y1 < d and y2 + level_clearance > c
+                   for a, c, b, d in masks)
+
+
 def nameplate_candidates(image, bottom_exclusion_ratio=0.09, top_exclusion_ratio=0.08,
                          ui_rectangles=None):
     """Find text-like regions without depending on decorative nameplate borders.
@@ -196,7 +216,7 @@ def line_player_candidates(image, tokens, cfg):
     """Second-pass single-line OCR; guildless results are provisional."""
     height, width = image.shape[:2]
     masks = ui_mask_rectangles(image, cfg)
-    top = int(height * max(0.234375, cfg.get("ocr", {}).get("top_exclusion_ratio", 0.08)))
+    top, bottom = safe_scan_bounds(image, cfg)
     bottom = int(height * (1-cfg.get("ocr", {}).get("bottom_exclusion_ratio", 0.09)))
     # Build horizontal word clusters, including untagged text.
     rows = []
@@ -264,7 +284,7 @@ def dark_strip_candidates(image, cfg):
     assume a particular border colour or require a guild tag.
     """
     height, width = image.shape[:2]
-    top = int(height * max(0.234375, cfg.get("ocr", {}).get("top_exclusion_ratio", .08)))
+    top, bottom = safe_scan_bounds(image, cfg)
     bottom = int(height * (1-cfg.get("ocr", {}).get("bottom_exclusion_ratio", .09)))
     masks = ui_mask_rectangles(image, cfg)
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -413,7 +433,10 @@ def combined_player_candidates(image, tokens, cfg):
         ):
             continue
         merged.append(item)
-    merged = [item for item in merged if item["box"][1] >= int(height * .15625)]
+    safe_top, safe_bottom = safe_scan_bounds(image, cfg)
+    masks = ui_mask_rectangles(image, cfg)
+    merged = [item for item in merged if within_safe_area(
+        item["box"], safe_top, safe_bottom, masks)]
     for item in merged:
         item["level"] = read_base_level(image, item["box"])
         item["level_supported"] = item["level"] is not None
@@ -425,7 +448,10 @@ def debug_nameplates(cfg):
     image = screenshot(cfg)
     output = image.copy()
     masks = ui_mask_rectangles(image, cfg)
-    candidates = nameplate_candidates(image, cfg.get("ocr", {}).get("bottom_exclusion_ratio", 0.09), cfg.get("ocr", {}).get("top_exclusion_ratio", 0.08), masks)
+    safe_top, safe_bottom = safe_scan_bounds(image, cfg)
+    candidates = nameplate_candidates(image, 1 - safe_bottom / image.shape[0], safe_top / image.shape[0], masks)
+    candidates = [t for t in candidates if within_safe_area(
+        (t[0], t[1], t[0]+t[2], t[1]+t[3]), safe_top, safe_bottom, masks, 0)]
     groups = combined_player_candidates(image, candidates, cfg)
     for group in groups:
         x1, y1, x2, y2 = group["box"]
@@ -436,9 +462,9 @@ def debug_nameplates(cfg):
                         cv2.FONT_HERSHEY_SIMPLEX, .55, (0, 255, 0), 2)
     for x1, y1, x2, y2 in masks:
         cv2.rectangle(output, (x1, y1), (x2, y2), (0, 0, 255), 2)
-    cutoff = int(image.shape[0] * (1 - cfg.get("ocr", {}).get("bottom_exclusion_ratio", 0.09)))
+    cutoff = safe_bottom
     cv2.line(output, (0, cutoff), (image.shape[1], cutoff), (0, 0, 255), 2)
-    top = int(image.shape[0] * cfg.get("ocr", {}).get("top_exclusion_ratio", 0.08))
+    top = safe_top
     cv2.line(output, (0, top), (image.shape[1], top), (0, 0, 255), 2)
     for x, y, w, h, token, confidence in candidates:
         cv2.rectangle(output, (x, y), (x+w, y+h), (0, 255, 255), 1)
@@ -446,6 +472,7 @@ def debug_nameplates(cfg):
     folder.mkdir(exist_ok=True)
     path = folder / "nameplate_candidates.png"
     cv2.imwrite(str(path), output)
+    print(f"Safe scan area: y={safe_top}..{safe_bottom} (height={image.shape[0]})")
     print("OCR text candidates:", len(candidates))
     print("Grouped player candidates:", len(groups))
     print("Dark-strip candidates:", sum(g["source"] == "dark-strip" for g in groups))

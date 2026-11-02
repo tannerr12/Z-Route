@@ -536,6 +536,49 @@ def combined_player_candidates(image, tokens, cfg):
     return sorted(accepted, key=lambda g: (g["box"][1], g["box"][0]))
 
 
+def debug_ollama(cfg):
+    """Read-only screenshot analysis using a local Ollama vision model."""
+    image = screenshot(cfg)
+    x1, y1, x2, y2 = middle_scan_rectangle(image, cfg)
+    crop = image[y1:y2, x1:x2]
+    ok, png = cv2.imencode(".png", crop)
+    if not ok:
+        raise RuntimeError("Could not encode screenshot")
+    request_data = {
+        "model": cfg.get("ollama", {}).get("model", "qwen2.5vl:3b"),
+        "stream": False,
+        "format": "json",
+        "messages": [{
+            "role": "user",
+            "content": ("Read player nameplates in this Z Route map image. "
+                        "Return JSON with a players array. Each player has "
+                        "guild (string or null), username (exact visible text), "
+                        "level (integer or null), and box [x1,y1,x2,y2] "
+                        "relative to this image. Ignore incomplete names, "
+                        "UI labels and uncertain readings. Do not guess."),
+            "images": [base64.b64encode(png.tobytes()).decode("ascii")]
+        }],
+        "options": {"temperature": 0}
+    }
+    url = "http://127.0.0.1:11434/api/chat"
+    req = urllib.request.Request(url,
+        data=json.dumps(request_data).encode("utf-8"),
+        headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=180) as response:
+        answer = json.load(response)
+    players = json.loads(answer["message"]["content"]).get("players", [])
+    print("Ollama raw player candidates:", len(players))
+    for player in players:
+        print(player)
+    folder = ROOT / "screenshots"
+    folder.mkdir(exist_ok=True)
+    timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
+    path = folder / f"ollama_raw_{timestamp}.json"
+    path.write_text(json.dumps(players, indent=2, ensure_ascii=False), encoding="utf-8")
+    print("Saved raw results:", path)
+    print("Unverified AI output. No database writes or automated clicks.")
+
+
 def debug_nameplates(cfg):
     """Write an annotated image; no base clicks or database writes."""
     image = screenshot(cfg)

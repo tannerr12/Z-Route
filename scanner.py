@@ -538,14 +538,14 @@ def combined_player_candidates(image, tokens, cfg):
 
 
 def scan_column(cfg):
-    """Bounded vertical test: three observations and at most two swipes."""
+    """Bounded vertical test: two observations and at most one swipe."""
     folder = ROOT / "screenshots"
     folder.mkdir(exist_ok=True)
     stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
     observations = []
     seen = set()
     previous = None
-    max_swipes = 2
+    max_swipes = 1
     for step in range(max_swipes + 1):
         image = screenshot(cfg)
         if previous is not None:
@@ -700,67 +700,8 @@ def debug_ollama(cfg):
         data=json.dumps(request_data).encode("utf-8"),
         headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=180) as response:
-        raw_response = response.read().decode("utf-8")
-    # Normally stream=false produces one JSON object. Some local servers
-    # unexpectedly return newline-delimited streaming chunks instead.
-    try:
-        answer = json.loads(raw_response)
-    except json.JSONDecodeError:
-        chunks = []
-        for line in raw_response.splitlines():
-            if line.strip():
-                chunks.append(json.loads(line))
-        if not chunks:
-            raise RuntimeError("Ollama returned no response data")
-        if not chunks[-1].get("done"):
-            raise RuntimeError("Ollama stream ended without a completed response")
-        answer = dict(chunks[-1])
-        answer["message"] = {
-            "role": "assistant",
-            "content": "".join(
-                (chunk.get("message") or {}).get("content") or ""
-                for chunk in chunks
-            )
-        }
-    if not answer.get("done", False):
-        folder = ROOT / "screenshots"
-        folder.mkdir(exist_ok=True)
-        stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
-        diagnostic = folder / f"ollama_incomplete_{stamp}.json"
-        diagnostic.write_text(json.dumps({
-            "response": answer,
-            "request_model": request_data["model"],
-            "image_dimensions": [crop.shape[1], crop.shape[0]],
-            "request_options": request_data.get("options"),
-            "response_bytes": len(raw_response)
-        }, indent=2, ensure_ascii=False), encoding="utf-8")
-        raise RuntimeError(
-            f"Ollama returned an incomplete response (done=false). "
-            f"Diagnostic saved to {diagnostic}. No swipe performed."
-        )
-    message = answer.get("message") or {}
-    content = message.get("content") or ""
-    # Some vision models emit a separate thinking field; never treat that
-    # field as verified player data.
-    try:
-        parsed = json.loads(content)
-        if not isinstance(parsed, dict) or not isinstance(parsed.get("players"), list):
-            raise ValueError("Ollama response did not contain a players list")
-        players = parsed["players"]
-    except (json.JSONDecodeError, ValueError) as exc:
-        folder = ROOT / "screenshots"
-        folder.mkdir(exist_ok=True)
-        stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
-        diagnostic = folder / f"ollama_invalid_{stamp}.json"
-        diagnostic.write_text(json.dumps({
-            "response": answer,
-            "request_model": request_data["model"],
-            "image_dimensions": [crop.shape[1], crop.shape[0]]
-        }, indent=2, ensure_ascii=False), encoding="utf-8")
-        raise RuntimeError(
-            f"Ollama returned invalid or empty JSON (done_reason={answer.get('done_reason')!r}). "
-            f"Response saved to {diagnostic}. No swipe performed."
-        ) from exc
+        answer = json.load(response)
+    players = json.loads(answer["message"]["content"]).get("players", [])
     print("Ollama raw player candidates:", len(players))
     for player in players:
         if not isinstance(player, dict):

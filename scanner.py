@@ -710,10 +710,18 @@ def debug_ollama(cfg):
     try:
         if not answer.get("done", False) or not content.strip():
             raise ValueError("Ollama response incomplete or empty")
-        parsed = json.loads(content)
-        if not isinstance(parsed, dict) or not isinstance(parsed.get("players"), list):
-            raise ValueError("Ollama response missing players array")
-        players = parsed["players"]
+        cleaned = content.strip()
+        if cleaned.startswith("```"):
+            lines = cleaned.splitlines()
+            if len(lines) >= 3 and lines[-1].strip() == "```":
+                cleaned = "\n".join(lines[1:-1]).strip()
+        parsed = json.loads(cleaned)
+        if isinstance(parsed, list):
+            players = parsed
+        elif isinstance(parsed, dict) and isinstance(parsed.get("players"), list):
+            players = parsed["players"]
+        else:
+            raise ValueError("Ollama response must be a player list or object with players array")
     except (ValueError, json.JSONDecodeError) as exc:
         folder = ROOT / "screenshots"
         folder.mkdir(exist_ok=True)

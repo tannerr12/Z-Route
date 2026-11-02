@@ -647,6 +647,7 @@ def debug_ollama(cfg):
     path.write_text(json.dumps(players, indent=2, ensure_ascii=False), encoding="utf-8")
     print("Saved raw results:", path)
     print("Unverified AI output. No database writes or automated clicks.")
+    return players
 
 
 def debug_nameplates(cfg):
@@ -759,14 +760,17 @@ def record(db, server, username, tag, x=None, y=None, evidence=""):
 def main():
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama", "calibrate-movement"):
+    for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama", "calibrate-movement", "scan-column"):
         commands.add_parser(name)
     query = commands.add_parser("search")
     query.add_argument("username")
     args = parser.parse_args()
     if args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama", "calibrate-movement"):
         cfg = load_config()
-        if args.command == "calibrate-movement":
+        if args.command == "scan-column":
+            connect(cfg)
+            scan_column(cfg)
+        elif args.command == "calibrate-movement":
             connect(cfg)
             calibrate_movement(cfg)
         elif args.command == "debug-ollama":

@@ -145,7 +145,7 @@ def nameplate_candidates(image, bottom_exclusion_ratio=0.09, top_exclusion_ratio
 
 
 
-GUILD_RE = re.compile(r"^\\[([A-Za-z0-9]{2,8})\\]$")
+GUILD_RE = re.compile(r"^\[([A-Za-z0-9]{2,8})\]$")
 IGNORE_PHRASES = ("item expiring", "merit special", "upgrade highway",
                   "value pack", "return to city")
 

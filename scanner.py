@@ -570,12 +570,18 @@ def verify_sparse_vertical_shift(before, after, direction):
     return float(sign * displacement)
 
 
+def scan_diagnostic_folder(cfg):
+    """Session-specific diagnostics during a serpentine run; legacy folder otherwise."""
+    folder = Path(cfg.get("_scan_session_folder") or ROOT / "screenshots")
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
 def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=None):
     """Bounded read-only vertical scan, stopping on unverified movement."""
     if direction not in ("up", "down"):
         raise ValueError("direction must be up or down")
-    folder = ROOT / "screenshots"
-    folder.mkdir(exist_ok=True)
+    folder = scan_diagnostic_folder(cfg)
     stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
     observations = []
     seen = set()
@@ -887,8 +893,7 @@ def calibrate_movement(cfg):
         str(cx), str(end_y), "650")
     time.sleep(1.5)
     after = screenshot(cfg)
-    folder = ROOT / "screenshots"
-    folder.mkdir(exist_ok=True)
+    folder = scan_diagnostic_folder(cfg)
     stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
     before_path = folder / f"movement_before_{stamp}.png"
     after_path = folder / f"movement_after_{stamp}.png"
@@ -992,8 +997,7 @@ def debug_ollama(cfg, image=None):
         else:
             raise ValueError("Ollama response must be a player list or object with players array")
     except (ValueError, json.JSONDecodeError) as exc:
-        folder = ROOT / "screenshots"
-        folder.mkdir(exist_ok=True)
+        folder = scan_diagnostic_folder(cfg)
         stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
         path = folder / f"ollama_invalid_{stamp}.json"
         path.write_text(json.dumps({
@@ -1022,8 +1026,7 @@ def debug_ollama(cfg, image=None):
             player["guild"] = match.group(1)
             player["username"] = match.group(2).strip()
         print(player)
-    folder = ROOT / "screenshots"
-    folder.mkdir(exist_ok=True)
+    folder = scan_diagnostic_folder(cfg)
     timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
     path = folder / f"ollama_raw_{timestamp}.json"
     path.write_text(json.dumps(players, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -1063,8 +1066,7 @@ def debug_nameplates(cfg):
     cv2.rectangle(overlay, (scan_x2, scan_y1), (image.shape[1], scan_y2), shade, -1)
     output = cv2.addWeighted(overlay, 0.65, output, 0.35, 0)
     cv2.rectangle(output, (scan_x1, scan_y1), (scan_x2, scan_y2), (0, 0, 255), 2)
-    folder = ROOT / "screenshots"
-    folder.mkdir(exist_ok=True)
+    folder = scan_diagnostic_folder(cfg)
     timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
     path = folder / f"nameplate_candidates_{timestamp}.png"
     if not cv2.imwrite(str(path), output):
@@ -1097,8 +1099,7 @@ def connect(cfg):
 def test(cfg):
     connect(cfg)
     image = screenshot(cfg)
-    folder = ROOT / "screenshots"
-    folder.mkdir(exist_ok=True)
+    folder = scan_diagnostic_folder(cfg)
     path = folder / "test.png"
     cv2.imwrite(str(path), image)
     print("Screenshot:", path, "resolution:", image.shape[1], image.shape[0])
@@ -1156,6 +1157,10 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=110, horizont
     export_folder.mkdir(parents=True, exist_ok=True)
     export_stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
     export_path = export_folder / f"serpentine_players_{export_stamp}.csv"
+    session_folder = ROOT / "screenshots" / f"session_{export_stamp}"
+    session_folder.mkdir(parents=True, exist_ok=True)
+    cfg["_scan_session_folder"] = str(session_folder)
+    print(f"Session diagnostics: {session_folder}")
     fields = ["username", "guild", "level", "row", "col", "view",
               "direction", "observed_at", "coordinate_type"]
     unique_players = {}
@@ -1295,6 +1300,7 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=110, horizont
     finally:
         save_players()
         print(f"Player grid CSV saved: {export_path} ({len(unique_players)} unique usernames).")
+        cfg.pop("_scan_session_folder", None)
     print(f"Serpentine diagnostic finished: {successful_horizontal_shifts} verified "
           f"horizontal shifts; reason: {termination}.")
     print("No database writes or base clicks.")
@@ -1303,7 +1309,7 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=110, horizont
 def reprocess_failed(cfg, limit=None):
     """Retry saved unanalyzed screenshots offline; never swipe or write to DB."""
     folder = ROOT / "screenshots"
-    paths = sorted(folder.glob("column_unanalyzed_*.png"))
+    paths = sorted(folder.rglob("column_unanalyzed_*.png"))
     pending = [p for p in paths if not p.with_suffix(".recovered.json").exists()]
     if limit is not None:
         pending = pending[:limit]

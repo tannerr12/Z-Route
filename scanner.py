@@ -1499,7 +1499,12 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
         if not checkpoint_path.exists():
             raise RuntimeError("No saved scan checkpoint exists.")
         state = json.loads(checkpoint_path.read_text(encoding="utf-8"))
-        if state["settings"] != settings:
+        previous_settings = dict(state["settings"])
+        # Legacy checkpoints predate optional scaling; default values mean
+        # identical swipe geometry, so old runs remain resumable.
+        previous_settings.setdefault("vertical_scale", 1.0)
+        previous_settings.setdefault("horizontal_scale", 1.0)
+        if previous_settings != settings:
             raise RuntimeError("Scan settings differ from checkpoint; use the original settings.")
         if state.get("phase") == "connection_lost":
             raise RuntimeError("Game connection was lost. Reconnecting changes the map position; "
@@ -1719,6 +1724,8 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
             print("Horizontal shift verified. Reversing vertical direction.")
             save_state(column=column + 1, step=0, phase="view")
     finally:
+        if profile:
+            print_capture_metrics(cfg)
         print("Navigation stopped; waiting for queued AI analysis to finish...")
         capture_queue.put(None)
         capture_queue.join()

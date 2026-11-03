@@ -752,12 +752,25 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=Non
                 print(f"Movement verification failed after 3 attempts: {stop_reason}.")
                 break
         print(f"Analyzing map view {step + 1} of {max_swipes + 1}...")
-        try:
-            players = debug_ollama(cfg)
-        except (RuntimeError, OSError, TimeoutError) as exc:
+        players = None
+        last_ai_error = None
+        for ai_attempt in range(1, 4):
+            try:
+                # Reuse the captured image: retries must not move the map or
+                # change the grid position associated with this observation.
+                players = debug_ollama(cfg, image=image)
+                if ai_attempt > 1:
+                    print(f"Map view {step + 1}: Ollama succeeded on attempt {ai_attempt}/3.")
+                break
+            except (RuntimeError, OSError, TimeoutError, ValueError) as exc:
+                last_ai_error = exc
+                print(f"Map view {step + 1}: Ollama attempt {ai_attempt}/3 failed: {exc}")
+                if ai_attempt < 3:
+                    time.sleep(1.5)
+        if players is None:
             failed_views += 1
             consecutive_failures += 1
-            print(f"Map view {step + 1} analysis failed: {exc}")
+            print(f"Map view {step + 1} analysis failed after 3 attempts: {last_ai_error}")
             # Keep the screenshot for later inspection/reprocessing. A vision
             # failure must not prevent movement verification or the next swipe.
             failure_stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")

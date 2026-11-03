@@ -586,6 +586,7 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0):
     stop_reason = "swipe limit reached"
     completed_views = 0
     failed_views = 0
+    consecutive_failures = 0
     for step in range(max_swipes + 1):
         dx = dy = None
         image = screenshot(cfg)
@@ -738,6 +739,7 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0):
             players = debug_ollama(cfg)
         except (RuntimeError, OSError, TimeoutError) as exc:
             failed_views += 1
+            consecutive_failures += 1
             print(f"Map view {step + 1} analysis failed: {exc}")
             # Keep the screenshot for later inspection/reprocessing. A vision
             # failure must not prevent movement verification or the next swipe.
@@ -746,9 +748,9 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0):
             cv2.imwrite(str(failure_path), image)
             print(f"Unanalyzed screenshot saved: {failure_path}")
             previous_players = []
-            if failed_views >= 3:
-                stop_reason = "three Ollama failures"
-                print("Too many Ollama failures; stopping safely.")
+            if consecutive_failures >= 5:
+                stop_reason = "five consecutive Ollama failures"
+                print("Five consecutive Ollama failures; stopping safely.")
                 break
             if step == max_swipes:
                 break
@@ -765,6 +767,7 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0):
                 str(cx), str(sy), str(cx), str(ey), "650")
             time.sleep(1.5)
             continue
+        consecutive_failures = 0
         current_players = []
         matched_previous = set()
         for player in players:

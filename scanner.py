@@ -109,7 +109,7 @@ def safe_scan_bounds(image, cfg):
     """Shared vertical safe area for OCR, grouping and diagnostics."""
     height = image.shape[0]
     ocr = cfg.get("ocr", {})
-    top = int(height * max(0.234375, float(ocr.get("top_exclusion_ratio", 0.08))))
+    top = min(150, height - 1)  # Read-only detection: no base-click clearance needed.
     bottom = int(height * (1 - float(ocr.get("bottom_exclusion_ratio", 0.09))))
     if top >= bottom:
         raise ValueError("OCR safe area is empty: check exclusion ratios")
@@ -411,7 +411,7 @@ def middle_scan_rectangle(image, cfg):
     if len(ratios) != 4 or not (0 <= ratios[0] < ratios[2] <= 1 and
                                0 <= ratios[1] < ratios[3] <= 1):
         raise ValueError("Invalid ocr.middle_scan_region")
-    return (int(width * ratios[0]), int(height * ratios[1]),
+    return (int(width * ratios[0]), min(150, int(height * ratios[1])),
             int(width * ratios[2]), int(height * ratios[3]))
 
 

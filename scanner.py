@@ -1127,14 +1127,16 @@ def record(db, server, username, tag, x=None, y=None, evidence=""):
 
 
 
-def scan_serpentine(cfg, max_swipes=100, columns=2, boundary_after=50):
+def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=75, horizontal_after=75):
     """Read-only bounded serpentine scan with one terminal horizontal edge."""
-    if not 2 <= columns <= 20:
-        raise ValueError("columns must be between 2 and 20")
+    if not 2 <= columns <= 500:
+        raise ValueError("columns must be between 2 and 500")
     if not 1 <= max_swipes <= 500:
         raise ValueError("max_swipes must be between 1 and 500")
     if not 1 <= boundary_after <= max_swipes:
         raise ValueError("boundary_after must be between 1 and max_swipes")
+    if not 0 <= horizontal_after < columns:
+        raise ValueError("horizontal_after must be between 0 and columns - 1")
     successful_horizontal_shifts = 0
     termination = "column limit reached"
     for column in range(columns):
@@ -1145,7 +1147,7 @@ def scan_serpentine(cfg, max_swipes=100, columns=2, boundary_after=50):
         # A short column may be real, but never turn early in a large-map run.
         # This prevents an isolated stationary/low-texture frame from triggering
         # a horizontal transition before the configured search horizon.
-        # Each column starts a fresh 50-swipe boundary horizon.
+        # Each column starts a fresh vertical boundary-check horizon.
         if column == columns - 1:
             break
         if reason == "stationary map / possible boundary" and vertical_swipes < boundary_after:
@@ -1163,10 +1165,14 @@ def scan_serpentine(cfg, max_swipes=100, columns=2, boundary_after=50):
         cy = (y1 + y2) // 2
         sx = int(x1 + (x2 - x1) * .76)
         ex = int(x1 + (x2 - x1) * .24)
-        print("Attempting one horizontal shift...")
+        print(f"Attempting horizontal shift {column + 1}...")
         adb(cfg, "shell", "input", "swipe", str(sx), str(cy),
             str(ex), str(cy), "650")
         time.sleep(1.5)
+        if column + 1 <= horizontal_after:
+            print(f"Horizontal verification deferred until shift {horizontal_after + 1}. "
+                  "Reversing vertical direction.")
+            continue
         after = screenshot(cfg)
         first = cv2.cvtColor(before[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
         second = cv2.cvtColor(after[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
@@ -1280,14 +1286,18 @@ def main():
         "--max-swipes", type=int, default=5,
         help="Maximum upward swipes (1-500; default 5). Read-only.")
     commands.choices["scan-serpentine"].add_argument(
-        "--max-swipes", type=int, default=100,
-        help="Maximum vertical swipes per column (1-500; default 100).")
+        "--max-swipes", type=int, default=150,
+        help="Maximum vertical swipes per column (1-500; default 150).")
     commands.choices["scan-serpentine"].add_argument(
-        "--boundary-after", type=int, default=50,
-        help="Do not transition columns before this many vertical swipes (default 50).")
+        "--boundary-after", type=int, default=75,
+        help="Skip vertical movement checks for this many swipes per column (default 75).")
     commands.choices["scan-serpentine"].add_argument(
-        "--columns", type=int, default=2,
-        help="Maximum columns to scan (2-20; default 2).")
+        "--columns", type=int, default=100,
+        help="Maximum columns to scan (2-500; default 100)."
+    )
+    commands.choices["scan-serpentine"].add_argument(
+        "--horizontal-after", type=int, default=75,
+        help="Skip verification of the first N horizontal shifts (default 75).")
     commands.choices["reprocess-failed"].add_argument(
         "--limit", type=int, default=None,
         help="Maximum number of pending screenshots to retry.")
@@ -1303,7 +1313,8 @@ def main():
         elif args.command == "scan-serpentine":
             connect(cfg)
             scan_serpentine(cfg, max_swipes=args.max_swipes, columns=args.columns,
-                            boundary_after=args.boundary_after)
+                            boundary_after=args.boundary_after,
+                            horizontal_after=args.horizontal_after)
         elif args.command == "scan-column":
             connect(cfg)
             scan_column(cfg, max_swipes=args.max_swipes)

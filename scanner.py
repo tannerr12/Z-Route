@@ -622,7 +622,7 @@ def scan_column(cfg, max_swipes=5, direction="up"):
                 moving_fraction = float(np.mean(np.linalg.norm(dst - src, axis=1) > 25))
                 strong_motion = (
                     np.median(residual) <= 8
-                    and moving_fraction >= .8
+                    and moving_fraction >= .70
                     and abs(float(median_offset[0])) <= 80
                     and (direction == "up" and -950 <= float(median_offset[1]) <= -25
                          or direction == "down" and 25 <= float(median_offset[1]) <= 950)

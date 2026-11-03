@@ -1079,8 +1079,8 @@ def scan_serpentine(cfg, max_swipes=100, columns=2, boundary_after=50):
     """Read-only bounded serpentine scan with one terminal horizontal edge."""
     if not 2 <= columns <= 20:
         raise ValueError("columns must be between 2 and 20")
-    if not 1 <= max_swipes <= 10:
-        raise ValueError("max_swipes must be between 1 and 10")
+    if not 1 <= max_swipes <= 500:
+        raise ValueError("max_swipes must be between 1 and 500")
     if not 1 <= boundary_after <= max_swipes:
         raise ValueError("boundary_after must be between 1 and max_swipes")
     successful_horizontal_shifts = 0

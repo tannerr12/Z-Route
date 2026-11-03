@@ -1395,9 +1395,6 @@ def process_capture_ai(cfg, path, unique_players, save_players):
         for field in ("row", "column", "view", "direction", "captured_at"):
             if field not in meta:
                 raise ValueError(f"Capture metadata missing {field}")
-        # Save result before CSV; offline retry reconciles results if interrupted.
-        result_path.write_text(json.dumps({"players": players, "metadata": meta},
-                                          ensure_ascii=False, indent=2), encoding="utf-8")
         added = 0
         for player in players:
             if not isinstance(player, dict):
@@ -1417,6 +1414,8 @@ def process_capture_ai(cfg, path, unique_players, save_players):
             added += 1
         if added:
             save_players()
+        result_path.write_text(json.dumps({"players": players, "metadata": meta},
+                                          ensure_ascii=False, indent=2), encoding="utf-8")
         failure_path.unlink(missing_ok=True)
         print(f"AI completed {path.name}: {len(players)} candidates, {added} new players.")
         return "completed"

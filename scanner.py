@@ -538,6 +538,38 @@ def combined_player_candidates(image, tokens, cfg):
     return sorted(accepted, key=lambda g: (g["box"][1], g["box"][0]))
 
 
+def verify_sparse_vertical_shift(before, after, direction):
+    """Conservative terrain-edge alignment; does not establish boundaries."""
+    h, w = before.shape
+    if after.shape != before.shape or h < 300 or w < 150:
+        return None
+    sign = -1 if direction == "up" else 1
+    scores = []
+    for shift in range(30, min(950, h - 110) + 1, 5):
+        overlap = h - shift
+        if sign < 0:
+            a, b = before[shift:, :], after[:overlap, :]
+        else:
+            a, b = before[:overlap, :], after[shift:, :]
+        ea, eb = cv2.Canny(a, 60, 150), cv2.Canny(b, 60, 150)
+        na, nb = np.count_nonzero(ea), np.count_nonzero(eb)
+        if na < 200 or nb < 200:
+            continue
+        agreement = 2 * np.count_nonzero((ea > 0) & (eb > 0)) / (na + nb)
+        scores.append((agreement, shift))
+    if not scores:
+        return None
+    best, displacement = max(scores)
+    alternative = max((v for v, d in scores if abs(d - displacement) >= 30), default=0)
+    if best < .55 or best - alternative < .12:
+        print(f"Sparse terrain alignment inconclusive: best={best:.2f}, "
+              f"alternative={alternative:.2f}.")
+        return None
+    print(f"Sparse terrain movement verified: dy={sign * displacement}px "
+          f"(edge agreement={best:.2f}, alternative={alternative:.2f}).")
+    return float(sign * displacement)
+
+
 def scan_column(cfg, max_swipes=5, direction="up"):
     """Bounded read-only vertical scan, stopping on unverified movement."""
     if direction not in ("up", "down"):
@@ -602,8 +634,14 @@ def scan_column(cfg, max_swipes=5, direction="up"):
                           f"{inliers}/{len(good)} inliers, "
                           f"median residual {np.median(residual):.1f}px, "
                           f"{moving_fraction:.0%} matches moving.")
-            if transform is None or inliers < 12 or (
-                    inliers / len(good) < .5 and not strong_motion):
+            uncertain = (transform is None or inliers < 12 or
+                         (inliers / len(good) < .5 and not strong_motion))
+            if uncertain:
+                terrain_dy = verify_sparse_vertical_shift(first, second, direction)
+                if terrain_dy is not None:
+                    transform = np.array([[1., 0., 0.], [0., 1., terrain_dy]])
+                    uncertain = False
+            if uncertain:
                 diagnostic_stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
                 before_path = folder / f"column_movement_before_{diagnostic_stamp}.png"
                 after_path = folder / f"column_movement_after_{diagnostic_stamp}.png"

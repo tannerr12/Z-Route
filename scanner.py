@@ -581,8 +581,8 @@ def scan_column(cfg, max_swipes=5, direction="up"):
     seen = set()
     previous_players = []
     previous = None
-    if not 1 <= max_swipes <= 10:
-        raise ValueError("max_swipes must be between 1 and 10")
+    if not 1 <= max_swipes <= 500:
+        raise ValueError("max_swipes must be between 1 and 500")
     stop_reason = "swipe limit reached"
     completed_views = 0
     failed_views = 0
@@ -622,7 +622,7 @@ def scan_column(cfg, max_swipes=5, direction="up"):
                 moving_fraction = float(np.mean(np.linalg.norm(dst - src, axis=1) > 25))
                 strong_motion = (
                     np.median(residual) <= 8
-                    and moving_fraction >= .70
+                    and moving_fraction >= .30
                     and abs(float(median_offset[0])) <= 80
                     and (direction == "up" and -950 <= float(median_offset[1]) <= -25
                          or direction == "down" and 25 <= float(median_offset[1]) <= 950)
@@ -823,7 +823,7 @@ def scan_column(cfg, max_swipes=5, direction="up"):
     print(f"Scan finished: {completed_views} analyzed views, "
           f"{failed_views} unanalyzed views; reason: {stop_reason}.")
     print("Read-only test complete; no player database writes or base clicks.")
-    return stop_reason
+    return stop_reason, step
 
 
 def calibrate_movement(cfg):
@@ -1075,19 +1075,30 @@ def record(db, server, username, tag, x=None, y=None, evidence=""):
 
 
 
-def scan_serpentine(cfg, max_swipes=5, columns=2):
+def scan_serpentine(cfg, max_swipes=100, columns=2, boundary_after=50):
     """Read-only bounded serpentine scan with one terminal horizontal edge."""
     if not 2 <= columns <= 20:
         raise ValueError("columns must be between 2 and 20")
     if not 1 <= max_swipes <= 10:
         raise ValueError("max_swipes must be between 1 and 10")
+    if not 1 <= boundary_after <= max_swipes:
+        raise ValueError("boundary_after must be between 1 and max_swipes")
     successful_horizontal_shifts = 0
     termination = "column limit reached"
     for column in range(columns):
         direction = "up" if column % 2 == 0 else "down"
         print(f"=== Column {column + 1}/{columns}: {direction} ===")
-        reason = scan_column(cfg, max_swipes=max_swipes, direction=direction)
+        reason, vertical_swipes = scan_column(cfg, max_swipes=max_swipes, direction=direction)
+        # A short column may be real, but never turn early in a large-map run.
+        # This prevents an isolated stationary/low-texture frame from triggering
+        # a horizontal transition before the configured search horizon.
+        # Each column starts a fresh 50-swipe boundary horizon.
         if column == columns - 1:
+            break
+        if reason == "stationary map / possible boundary" and vertical_swipes < boundary_after:
+            termination = "stationary before boundary-check horizon"
+            print(f"Stopped after {vertical_swipes} swipes; horizontal transitions "
+                  f"require at least {boundary_after}. No turn attempted.")
             break
         if reason != "stationary map / possible boundary":
             termination = "vertical endpoint not verified"
@@ -1179,10 +1190,13 @@ def main():
         commands.add_parser(name)
     commands.choices["scan-column"].add_argument(
         "--max-swipes", type=int, default=5,
-        help="Maximum upward swipes (1-10; default 5). Read-only.")
+        help="Maximum upward swipes (1-500; default 5). Read-only.")
     commands.choices["scan-serpentine"].add_argument(
-        "--max-swipes", type=int, default=5,
-        help="Maximum vertical swipes per column (1-10).")
+        "--max-swipes", type=int, default=100,
+        help="Maximum vertical swipes per column (1-500; default 100).")
+    commands.choices["scan-serpentine"].add_argument(
+        "--boundary-after", type=int, default=50,
+        help="Do not transition columns before this many vertical swipes (default 50).")
     commands.choices["scan-serpentine"].add_argument(
         "--columns", type=int, default=2,
         help="Maximum columns to scan (2-20; default 2).")
@@ -1193,7 +1207,8 @@ def main():
         cfg = load_config()
         if args.command == "scan-serpentine":
             connect(cfg)
-            scan_serpentine(cfg, max_swipes=args.max_swipes, columns=args.columns)
+            scan_serpentine(cfg, max_swipes=args.max_swipes, columns=args.columns,
+                            boundary_after=args.boundary_after)
         elif args.command == "scan-column":
             connect(cfg)
             scan_column(cfg, max_swipes=args.max_swipes)

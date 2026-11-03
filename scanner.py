@@ -1127,7 +1127,7 @@ def record(db, server, username, tag, x=None, y=None, evidence=""):
 
 
 
-def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=110, horizontal_after=75):
+def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=110, horizontal_after=110):
     """Read-only bounded serpentine scan with one terminal horizontal edge."""
     if not 2 <= columns <= 500:
         raise ValueError("columns must be between 2 and 500")
@@ -1292,12 +1292,12 @@ def main():
         "--boundary-after", type=int, default=110,
         help="Skip vertical movement checks for this many swipes per column (default 110).")
     commands.choices["scan-serpentine"].add_argument(
-        "--columns", type=int, default=100,
-        help="Maximum columns to scan (2-500; default 100)."
+        "--columns", type=int, default=150,
+        help="Maximum columns to scan (2-500; default 150)."
     )
     commands.choices["scan-serpentine"].add_argument(
-        "--horizontal-after", type=int, default=75,
-        help="Skip verification of the first N horizontal shifts (default 75).")
+        "--horizontal-after", type=int, default=110,
+        help="Skip verification of the first N horizontal shifts (default 110).")
     commands.choices["reprocess-failed"].add_argument(
         "--limit", type=int, default=None,
         help="Maximum number of pending screenshots to retry.")

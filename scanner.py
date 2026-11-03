@@ -1012,15 +1012,18 @@ def calibrate_movement(cfg):
     print("Calibration only: one swipe, no base clicks or database writes.")
 
 
-def benchmark_capture(cfg, swipes=20, settle=0.4):
+def benchmark_capture(cfg, swipes=110, settle=0.2, swipe_ms=250):
     """Measure capture throughput and map displacement; no Ollama or DB writes."""
-    if not 1 <= swipes <= 100:
-        raise ValueError("swipes must be between 1 and 100")
+    if not 1 <= swipes <= 500:
+        raise ValueError("swipes must be between 1 and 500")
     if not 0 <= settle <= 3:
         raise ValueError("settle must be between 0 and 3 seconds")
+    if not 100 <= swipe_ms <= 1000:
+        raise ValueError("swipe-ms must be between 100 and 1000")
     folder = ROOT / "screenshots" / ("calibration_" + datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f"))
     folder.mkdir(parents=True, exist_ok=True)
     before = screenshot(cfg)
+    ensure_game_connected(cfg, before)
     x1, y1, x2, y2 = middle_scan_rectangle(before, cfg)
     cx = (x1 + x2) // 2
     sy, ey = int(y1 + (y2-y1)*.72), int(y1 + (y2-y1)*.32)
@@ -1029,12 +1032,13 @@ def benchmark_capture(cfg, swipes=20, settle=0.4):
     cv2.imwrite(str(folder / "view_000.png"), before)
     for n in range(1, swipes + 1):
         started = time.perf_counter()
-        adb(cfg, "shell", "input", "swipe", str(cx), str(sy), str(cx), str(ey), "350")
+        adb(cfg, "shell", "input", "swipe", str(cx), str(sy), str(cx), str(ey), str(swipe_ms))
         swipe_seconds = time.perf_counter() - started
         time.sleep(settle)
         started_capture = time.perf_counter()
         after = screenshot(cfg)
         capture_seconds = time.perf_counter() - started_capture
+        ensure_game_connected(cfg, after)
         cv2.imwrite(str(folder / f"view_{n:03d}.png"), after)
         first = cv2.cvtColor(before[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
         second = cv2.cvtColor(after[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
@@ -1065,11 +1069,15 @@ def benchmark_capture(cfg, swipes=20, settle=0.4):
               f"displacement=({dx},{dy}) inliers={inliers}/{matches}")
         before = after
         if dx is not None and abs(dy) < 8 and abs(dx) < 8:
-            print("Possible boundary; stopping benchmark to avoid stationary captures.")
-            break
+            print("Stationary frame observed; continuing benchmark (not a confirmed boundary).")
     (folder / "measurements.json").write_text(json.dumps({
-        "scan_region": [x1,y1,x2,y2], "swipe_duration_ms": 350,
+        "scan_region": [x1,y1,x2,y2], "swipe_duration_ms": swipe_ms,
         "results": results}, indent=2), encoding="utf-8")
+    if results:
+        mean_swipe = sum(r["swipe_seconds"] for r in results) / len(results)
+        mean_capture = sum(r["capture_seconds"] for r in results) / len(results)
+        print(f"Average swipe={mean_swipe:.3f}s capture={mean_capture:.3f}s "
+              f"settle={settle:.3f}s total={mean_swipe+mean_capture+settle:.3f}s/view")
     print(f"Calibration results: {folder}")
     print("Inspect displacement confidence and screenshots before changing scan spacing.")
 
@@ -1659,8 +1667,9 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama", "calibrate-movement", "benchmark-capture", "scan-column", "scan-serpentine", "reprocess-failed"):
         commands.add_parser(name)
-    commands.choices["benchmark-capture"].add_argument("--swipes", type=int, default=20)
-    commands.choices["benchmark-capture"].add_argument("--settle", type=float, default=0.4)
+    commands.choices["benchmark-capture"].add_argument("--swipes", type=int, default=110)
+    commands.choices["benchmark-capture"].add_argument("--settle", type=float, default=0.2)
+    commands.choices["benchmark-capture"].add_argument("--swipe-ms", type=int, default=250)
     commands.choices["scan-column"].add_argument(
         "--max-swipes", type=int, default=5,
         help="Maximum upward swipes (1-500; default 5). Read-only.")
@@ -1702,7 +1711,7 @@ def main():
             scan_column(cfg, max_swipes=args.max_swipes)
         elif args.command == "benchmark-capture":
             connect(cfg)
-            benchmark_capture(cfg, swipes=args.swipes, settle=args.settle)
+            benchmark_capture(cfg, swipes=args.swipes, settle=args.settle, swipe_ms=args.swipe_ms)
         elif args.command == "calibrate-movement":
             connect(cfg)
             calibrate_movement(cfg)

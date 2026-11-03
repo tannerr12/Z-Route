@@ -3,6 +3,7 @@ import argparse
 import base64
 import urllib.request
 import csv
+from difflib import SequenceMatcher
 import json
 import re
 import sqlite3
@@ -653,36 +654,40 @@ def scan_column(cfg):
                          and all(isinstance(v, (int, float)) for v in box)
                          and box[2] > box[0] and box[3] > box[1])
             matched_key = None
-            if dx is not None and valid_box:
-                cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+            if dx is not None:
                 candidates = []
                 for i, (prior, prior_key) in enumerate(previous_players):
-                    if i in matched_previous:
-                        continue
-                    old_box = prior.get("box")
-                    if not (isinstance(old_box, list) and len(old_box) == 4
-                            and all(isinstance(v, (int, float)) for v in old_box)):
-                        continue
-                    if prior.get("level") != player.get("level"):
+                    if i in matched_previous or prior.get("level") != player.get("level"):
                         continue
                     old_guild = str(prior.get("guild") or "").casefold()
                     new_guild = str(player.get("guild") or "").casefold()
                     if old_guild and new_guild and old_guild != new_guild:
                         continue
-                    predicted_x = (old_box[0] + old_box[2]) / 2 + dx
-                    predicted_y = (old_box[1] + old_box[3]) / 2 + dy
-                    distance = ((cx - predicted_x) ** 2 + (cy - predicted_y) ** 2) ** .5
-                    if abs(cx - predicted_x) <= 65 and abs(cy - predicted_y) <= 85:
-                        candidates.append((distance, i, prior_key))
-                if candidates:
-                    candidates.sort()
-                    if len(candidates) == 1 or candidates[1][0] - candidates[0][0] > 25:
-                        distance, i, matched_key = candidates[0]
-                        matched_previous.add(i)
-                        if matched_key != key:
-                            print(f"Position-matched likely OCR variant: {name!r} "
-                                  f"to {previous_players[i][0]['username']!r} "
-                                  f"(offset {distance:.1f}px)")
+                    old_name = str(prior.get("username") or "").casefold()
+                    similarity = SequenceMatcher(None, old_name, name.strip().casefold()).ratio()
+                    old_box = prior.get("box")
+                    distance = None
+                    if valid_box and isinstance(old_box, list) and len(old_box) == 4 and all(
+                            isinstance(v, (int, float)) for v in old_box):
+                        cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+                        predicted_x = (old_box[0] + old_box[2]) / 2 + dx
+                        predicted_y = (old_box[1] + old_box[3]) / 2 + dy
+                        distance = ((cx - predicted_x) ** 2 + (cy - predicted_y) ** 2) ** .5
+                    near = distance is not None and distance <= 100
+                    # Strong names can survive unreliable model-generated boxes.
+                    # Weaker names require corroborating spatial evidence.
+                    if similarity >= .88 or (near and similarity >= .70):
+                        candidates.append((similarity, distance, i, prior_key))
+                candidates.sort(key=lambda c: (-c[0], c[1] if c[1] is not None else 1e9))
+                if candidates and (len(candidates) == 1 or
+                                   candidates[0][0] - candidates[1][0] >= .12):
+                    similarity, distance, i, matched_key = candidates[0]
+                    matched_previous.add(i)
+                    if matched_key != key:
+                        print(f"Likely repeat: {name!r} -> "
+                              f"{previous_players[i][0]['username']!r} "
+                              f"(name similarity {similarity:.2f}, "
+                              f"position offset {distance if distance is not None else 'unknown'})")
             if matched_key is None and key in seen:
                 matched_key = key
             canonical_key = matched_key if matched_key is not None else key

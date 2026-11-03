@@ -3,6 +3,8 @@ import argparse
 import base64
 import urllib.request
 import csv
+import queue
+import threading
 from difflib import SequenceMatcher
 import json
 import re
@@ -607,7 +609,7 @@ def scan_diagnostic_folder(cfg):
     return folder
 
 
-def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=None, start_step=0, on_progress=None, swipe_ms=100, settle=0.2):
+def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=None, start_step=0, on_progress=None, swipe_ms=100, settle=0.2, capture_queue=None):
     """Bounded read-only vertical scan, stopping on unverified movement."""
     if direction not in ("up", "down"):
         raise ValueError("direction must be up or down")
@@ -787,6 +789,34 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=Non
             if not movement_verified:
                 print(f"Movement verification failed after 3 attempts: {stop_reason}.")
                 break
+        if capture_queue is not None:
+            col = cfg.get("_scan_grid_context", {}).get("column", 0)
+            path = folder / f"capture_col_{col:03d}_view_{step:03d}.png"
+            if not cv2.imwrite(str(path), image):
+                raise RuntimeError(f"Failed to save {path}")
+            meta = {"column": col, "view": step,
+                    "row": step + 1 if direction == "up" else max_swipes - step + 1,
+                    "direction": direction, "captured_at": datetime.now(timezone.utc).isoformat()}
+            path.with_suffix(".meta.json").write_text(json.dumps(meta), encoding="utf-8")
+            capture_queue.put(path)
+            completed_views += 1
+            print(f"Captured {path.name}; AI processing independently.")
+            if step == max_swipes:
+                break
+            previous = image
+            x1, y1, x2, y2 = middle_scan_rectangle(image, cfg)
+            cx = (x1 + x2) // 2
+            sy, ey = int(y1 + (y2-y1)*.72), int(y1 + (y2-y1)*.32)
+            if direction == "down":
+                sy, ey = ey, sy
+            if on_progress:
+                on_progress(step, "swipe_pending")
+            adb(cfg, "shell", "input", "swipe",
+                str(cx), str(sy), str(cx), str(ey), str(swipe_ms))
+            time.sleep(settle)
+            if on_progress:
+                on_progress(step + 1, "view")
+            continue
         print(f"Analyzing map view {step + 1} of {max_swipes + 1}...")
         players = None
         last_ai_error = None
@@ -1427,6 +1457,58 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=65, horizonta
     if not resume:
         save_players()
         save_state()
+    capture_queue = queue.Queue()
+    def analyze_captures():
+        while True:
+            path = capture_queue.get()
+            try:
+                if path is None:
+                    return
+                result_path = path.with_suffix(".players.json")
+                if result_path.exists():
+                    continue
+                image = cv2.imread(str(path))
+                if image is None:
+                    raise RuntimeError(f"Unreadable screenshot: {path}")
+                players = None
+                for attempt in range(3):
+                    try:
+                        players = debug_ollama(cfg, image=image)
+                        break
+                    except (RuntimeError, OSError, TimeoutError, ValueError):
+                        if attempt < 2:
+                            time.sleep(1.5)
+                if players is None:
+                    players = analyze_split_fallback(cfg, image)
+                meta = json.loads(path.with_suffix(".meta.json").read_text(encoding="utf-8"))
+                for player in players:
+                    if not isinstance(player, dict):
+                        continue
+                    name = player.get("username")
+                    if not valid_scanned_username(name) or is_ignored_commander(player):
+                        continue
+                    key = name.casefold()
+                    if key in unique_players:
+                        continue
+                    unique_players[key] = {
+                        "username": name, "guild": str(player.get("guild") or ""),
+                        "level": player.get("level") if player.get("level") is not None else "",
+                        "row": meta["row"], "col": meta["column"], "view": meta["view"],
+                        "direction": meta["direction"], "observed_at": meta["captured_at"],
+                        "coordinate_type": "approximate swipe grid"}
+                    save_players()
+                result_path.write_text(json.dumps({"players": players, "metadata": meta},
+                                                   ensure_ascii=False), encoding="utf-8")
+                print(f"AI processed {path.name}: {len(players)} candidates.")
+            except Exception as exc:
+                print(f"AI processing failed for {path}: {exc}; screenshot retained.")
+            finally:
+                capture_queue.task_done()
+    worker = threading.Thread(target=analyze_captures, daemon=True, name="ollama-worker")
+    worker.start()
+    for path in sorted(session_folder.glob("capture_col_*_view_*.png")):
+        if not path.with_suffix(".players.json").exists():
+            capture_queue.put(path)
     successful_horizontal_shifts = 0
     termination = "column limit reached"
     try:
@@ -1461,7 +1543,7 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=65, horizonta
                                                   verify_after=boundary_after,
                                                   on_player=record_player,
                                                   start_step=initial_step, swipe_ms=swipe_ms,
-                                                  settle=settle,
+                                                  settle=settle, capture_queue=capture_queue,
                                                   on_progress=lambda step, phase: save_state(
                                                       column=column, step=step, phase=phase))
             # A short column may be real, but never turn early in a large-map run.
@@ -1563,6 +1645,10 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=65, horizonta
             print("Horizontal shift verified. Reversing vertical direction.")
             save_state(column=column + 1, step=0, phase="view")
     finally:
+        print("Navigation stopped; waiting for queued AI analysis to finish...")
+        capture_queue.put(None)
+        capture_queue.join()
+        worker.join()
         print(f"Navigation checkpoint: {checkpoint_path} (column {state['column'] + 1}, "
               f"step {state['step']}, {state['direction']}, phase={state['phase']})")
         # Recover only this session's screenshots, retaining their original grid

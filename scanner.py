@@ -768,6 +768,13 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=Non
                 if ai_attempt < 3:
                     time.sleep(1.5)
         if players is None:
+            print(f"Map view {step + 1}: trying overlapping split-image fallback.")
+            try:
+                players = analyze_split_fallback(cfg, image)
+            except (RuntimeError, OSError, TimeoutError, ValueError) as exc:
+                last_ai_error = exc
+                print(f"Split-image fallback failed: {exc}")
+        if players is None:
             failed_views += 1
             consecutive_failures += 1
             print(f"Map view {step + 1} analysis failed after 3 attempts: {last_ai_error}")
@@ -983,12 +990,16 @@ def is_ignored_commander(player):
     return normalized.casefold().startswith("commander2")
 
 
-def debug_ollama(cfg, image=None):
+def debug_ollama(cfg, image=None, crop_override=None):
     """Read-only screenshot analysis using a local Ollama vision model."""
     if image is None:
         image = screenshot(cfg)
     x1, y1, x2, y2 = middle_scan_rectangle(image, cfg)
+    if crop_override is not None:
+        x1, y1, x2, y2 = crop_override
     crop = image[y1:y2, x1:x2]
+    if crop.size == 0:
+        raise ValueError("Empty Ollama image crop")
     ok, png = cv2.imencode(".png", crop)
     if not ok:
         raise RuntimeError("Could not encode screenshot")
@@ -1066,6 +1077,43 @@ def debug_ollama(cfg, image=None):
     print("Saved raw results:", path)
     print("Unverified AI output. No database writes or automated clicks.")
     return players
+
+
+def analyze_split_fallback(cfg, image):
+    """Try two overlapping horizontal crops of the same map view."""
+    x1, y1, x2, y2 = middle_scan_rectangle(image, cfg)
+    height = y2 - y1
+    if height < 80:
+        raise ValueError("Map crop too short for split fallback")
+    midpoint = (y1 + y2) // 2
+    overlap = max(30, int(height * .15))
+    regions = [
+        (x1, y1, x2, min(y2, midpoint + overlap)),
+        (x1, max(y1, midpoint - overlap), x2, y2),
+    ]
+    combined = []
+    seen = set()
+    errors = []
+    for index, region in enumerate(regions, 1):
+        try:
+            candidates = debug_ollama(cfg, image=image, crop_override=region)
+            for player in candidates:
+                if not isinstance(player, dict):
+                    continue
+                name = player.get("username")
+                if not valid_scanned_username(name) or is_ignored_commander(player):
+                    continue
+                key = name.casefold()
+                if key not in seen:
+                    seen.add(key)
+                    combined.append(player)
+        except (RuntimeError, OSError, TimeoutError, ValueError) as exc:
+            errors.append(str(exc))
+            print(f"Split crop {index}/2 failed: {exc}")
+    if len(errors) == len(regions):
+        raise RuntimeError("Both split crops failed: " + "; ".join(errors))
+    print(f"Split fallback recovered {len(combined)} unique valid candidates.")
+    return combined
 
 
 def debug_nameplates(cfg):
@@ -1348,7 +1396,10 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=110, horizont
                     if image is None:
                         print(f"Recovery {index}: unreadable screenshot {path.name}")
                         continue
-                    players = debug_ollama(cfg, image=image)
+                    try:
+                        players = debug_ollama(cfg, image=image)
+                    except (RuntimeError, OSError, TimeoutError, ValueError):
+                        players = analyze_split_fallback(cfg, image)
                     result_path.write_text(json.dumps({
                         "source_screenshot": path.name,
                         "grid": meta,

@@ -633,7 +633,12 @@ def scan_column(cfg):
                 print("Unexpected movement direction or size; stopping.")
                 break
         print(f"Analyzing map view {step + 1} of {max_swipes + 1}...")
-        players = debug_ollama(cfg)
+        try:
+            players = debug_ollama(cfg)
+        except (RuntimeError, OSError, TimeoutError) as exc:
+            print(f"Map view {step + 1} analysis failed: {exc}")
+            print("Preserving earlier observations; stopping without further swipes.")
+            break
         current_players = []
         matched_previous = set()
         for player in players:

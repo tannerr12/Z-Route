@@ -553,6 +553,7 @@ def scan_column(cfg, max_swipes=5, direction="up"):
         raise ValueError("max_swipes must be between 1 and 10")
     stop_reason = "swipe limit reached"
     completed_views = 0
+    failed_views = 0
     for step in range(max_swipes + 1):
         dx = dy = None
         image = screenshot(cfg)
@@ -670,10 +671,34 @@ def scan_column(cfg, max_swipes=5, direction="up"):
         try:
             players = debug_ollama(cfg)
         except (RuntimeError, OSError, TimeoutError) as exc:
-            stop_reason = "Ollama analysis failed"
+            failed_views += 1
             print(f"Map view {step + 1} analysis failed: {exc}")
-            print("Preserving earlier observations; stopping without further swipes.")
-            break
+            # Keep the screenshot for later inspection/reprocessing. A vision
+            # failure must not prevent movement verification or the next swipe.
+            failure_stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
+            failure_path = folder / f"column_unanalyzed_{failure_stamp}.png"
+            cv2.imwrite(str(failure_path), image)
+            print(f"Unanalyzed screenshot saved: {failure_path}")
+            previous_players = []
+            if failed_views >= 3:
+                stop_reason = "three Ollama failures"
+                print("Too many Ollama failures; stopping safely.")
+                break
+            if step == max_swipes:
+                break
+            previous = image
+            x1, y1, x2, y2 = middle_scan_rectangle(image, cfg)
+            cx = (x1 + x2) // 2
+            sy = int(y1 + (y2 - y1) * .72)
+            ey = int(y1 + (y2 - y1) * .32)
+            if direction == "down":
+                sy, ey = ey, sy
+            print(f"Continuing navigation after AI failure: {direction} swipe "
+                  f"{step + 1} of {max_swipes}...")
+            adb(cfg, "shell", "input", "swipe",
+                str(cx), str(sy), str(cx), str(ey), "650")
+            time.sleep(1.5)
+            continue
         current_players = []
         matched_previous = set()
         for player in players:
@@ -757,7 +782,8 @@ def scan_column(cfg, max_swipes=5, direction="up"):
     path.write_text(json.dumps(observations, indent=2, ensure_ascii=False),
                     encoding="utf-8")
     print(f"Saved {len(observations)} unique provisional observations:", path)
-    print(f"Scan finished: {completed_views} analyzed views; reason: {stop_reason}.")
+    print(f"Scan finished: {completed_views} analyzed views, "
+          f"{failed_views} unanalyzed views; reason: {stop_reason}.")
     print("Read-only test complete; no player database writes or base clicks.")
     return stop_reason
 

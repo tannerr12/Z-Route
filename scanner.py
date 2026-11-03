@@ -776,6 +776,9 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0):
             name = player.get("username")
             if not isinstance(name, str) or not name.strip():
                 continue
+            if is_ignored_commander(player):
+                print(f"Ignoring default Commander2 username: {name!r}")
+                continue
             if not any(ch.isalpha() for ch in name):
                 print(f"Ignoring non-name candidate: {name!r}")
                 continue
@@ -916,6 +919,19 @@ def calibrate_movement(cfg):
     print("Calibration only: one swipe, no base clicks or database writes.")
 
 
+def is_ignored_commander(player):
+    """Exclude default Commander2 usernames, including embedded guild prefixes."""
+    if not isinstance(player, dict):
+        return False
+    name = player.get("username")
+    if not isinstance(name, str):
+        return False
+    normalized = name.strip()
+    normalized = re.sub(r"^\\[[^\\]]{1,12}\\]\\s*", "", normalized)
+    normalized = re.sub(r"^[A-Za-z0-9]{2,8}[!|:]\\s+", "", normalized)
+    return normalized.casefold().startswith("commander2")
+
+
 def debug_ollama(cfg, image=None):
     """Read-only screenshot analysis using a local Ollama vision model."""
     if image is None:
@@ -976,6 +992,10 @@ def debug_ollama(cfg, image=None):
             f"Ollama failed to complete screenshot analysis (done={answer.get('done')!r}). "
             f"Diagnostic saved to {path}. No swipe performed."
         ) from exc
+    before_filter = len(players)
+    players = [p for p in players if not is_ignored_commander(p)]
+    if len(players) != before_filter:
+        print(f"Ignored {before_filter - len(players)} default Commander2 usernames.")
     print("Ollama raw player candidates:", len(players))
     for player in players:
         if not isinstance(player, dict):

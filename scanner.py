@@ -570,7 +570,7 @@ def verify_sparse_vertical_shift(before, after, direction):
     return float(sign * displacement)
 
 
-def scan_column(cfg, max_swipes=5, direction="up", verify_after=0):
+def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=None):
     """Bounded read-only vertical scan, stopping on unverified movement."""
     if direction not in ("up", "down"):
         raise ValueError("direction must be up or down")
@@ -844,6 +844,8 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0):
             if canonical_key not in seen:
                 seen.add(canonical_key)
                 observations.append({"view": step, **player})
+                if on_player is not None:
+                    on_player(player, step)
             current_players.append((player, canonical_key))
         previous_players = current_players
         completed_views += 1
@@ -1148,106 +1150,151 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=110, horizont
         raise ValueError("boundary_after must be between 1 and max_swipes")
     if not 0 <= horizontal_after < columns:
         raise ValueError("horizontal_after must be between 0 and columns - 1")
+    # Grid coordinates are approximate scan-route positions, not game X/Y.
+    # Checkpoint the CSV after every new username so interrupted scans retain data.
+    export_folder = ROOT / "screenshots"
+    export_folder.mkdir(exist_ok=True)
+    export_stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
+    export_path = export_folder / f"serpentine_players_{export_stamp}.csv"
+    fields = ["username", "guild", "level", "row", "col", "view",
+              "direction", "observed_at", "coordinate_type"]
+    unique_players = {}
+
+    def save_players():
+        temporary = export_path.with_suffix(".csv.tmp")
+        with temporary.open("w", newline="", encoding="utf-8-sig") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows(unique_players.values())
+        temporary.replace(export_path)
+
+    save_players()
     successful_horizontal_shifts = 0
     termination = "column limit reached"
-    for column in range(columns):
-        direction = "up" if column % 2 == 0 else "down"
-        print(f"=== Column {column + 1}/{columns}: {direction} ===")
-        reason, vertical_swipes = scan_column(cfg, max_swipes=max_swipes, direction=direction,
-                                              verify_after=boundary_after)
-        # A short column may be real, but never turn early in a large-map run.
-        # This prevents an isolated stationary/low-texture frame from triggering
-        # a horizontal transition before the configured search horizon.
-        # Each column starts a fresh vertical boundary-check horizon.
-        if column == columns - 1:
-            break
-        if reason == "stationary map / possible boundary" and vertical_swipes < boundary_after:
-            termination = "stationary before boundary-check horizon"
-            print(f"Stopped after {vertical_swipes} swipes; horizontal transitions "
-                  f"require at least {boundary_after}. No turn attempted.")
-            break
-        if reason != "stationary map / possible boundary":
-            termination = "vertical endpoint not verified"
-            print("No verified stationary endpoint; horizontal transition cancelled.")
-            break
-        before = screenshot(cfg)
-        x1, y1, x2, y2 = middle_scan_rectangle(before, cfg)
-        # Horizontal gesture stays inside the established safe map rectangle.
-        cy = (y1 + y2) // 2
-        sx = int(x1 + (x2 - x1) * .76)
-        ex = int(x1 + (x2 - x1) * .24)
-        print(f"Attempting horizontal shift {column + 1}...")
-        adb(cfg, "shell", "input", "swipe", str(sx), str(cy),
-            str(ex), str(cy), "650")
-        time.sleep(1.5)
-        if column + 1 <= horizontal_after:
-            print(f"Horizontal verification deferred until shift {horizontal_after + 1}. "
-                  "Reversing vertical direction.")
-            continue
-        after = screenshot(cfg)
-        first = cv2.cvtColor(before[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
-        second = cv2.cvtColor(after[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
-        orb = cv2.ORB_create(nfeatures=1400)
-        k1, d1 = orb.detectAndCompute(first, None)
-        k2, d2 = orb.detectAndCompute(second, None)
-        if d1 is None or d2 is None:
-            print("Horizontal shift unverified: missing landmarks. Stopping.")
-            break
-        pairs = cv2.BFMatcher(cv2.NORM_HAMMING).knnMatch(d1, d2, k=2)
-        good = [a for pair in pairs if len(pair) == 2
-                for a, b in [pair] if a.distance < .72 * b.distance]
-        if len(good) < 30:
-            print("Horizontal shift unverified: too few matches. Stopping.")
-            break
-        src = np.float32([k1[m.queryIdx].pt for m in good])
-        dst = np.float32([k2[m.trainIdx].pt for m in good])
-        # Match groups may contain a dominant stationary overlay plus a moving
-        # map. Inspect the displacement vectors, not only the dominant RANSAC fit.
-        offsets = dst - src
-        moving = (offsets[:, 0] < -25) & (offsets[:, 0] >= -950) & (np.abs(offsets[:, 1]) <= 80)
-        moving_offsets = offsets[moving]
-        accepted = False
-        dx = dy = 0.0
-        if len(moving_offsets) >= 12:
-            # Find a coherent horizontal displacement cluster, allowing a few
-            # mismatches and avoiding accidental UI-animation matches.
-            best = np.zeros(len(moving_offsets), dtype=bool)
-            for candidate in moving_offsets:
-                cluster = np.linalg.norm(moving_offsets - candidate, axis=1) <= 12
-                if cluster.sum() > best.sum():
-                    best = cluster
-            if best.sum() >= 12:
-                consensus = moving_offsets[best]
-                median = np.median(consensus, axis=0)
-                residual = np.linalg.norm(consensus - median, axis=1)
-                dx, dy = float(median[0]), float(median[1])
-                accepted = (float(np.median(residual)) <= 6
-                            and best.sum() >= max(12, int(len(good) * .04)))
-                print(f"Horizontal moving consensus: {int(best.sum())}/{len(good)} "
-                      f"matches, dx={dx:.1f}, dy={dy:.1f}, "
-                      f"median residual={np.median(residual):.1f}px.")
-        if not accepted:
-            transform, mask = cv2.estimateAffinePartial2D(
-                src, dst, method=cv2.RANSAC, ransacReprojThreshold=4)
-            inliers = int(mask.sum()) if mask is not None else 0
-            if transform is not None and mask is not None and inliers >= 30:
-                dx, dy = float(transform[0, 2]), float(transform[1, 2])
-                if (abs(dx) < 10 and abs(dy) < 10
-                        and inliers / len(good) >= .8
-                        and len(moving_offsets) < 12):
-                    termination = ("probable far horizontal boundary"
-                                   if successful_horizontal_shifts else
-                                   "stationary on first horizontal attempt")
-                    print(f"Stationary horizontal view: {inliers}/{len(good)} "
-                          f"inliers, dx={dx:.1f}, dy={dy:.1f}.")
-                    break
-            termination = "horizontal movement unverified"
-            print(f"Horizontal movement unverified; {len(moving_offsets)} "
-                  f"plausible moving matches among {len(good)}. Stopping.")
-            break
-        print(f"Horizontal shift accepted: dx={dx:.1f}, dy={dy:.1f}")
-        successful_horizontal_shifts += 1
-        print("Horizontal shift verified. Reversing vertical direction.")
+    try:
+        for column in range(columns):
+            direction = "up" if column % 2 == 0 else "down"
+            print(f"=== Column {column + 1}/{columns}: {direction} ===")
+            def record_player(player, step):
+                name = str(player.get("username") or "").strip()
+                if not name:
+                    return
+                key = name.casefold()
+                if key in unique_players:
+                    return
+                unique_players[key] = {
+                    "username": name,
+                    "guild": str(player.get("guild") or ""),
+                    "level": player.get("level") if player.get("level") is not None else "",
+                    "row": step + 1 if direction == "up" else max_swipes - step + 1,
+                    "col": column + 1,
+                    "view": step,
+                    "direction": direction,
+                    "observed_at": datetime.now().astimezone().isoformat(),
+                    "coordinate_type": "approximate swipe grid",
+                }
+                save_players()
+                print(f"CSV checkpoint: {len(unique_players)} unique usernames -> {export_path}")
+
+            reason, vertical_swipes = scan_column(cfg, max_swipes=max_swipes, direction=direction,
+                                                  verify_after=boundary_after,
+                                                  on_player=record_player)
+            # A short column may be real, but never turn early in a large-map run.
+            # This prevents an isolated stationary/low-texture frame from triggering
+            # a horizontal transition before the configured search horizon.
+            # Each column starts a fresh vertical boundary-check horizon.
+            if column == columns - 1:
+                break
+            if reason == "stationary map / possible boundary" and vertical_swipes < boundary_after:
+                termination = "stationary before boundary-check horizon"
+                print(f"Stopped after {vertical_swipes} swipes; horizontal transitions "
+                      f"require at least {boundary_after}. No turn attempted.")
+                break
+            if reason != "stationary map / possible boundary":
+                termination = "vertical endpoint not verified"
+                print("No verified stationary endpoint; horizontal transition cancelled.")
+                break
+            before = screenshot(cfg)
+            x1, y1, x2, y2 = middle_scan_rectangle(before, cfg)
+            # Horizontal gesture stays inside the established safe map rectangle.
+            cy = (y1 + y2) // 2
+            sx = int(x1 + (x2 - x1) * .76)
+            ex = int(x1 + (x2 - x1) * .24)
+            print(f"Attempting horizontal shift {column + 1}...")
+            adb(cfg, "shell", "input", "swipe", str(sx), str(cy),
+                str(ex), str(cy), "650")
+            time.sleep(1.5)
+            if column + 1 <= horizontal_after:
+                print(f"Horizontal verification deferred until shift {horizontal_after + 1}. "
+                      "Reversing vertical direction.")
+                continue
+            after = screenshot(cfg)
+            first = cv2.cvtColor(before[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
+            second = cv2.cvtColor(after[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
+            orb = cv2.ORB_create(nfeatures=1400)
+            k1, d1 = orb.detectAndCompute(first, None)
+            k2, d2 = orb.detectAndCompute(second, None)
+            if d1 is None or d2 is None:
+                print("Horizontal shift unverified: missing landmarks. Stopping.")
+                break
+            pairs = cv2.BFMatcher(cv2.NORM_HAMMING).knnMatch(d1, d2, k=2)
+            good = [a for pair in pairs if len(pair) == 2
+                    for a, b in [pair] if a.distance < .72 * b.distance]
+            if len(good) < 30:
+                print("Horizontal shift unverified: too few matches. Stopping.")
+                break
+            src = np.float32([k1[m.queryIdx].pt for m in good])
+            dst = np.float32([k2[m.trainIdx].pt for m in good])
+            # Match groups may contain a dominant stationary overlay plus a moving
+            # map. Inspect the displacement vectors, not only the dominant RANSAC fit.
+            offsets = dst - src
+            moving = (offsets[:, 0] < -25) & (offsets[:, 0] >= -950) & (np.abs(offsets[:, 1]) <= 80)
+            moving_offsets = offsets[moving]
+            accepted = False
+            dx = dy = 0.0
+            if len(moving_offsets) >= 12:
+                # Find a coherent horizontal displacement cluster, allowing a few
+                # mismatches and avoiding accidental UI-animation matches.
+                best = np.zeros(len(moving_offsets), dtype=bool)
+                for candidate in moving_offsets:
+                    cluster = np.linalg.norm(moving_offsets - candidate, axis=1) <= 12
+                    if cluster.sum() > best.sum():
+                        best = cluster
+                if best.sum() >= 12:
+                    consensus = moving_offsets[best]
+                    median = np.median(consensus, axis=0)
+                    residual = np.linalg.norm(consensus - median, axis=1)
+                    dx, dy = float(median[0]), float(median[1])
+                    accepted = (float(np.median(residual)) <= 6
+                                and best.sum() >= max(12, int(len(good) * .04)))
+                    print(f"Horizontal moving consensus: {int(best.sum())}/{len(good)} "
+                          f"matches, dx={dx:.1f}, dy={dy:.1f}, "
+                          f"median residual={np.median(residual):.1f}px.")
+            if not accepted:
+                transform, mask = cv2.estimateAffinePartial2D(
+                    src, dst, method=cv2.RANSAC, ransacReprojThreshold=4)
+                inliers = int(mask.sum()) if mask is not None else 0
+                if transform is not None and mask is not None and inliers >= 30:
+                    dx, dy = float(transform[0, 2]), float(transform[1, 2])
+                    if (abs(dx) < 10 and abs(dy) < 10
+                            and inliers / len(good) >= .8
+                            and len(moving_offsets) < 12):
+                        termination = ("probable far horizontal boundary"
+                                       if successful_horizontal_shifts else
+                                       "stationary on first horizontal attempt")
+                        print(f"Stationary horizontal view: {inliers}/{len(good)} "
+                              f"inliers, dx={dx:.1f}, dy={dy:.1f}.")
+                        break
+                termination = "horizontal movement unverified"
+                print(f"Horizontal movement unverified; {len(moving_offsets)} "
+                      f"plausible moving matches among {len(good)}. Stopping.")
+                break
+            print(f"Horizontal shift accepted: dx={dx:.1f}, dy={dy:.1f}")
+            successful_horizontal_shifts += 1
+            print("Horizontal shift verified. Reversing vertical direction.")
+    finally:
+        save_players()
+        print(f"Player grid CSV saved: {export_path} ({len(unique_players)} unique usernames).")
     print(f"Serpentine diagnostic finished: {successful_horizontal_shifts} verified "
           f"horizontal shifts; reason: {termination}.")
     print("No database writes or base clicks.")

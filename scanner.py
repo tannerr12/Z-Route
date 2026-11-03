@@ -916,9 +916,10 @@ def calibrate_movement(cfg):
     print("Calibration only: one swipe, no base clicks or database writes.")
 
 
-def debug_ollama(cfg):
+def debug_ollama(cfg, image=None):
     """Read-only screenshot analysis using a local Ollama vision model."""
-    image = screenshot(cfg)
+    if image is None:
+        image = screenshot(cfg)
     x1, y1, x2, y2 = middle_scan_rectangle(image, cfg)
     crop = image[y1:y2, x1:x2]
     ok, png = cv2.imencode(".png", crop)
@@ -1215,10 +1216,45 @@ def scan_serpentine(cfg, max_swipes=100, columns=2, boundary_after=50):
     print("No database writes or base clicks.")
 
 
+def reprocess_failed(cfg, limit=None):
+    """Retry saved unanalyzed screenshots offline; never swipe or write to DB."""
+    folder = ROOT / "screenshots"
+    paths = sorted(folder.glob("column_unanalyzed_*.png"))
+    pending = [p for p in paths if not p.with_suffix(".recovered.json").exists()]
+    if limit is not None:
+        pending = pending[:limit]
+    print(f"Found {len(paths)} failed screenshots; {len(pending)} queued for retry.")
+    recovered = 0
+    for index, path in enumerate(pending, 1):
+        print(f"Retrying {index}/{len(pending)}: {path.name}")
+        image = cv2.imread(str(path))
+        if image is None:
+            print(f"Could not read {path.name}; leaving for retry.")
+            continue
+        try:
+            players = debug_ollama(cfg, image=image)
+            # Save even empty successful responses to avoid endless retries.
+            result = {
+                "source_screenshot": path.name,
+                "reprocessed_at": datetime.now(timezone.utc).isoformat(),
+                "players": players,
+                "verified": False
+            }
+            output = path.with_suffix(".recovered.json")
+            output.write_text(json.dumps(result, ensure_ascii=False, indent=2),
+                              encoding="utf-8")
+            recovered += 1
+            print(f"Recovered {len(players)} provisional candidates: {output.name}")
+        except (RuntimeError, OSError, TimeoutError, ValueError) as exc:
+            print(f"Retry failed for {path.name}: {exc}")
+    print(f"Recovered {recovered}/{len(pending)} screenshots. Originals retained.")
+    print("Read-only offline reprocessing; no ADB swipes or database writes.")
+
+
 def main():
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama", "calibrate-movement", "scan-column", "scan-serpentine"):
+    for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama", "calibrate-movement", "scan-column", "scan-serpentine", "reprocess-failed"):
         commands.add_parser(name)
     commands.choices["scan-column"].add_argument(
         "--max-swipes", type=int, default=5,
@@ -1232,12 +1268,19 @@ def main():
     commands.choices["scan-serpentine"].add_argument(
         "--columns", type=int, default=2,
         help="Maximum columns to scan (2-20; default 2).")
+    commands.choices["reprocess-failed"].add_argument(
+        "--limit", type=int, default=None,
+        help="Maximum number of pending screenshots to retry.")
     query = commands.add_parser("search")
     query.add_argument("username")
     args = parser.parse_args()
-    if args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama", "calibrate-movement", "scan-column", "scan-serpentine"):
+    if args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama", "calibrate-movement", "scan-column", "scan-serpentine", "reprocess-failed"):
         cfg = load_config()
-        if args.command == "scan-serpentine":
+        if args.command == "reprocess-failed":
+            if args.limit is not None and args.limit < 1:
+                parser.error("--limit must be at least 1")
+            reprocess_failed(cfg, limit=args.limit)
+        elif args.command == "scan-serpentine":
             connect(cfg)
             scan_serpentine(cfg, max_swipes=args.max_swipes, columns=args.columns,
                             boundary_after=args.boundary_after)

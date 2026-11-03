@@ -1157,6 +1157,7 @@ def valid_scanned_username(name):
     """Game usernames cannot contain whitespace; reject OCR false positives."""
     return (isinstance(name, str) and bool(name.strip())
             and not any(char.isspace() for char in name)
+            and not (name.strip().isdigit() and 1 <= int(name.strip()) <= 99)
             and any(char.isalpha() for char in name))
 
 
@@ -1196,7 +1197,7 @@ def debug_ollama(cfg, image=None, crop_override=None):
                         "guild (string or null), username (exact visible text), "
                         "level (integer or null), and box [x1,y1,x2,y2] "
                         "relative to this image. Ignore incomplete names, "
-                        "UI labels and uncertain readings. Do not guess."),
+                        "UI labels, mining camps, and resource nodes. Numeric labels 1-99 are not player usernames. Do not guess."),
             "images": [base64.b64encode(png.tobytes()).decode("ascii")]
         }],
         "options": {"temperature": 0}
@@ -1237,7 +1238,7 @@ def debug_ollama(cfg, image=None, crop_override=None):
             f"Diagnostic saved to {path}. No swipe performed."
         ) from exc
     before_filter = len(players)
-    players = [p for p in players if not is_ignored_commander(p)]
+    players = [p for p in players if isinstance(p, dict) and valid_scanned_username(p.get("username")) and not is_ignored_commander(p)]
     if len(players) != before_filter:
         print(f"Ignored {before_filter - len(players)} default Commander2 usernames.")
     print("Ollama raw player candidates:", len(players))

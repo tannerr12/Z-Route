@@ -607,10 +607,12 @@ def scan_diagnostic_folder(cfg):
     return folder
 
 
-def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=None, start_step=0, on_progress=None):
+def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=None, start_step=0, on_progress=None, swipe_ms=100, settle=0.2):
     """Bounded read-only vertical scan, stopping on unverified movement."""
     if direction not in ("up", "down"):
         raise ValueError("direction must be up or down")
+    if not 100 <= swipe_ms <= 1000 or not 0 <= settle <= 3:
+        raise ValueError("Invalid swipe timing")
     folder = scan_diagnostic_folder(cfg)
     stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
     observations = []
@@ -849,8 +851,8 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=Non
             if on_progress:
                 on_progress(step, "swipe_pending")
             adb(cfg, "shell", "input", "swipe",
-                str(cx), str(sy), str(cx), str(ey), "650")
-            time.sleep(1.5)
+                str(cx), str(sy), str(cx), str(ey), str(swipe_ms))
+            time.sleep(settle)
             if on_progress:
                 on_progress(step + 1, "view")
             continue
@@ -940,8 +942,8 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=Non
         if on_progress:
             on_progress(step, "swipe_pending")
         adb(cfg, "shell", "input", "swipe",
-            str(cx), str(sy), str(cx), str(ey), "650")
-        time.sleep(1.5)
+            str(cx), str(sy), str(cx), str(ey), str(swipe_ms))
+        time.sleep(settle)
         if on_progress:
             on_progress(step + 1, "view")
     path = folder / f"column_scan_{stamp}.json"
@@ -1334,7 +1336,7 @@ def record(db, server, username, tag, x=None, y=None, evidence=""):
 
 
 
-def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=110, horizontal_after=110, resume=False):
+def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=110, horizontal_after=110, resume=False, swipe_ms=100, settle=0.2):
     """Read-only bounded serpentine scan with one terminal horizontal edge."""
     if not 2 <= columns <= 500:
         raise ValueError("columns must be between 2 and 500")
@@ -1344,13 +1346,16 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=110, horizont
         raise ValueError("boundary_after must be between 1 and max_swipes")
     if not 0 <= horizontal_after < columns:
         raise ValueError("horizontal_after must be between 0 and columns - 1")
+    if not 100 <= swipe_ms <= 1000 or not 0 <= settle <= 3:
+        raise ValueError("Invalid swipe timing")
     # Grid coordinates are approximate scan-route positions, not game X/Y.
     # Checkpoint the CSV after every new username so interrupted scans retain data.
     export_folder = ROOT / "exports" / "players"
     export_folder.mkdir(parents=True, exist_ok=True)
     checkpoint_path = export_folder / "serpentine_checkpoint.json"
     settings = {"max_swipes": max_swipes, "columns": columns,
-                "boundary_after": boundary_after, "horizontal_after": horizontal_after}
+                "boundary_after": boundary_after, "horizontal_after": horizontal_after,
+                "swipe_ms": swipe_ms, "settle": settle}
     if resume:
         if not checkpoint_path.exists():
             raise RuntimeError("No saved scan checkpoint exists.")
@@ -1455,7 +1460,8 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=110, horizont
             reason, vertical_swipes = scan_column(cfg, max_swipes=max_swipes, direction=direction,
                                                   verify_after=boundary_after,
                                                   on_player=record_player,
-                                                  start_step=initial_step,
+                                                  start_step=initial_step, swipe_ms=swipe_ms,
+                                                  settle=settle,
                                                   on_progress=lambda step, phase: save_state(
                                                       column=column, step=step, phase=phase))
             # A short column may be real, but never turn early in a large-map run.
@@ -1673,6 +1679,8 @@ def main():
     commands.choices["scan-column"].add_argument(
         "--max-swipes", type=int, default=5,
         help="Maximum upward swipes (1-500; default 5). Read-only.")
+    commands.choices["scan-serpentine"].add_argument("--swipe-ms", type=int, default=100)
+    commands.choices["scan-serpentine"].add_argument("--settle", type=float, default=0.2)
     commands.choices["scan-serpentine"].add_argument(
         "--continue", dest="resume", action="store_true",
         help="Resume the saved scan session and CSV from its checkpoint.")
@@ -1705,7 +1713,8 @@ def main():
             connect(cfg)
             scan_serpentine(cfg, max_swipes=args.max_swipes, columns=args.columns,
                             boundary_after=args.boundary_after,
-                            horizontal_after=args.horizontal_after, resume=args.resume)
+                            horizontal_after=args.horizontal_after, resume=args.resume,
+                            swipe_ms=args.swipe_ms, settle=args.settle)
         elif args.command == "scan-column":
             connect(cfg)
             scan_column(cfg, max_swipes=args.max_swipes)

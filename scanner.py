@@ -591,148 +591,159 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0):
         dx = dy = None
         image = screenshot(cfg)
         if previous is not None and step > verify_after:
-            x1, y1, x2, y2 = middle_scan_rectangle(image, cfg)
-            first = cv2.cvtColor(previous[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
-            second = cv2.cvtColor(image[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
-            orb = cv2.ORB_create(nfeatures=1400)
-            k1, d1 = orb.detectAndCompute(first, None)
-            k2, d2 = orb.detectAndCompute(second, None)
-            if d1 is None or d2 is None:
-                stop_reason = "missing landmark descriptors"
-                print("Cannot verify map movement; stopping.")
-                break
-            pairs = cv2.BFMatcher(cv2.NORM_HAMMING).knnMatch(d1, d2, k=2)
-            good = [a for pair in pairs if len(pair) == 2
-                    for a, b in [pair] if a.distance < 0.72 * b.distance]
-            if len(good) < 12:
-                stop_reason = "too few matching landmarks"
-                print("Too few matching landmarks; stopping:", len(good))
-                break
-            src = np.float32([k1[m.queryIdx].pt for m in good])
-            dst = np.float32([k2[m.trainIdx].pt for m in good])
-            transform, mask = cv2.estimateAffinePartial2D(
-                src, dst, method=cv2.RANSAC, ransacReprojThreshold=4)
-            inliers = int(mask.sum()) if mask is not None else 0
-            # A moving map can yield many mismatched ORB pairs despite a
-            # substantial, geometrically consistent inlier cluster.
-            strong_motion = False
-            if transform is not None and mask is not None and inliers >= 80:
-                inlier_offsets = (dst - src)[mask.ravel().astype(bool)]
-                median_offset = np.median(inlier_offsets, axis=0)
-                residual = np.linalg.norm(inlier_offsets - median_offset, axis=1)
-                moving_fraction = float(np.mean(np.linalg.norm(dst - src, axis=1) > 25))
-                strong_motion = (
-                    np.median(residual) <= 8
-                    and moving_fraction >= .30
-                    and abs(float(median_offset[0])) <= 80
-                    and (direction == "up" and -950 <= float(median_offset[1]) <= -25
-                         or direction == "down" and 25 <= float(median_offset[1]) <= 950)
-                    and abs(float(transform[0, 2]) - float(median_offset[0])) <= 20
-                    and abs(float(transform[1, 2]) - float(median_offset[1])) <= 20
-                )
-                if strong_motion and inliers / len(good) < .5:
-                    print(f"Accepted strong moving-landmark consensus: "
-                          f"{inliers}/{len(good)} inliers, "
-                          f"median residual {np.median(residual):.1f}px, "
-                          f"{moving_fraction:.0%} matches moving.")
-            # Secondary coherent vertical movement may be masked by static UI.
-            offsets = dst - src
-            candidates = offsets[
-                (offsets[:, 1] < -25 if direction == "up" else offsets[:, 1] > 25)
-                & (np.abs(offsets[:, 0]) <= 80)
-                & (np.abs(offsets[:, 1]) <= 950)]
-            secondary = None
-            if len(candidates) >= 12:
-                for center in candidates:
-                    nearby = np.linalg.norm(candidates - center, axis=1) <= 12
-                    count = int(nearby.sum())
-                    if secondary is None or count > secondary[0]:
-                        median = np.median(candidates[nearby], axis=0)
-                        residual = np.median(np.linalg.norm(
-                            candidates[nearby] - median, axis=1))
-                        secondary = (count, median, residual)
-            secondary_motion = None
-            if secondary is not None:
-                count, median, residual = secondary
-                if count >= 12 and count / len(good) >= .15 and residual <= 6 and abs(median[0]) <= 40:
-                    secondary_motion = median
-                    print(f"Secondary vertical consensus: {count}/{len(good)} matches, "
-                          f"dx={median[0]:.1f}, dy={median[1]:.1f}px.")
-            uncertain = (transform is None or inliers < 12 or
-                         (inliers / len(good) < .5 and not strong_motion))
-            if secondary_motion is not None and (uncertain or
-                    (transform is not None and abs(float(transform[1, 2])) < 10)):
-                transform = np.array([[1., 0., float(secondary_motion[0])],
-                                      [0., 1., float(secondary_motion[1])]])
-                uncertain = False
-            if uncertain:
-                terrain_dy = verify_sparse_vertical_shift(first, second, direction)
-                if terrain_dy is not None:
-                    transform = np.array([[1., 0., 0.], [0., 1., terrain_dy]])
+            movement_verified = False
+            for movement_attempt in range(1, 4):
+                if movement_attempt > 1:
+                    print(f"Retrying movement verification ({movement_attempt}/3) after 1.5s...")
+                    time.sleep(1.5)
+                    image = screenshot(cfg)  # No additional swipe on retry.
+                x1, y1, x2, y2 = middle_scan_rectangle(image, cfg)
+                first = cv2.cvtColor(previous[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
+                second = cv2.cvtColor(image[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
+                orb = cv2.ORB_create(nfeatures=1400)
+                k1, d1 = orb.detectAndCompute(first, None)
+                k2, d2 = orb.detectAndCompute(second, None)
+                if d1 is None or d2 is None:
+                    stop_reason = "missing landmark descriptors"
+                    print("Cannot verify map movement; stopping.")
+                    continue
+                pairs = cv2.BFMatcher(cv2.NORM_HAMMING).knnMatch(d1, d2, k=2)
+                good = [a for pair in pairs if len(pair) == 2
+                        for a, b in [pair] if a.distance < 0.72 * b.distance]
+                if len(good) < 12:
+                    stop_reason = "too few matching landmarks"
+                    print("Too few matching landmarks; stopping:", len(good))
+                    continue
+                src = np.float32([k1[m.queryIdx].pt for m in good])
+                dst = np.float32([k2[m.trainIdx].pt for m in good])
+                transform, mask = cv2.estimateAffinePartial2D(
+                    src, dst, method=cv2.RANSAC, ransacReprojThreshold=4)
+                inliers = int(mask.sum()) if mask is not None else 0
+                # A moving map can yield many mismatched ORB pairs despite a
+                # substantial, geometrically consistent inlier cluster.
+                strong_motion = False
+                if transform is not None and mask is not None and inliers >= 80:
+                    inlier_offsets = (dst - src)[mask.ravel().astype(bool)]
+                    median_offset = np.median(inlier_offsets, axis=0)
+                    residual = np.linalg.norm(inlier_offsets - median_offset, axis=1)
+                    moving_fraction = float(np.mean(np.linalg.norm(dst - src, axis=1) > 25))
+                    strong_motion = (
+                        np.median(residual) <= 8
+                        and moving_fraction >= .30
+                        and abs(float(median_offset[0])) <= 80
+                        and (direction == "up" and -950 <= float(median_offset[1]) <= -25
+                             or direction == "down" and 25 <= float(median_offset[1]) <= 950)
+                        and abs(float(transform[0, 2]) - float(median_offset[0])) <= 20
+                        and abs(float(transform[1, 2]) - float(median_offset[1])) <= 20
+                    )
+                    if strong_motion and inliers / len(good) < .5:
+                        print(f"Accepted strong moving-landmark consensus: "
+                              f"{inliers}/{len(good)} inliers, "
+                              f"median residual {np.median(residual):.1f}px, "
+                              f"{moving_fraction:.0%} matches moving.")
+                # Secondary coherent vertical movement may be masked by static UI.
+                offsets = dst - src
+                candidates = offsets[
+                    (offsets[:, 1] < -25 if direction == "up" else offsets[:, 1] > 25)
+                    & (np.abs(offsets[:, 0]) <= 80)
+                    & (np.abs(offsets[:, 1]) <= 950)]
+                secondary = None
+                if len(candidates) >= 12:
+                    for center in candidates:
+                        nearby = np.linalg.norm(candidates - center, axis=1) <= 12
+                        count = int(nearby.sum())
+                        if secondary is None or count > secondary[0]:
+                            median = np.median(candidates[nearby], axis=0)
+                            residual = np.median(np.linalg.norm(
+                                candidates[nearby] - median, axis=1))
+                            secondary = (count, median, residual)
+                secondary_motion = None
+                if secondary is not None:
+                    count, median, residual = secondary
+                    if count >= 12 and count / len(good) >= .15 and residual <= 6 and abs(median[0]) <= 40:
+                        secondary_motion = median
+                        print(f"Secondary vertical consensus: {count}/{len(good)} matches, "
+                              f"dx={median[0]:.1f}, dy={median[1]:.1f}px.")
+                uncertain = (transform is None or inliers < 12 or
+                             (inliers / len(good) < .5 and not strong_motion))
+                if secondary_motion is not None and (uncertain or
+                        (transform is not None and abs(float(transform[1, 2])) < 10)):
+                    transform = np.array([[1., 0., float(secondary_motion[0])],
+                                          [0., 1., float(secondary_motion[1])]])
                     uncertain = False
-            if uncertain:
-                diagnostic_stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
-                before_path = folder / f"column_movement_before_{diagnostic_stamp}.png"
-                after_path = folder / f"column_movement_after_{diagnostic_stamp}.png"
-                cv2.imwrite(str(before_path), previous)
-                cv2.imwrite(str(after_path), image)
-                match_path = folder / f"column_landmarks_{diagnostic_stamp}.png"
-                if mask is not None:
-                    selected = [m for m, ok in zip(good, mask.ravel()) if ok]
-                else:
-                    selected = good
-                overlay = cv2.drawMatches(
-                    first, k1, second, k2, selected[:80], None,
-                    flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-                cv2.imwrite(str(match_path), overlay)
-                displacement = dst - src
-                distances = np.linalg.norm(displacement, axis=1)
-                moving = distances > 25
-                stop_reason = "low-confidence movement"
-                print(f"Low-confidence movement estimate ({inliers}/{len(good)} inliers); stopping.")
-                print(f"Landmark motion check: {int(moving.sum())}/{len(good)} "
-                      "matches shifted over 25px.")
-                if transform is not None:
-                    print(f"RANSAC candidate shift: dx={transform[0, 2]:.1f}, "
-                          f"dy={transform[1, 2]:.1f}px")
-                print("Movement screenshots:", before_path, after_path)
-                print("Matched landmarks:", match_path)
+                if uncertain:
+                    terrain_dy = verify_sparse_vertical_shift(first, second, direction)
+                    if terrain_dy is not None:
+                        transform = np.array([[1., 0., 0.], [0., 1., terrain_dy]])
+                        uncertain = False
+                if uncertain:
+                    diagnostic_stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
+                    before_path = folder / f"column_movement_before_{diagnostic_stamp}.png"
+                    after_path = folder / f"column_movement_after_{diagnostic_stamp}.png"
+                    cv2.imwrite(str(before_path), previous)
+                    cv2.imwrite(str(after_path), image)
+                    match_path = folder / f"column_landmarks_{diagnostic_stamp}.png"
+                    if mask is not None:
+                        selected = [m for m, ok in zip(good, mask.ravel()) if ok]
+                    else:
+                        selected = good
+                    overlay = cv2.drawMatches(
+                        first, k1, second, k2, selected[:80], None,
+                        flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+                    cv2.imwrite(str(match_path), overlay)
+                    displacement = dst - src
+                    distances = np.linalg.norm(displacement, axis=1)
+                    moving = distances > 25
+                    stop_reason = "low-confidence movement"
+                    print(f"Low-confidence movement estimate ({inliers}/{len(good)} inliers); stopping.")
+                    print(f"Landmark motion check: {int(moving.sum())}/{len(good)} "
+                          "matches shifted over 25px.")
+                    if transform is not None:
+                        print(f"RANSAC candidate shift: dx={transform[0, 2]:.1f}, "
+                              f"dy={transform[1, 2]:.1f}px")
+                    print("Movement screenshots:", before_path, after_path)
+                    print("Matched landmarks:", match_path)
+                    continue
+                dx, dy = float(transform[0, 2]), float(transform[1, 2])
+                print(f"Step {step}: map shifted dx={dx:.1f}, dy={dy:.1f} pixels "
+                      f"({inliers}/{len(good)} inliers)")
+                if abs(dx) < 10 and abs(dy) < 10:
+                    diagnostic_stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
+                    before_path = folder / f"column_movement_before_{diagnostic_stamp}.png"
+                    after_path = folder / f"column_movement_after_{diagnostic_stamp}.png"
+                    match_path = folder / f"column_landmarks_{diagnostic_stamp}.png"
+                    cv2.imwrite(str(before_path), previous)
+                    cv2.imwrite(str(after_path), image)
+                    # Show exactly which landmarks supported the zero-motion estimate.
+                    # Coordinates from ORB are local to the cropped map rectangle.
+                    inlier_matches = [m for m, ok in zip(good, mask.ravel()) if ok]
+                    overlay = cv2.drawMatches(
+                        first, k1, second, k2, inlier_matches[:80], None,
+                        flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+                    cv2.imwrite(str(match_path), overlay)
+                    displacements = dst - src
+                    distances = np.linalg.norm(displacements, axis=1)
+                    moving = distances > 25
+                    print(f"Landmark motion check: {int(moving.sum())}/{len(good)} "
+                          "matched landmarks shifted over 25px.")
+                    if moving.any():
+                        median_move = np.median(displacements[moving], axis=0)
+                        print(f"Moving landmark median: dx={median_move[0]:.1f}, "
+                              f"dy={median_move[1]:.1f}px")
+                    stop_reason = "stationary map / possible boundary"
+                    print("Map motion not verified; stopping safely (not a confirmed boundary).")
+                    print("Before:", before_path)
+                    print("After:", after_path)
+                    print("Matched landmarks:", match_path)
+                    continue
+                if abs(dx) > 80 or (direction == "up" and (dy > -25 or dy < -950)) or (direction == "down" and (dy < 25 or dy > 950)):
+                    stop_reason = "unexpected movement"
+                    print("Unexpected movement direction or size; stopping.")
+                    continue
+                movement_verified = True
                 break
-            dx, dy = float(transform[0, 2]), float(transform[1, 2])
-            print(f"Step {step}: map shifted dx={dx:.1f}, dy={dy:.1f} pixels "
-                  f"({inliers}/{len(good)} inliers)")
-            if abs(dx) < 10 and abs(dy) < 10:
-                diagnostic_stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
-                before_path = folder / f"column_movement_before_{diagnostic_stamp}.png"
-                after_path = folder / f"column_movement_after_{diagnostic_stamp}.png"
-                match_path = folder / f"column_landmarks_{diagnostic_stamp}.png"
-                cv2.imwrite(str(before_path), previous)
-                cv2.imwrite(str(after_path), image)
-                # Show exactly which landmarks supported the zero-motion estimate.
-                # Coordinates from ORB are local to the cropped map rectangle.
-                inlier_matches = [m for m, ok in zip(good, mask.ravel()) if ok]
-                overlay = cv2.drawMatches(
-                    first, k1, second, k2, inlier_matches[:80], None,
-                    flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-                cv2.imwrite(str(match_path), overlay)
-                displacements = dst - src
-                distances = np.linalg.norm(displacements, axis=1)
-                moving = distances > 25
-                print(f"Landmark motion check: {int(moving.sum())}/{len(good)} "
-                      "matched landmarks shifted over 25px.")
-                if moving.any():
-                    median_move = np.median(displacements[moving], axis=0)
-                    print(f"Moving landmark median: dx={median_move[0]:.1f}, "
-                          f"dy={median_move[1]:.1f}px")
-                stop_reason = "stationary map / possible boundary"
-                print("Map motion not verified; stopping safely (not a confirmed boundary).")
-                print("Before:", before_path)
-                print("After:", after_path)
-                print("Matched landmarks:", match_path)
-                break
-            if abs(dx) > 80 or (direction == "up" and (dy > -25 or dy < -950)) or (direction == "down" and (dy < 25 or dy > 950)):
-                stop_reason = "unexpected movement"
-                print("Unexpected movement direction or size; stopping.")
+            if not movement_verified:
+                print(f"Movement verification failed after 3 attempts: {stop_reason}.")
                 break
         print(f"Analyzing map view {step + 1} of {max_swipes + 1}...")
         try:

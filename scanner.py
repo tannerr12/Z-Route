@@ -76,6 +76,36 @@ def screenshot(cfg):
     return image
 
 
+def connection_lost_dialog(image):
+    """Recognize the specific Z-Route reconnect modal; never click it."""
+    height, width = image.shape[:2]
+    # Modal occupies the center of the game viewport. OCR only that region.
+    crop = image[int(height * .24):int(height * .67),
+                 int(width * .08):int(width * .94)]
+    if crop.size == 0:
+        return False
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    gray = cv2.resize(gray, None, fx=1.6, fy=1.6,
+                      interpolation=cv2.INTER_LINEAR)
+    text = pytesseract.image_to_string(gray, config="--psm 6").casefold()
+    compact = " ".join(text.split())
+    return ("failed to connect" in compact and
+            ("server" in compact or "reconnect" in compact))
+
+
+def ensure_game_connected(cfg, image, on_progress=None):
+    if not connection_lost_dialog(image):
+        return
+    if on_progress:
+        on_progress(None, "connection_lost")
+    folder = scan_diagnostic_folder(cfg)
+    stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
+    path = folder / f"connection_lost_{stamp}.png"
+    cv2.imwrite(str(path), image)
+    raise RuntimeError(f"Z-Route connection lost; checkpoint preserved. "
+                       f"Do not click Confirm automatically. Screenshot: {path}")
+
+
 def recognize(image):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.resize(gray, None, fx=2, fy=2)
@@ -598,6 +628,7 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=Non
             on_progress(step, "view")
         dx = dy = None
         image = screenshot(cfg)
+        ensure_game_connected(cfg, image, on_progress)
         if previous is not None and step > verify_after:
             movement_verified = False
             for movement_attempt in range(1, 4):
@@ -605,6 +636,7 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=Non
                     print(f"Retrying movement verification ({movement_attempt}/3) after 1.5s...")
                     time.sleep(1.5)
                     image = screenshot(cfg)  # No additional swipe on retry.
+                    ensure_game_connected(cfg, image, on_progress)
                 x1, y1, x2, y2 = middle_scan_rectangle(image, cfg)
                 first = cv2.cvtColor(previous[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
                 second = cv2.cvtColor(image[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
@@ -1317,6 +1349,10 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=110, horizont
         state = json.loads(checkpoint_path.read_text(encoding="utf-8"))
         if state["settings"] != settings:
             raise RuntimeError("Scan settings differ from checkpoint; use the original settings.")
+        if state.get("phase") == "connection_lost":
+            raise RuntimeError("Game connection was lost. Reconnecting changes the map position; "
+                               "automatic --continue is unsafe until repositioning is implemented. "
+                               "Saved CSV and checkpoint remain intact.")
         if state.get("phase") not in ("view", "done"):
             raise RuntimeError("Last swipe/shift may have been interrupted. Position uncertain; "
                                "inspect BlueStacks and checkpoint before resuming.")
@@ -1431,6 +1467,7 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=110, horizont
                 break
             save_state(column=column, step=vertical_swipes, phase="shift_pending")
             before = screenshot(cfg)
+            ensure_game_connected(cfg, before, lambda step, phase: save_state(phase=phase))
             x1, y1, x2, y2 = middle_scan_rectangle(before, cfg)
             # Horizontal gesture stays inside the established safe map rectangle.
             cy = (y1 + y2) // 2
@@ -1446,6 +1483,7 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=110, horizont
                 save_state(column=column + 1, step=0, phase="view")
                 continue
             after = screenshot(cfg)
+            ensure_game_connected(cfg, after, lambda step, phase: save_state(phase=phase))
             first = cv2.cvtColor(before[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
             second = cv2.cvtColor(after[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
             orb = cv2.ORB_create(nfeatures=1400)

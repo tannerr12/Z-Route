@@ -538,8 +538,10 @@ def combined_player_candidates(image, tokens, cfg):
     return sorted(accepted, key=lambda g: (g["box"][1], g["box"][0]))
 
 
-def scan_column(cfg, max_swipes=5):
+def scan_column(cfg, max_swipes=5, direction="up"):
     """Bounded read-only vertical scan, stopping on unverified movement."""
+    if direction not in ("up", "down"):
+        raise ValueError("direction must be up or down")
     folder = ROOT / "screenshots"
     folder.mkdir(exist_ok=True)
     stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
@@ -589,7 +591,8 @@ def scan_column(cfg, max_swipes=5):
                     np.median(residual) <= 8
                     and moving_fraction >= .8
                     and abs(float(median_offset[0])) <= 80
-                    and -950 <= float(median_offset[1]) <= -25
+                    and (direction == "up" and -950 <= float(median_offset[1]) <= -25
+                         or direction == "down" and 25 <= float(median_offset[1]) <= 950)
                     and abs(float(transform[0, 2]) - float(median_offset[0])) <= 20
                     and abs(float(transform[1, 2]) - float(median_offset[1])) <= 20
                 )
@@ -659,7 +662,7 @@ def scan_column(cfg, max_swipes=5):
                 print("After:", after_path)
                 print("Matched landmarks:", match_path)
                 break
-            if abs(dx) > 80 or dy > -25 or dy < -950:
+            if abs(dx) > 80 or (direction == "up" and (dy > -25 or dy < -950)) or (direction == "down" and (dy < 25 or dy > 950)):
                 stop_reason = "unexpected movement"
                 print("Unexpected movement direction or size; stopping.")
                 break
@@ -744,7 +747,9 @@ def scan_column(cfg, max_swipes=5):
         cx = (x1 + x2) // 2
         sy = int(y1 + (y2-y1)*.72)
         ey = int(y1 + (y2-y1)*.32)
-        print(f"Performing upward swipe {step + 1} of {max_swipes}...")
+        if direction == "down":
+            sy, ey = ey, sy
+        print(f"Performing {direction} swipe {step + 1} of {max_swipes}...")
         adb(cfg, "shell", "input", "swipe",
             str(cx), str(sy), str(cx), str(ey), "650")
         time.sleep(1.5)
@@ -754,6 +759,7 @@ def scan_column(cfg, max_swipes=5):
     print(f"Saved {len(observations)} unique provisional observations:", path)
     print(f"Scan finished: {completed_views} analyzed views; reason: {stop_reason}.")
     print("Read-only test complete; no player database writes or base clicks.")
+    return stop_reason
 
 
 def calibrate_movement(cfg):
@@ -1004,20 +1010,83 @@ def record(db, server, username, tag, x=None, y=None, evidence=""):
                            (player_id, guild_id, now, now))
 
 
+
+def scan_serpentine(cfg, max_swipes=5, columns=2):
+    """Read-only two-column navigation test; transition only at verified stops."""
+    if columns != 2:
+        raise ValueError("Only two columns are supported in the diagnostic")
+    for column in range(columns):
+        direction = "up" if column % 2 == 0 else "down"
+        print(f"=== Column {column + 1}/{columns}: {direction} ===")
+        reason = scan_column(cfg, max_swipes=max_swipes, direction=direction)
+        if column == columns - 1:
+            break
+        if reason != "stationary map / possible boundary":
+            print("No verified stationary endpoint; horizontal transition cancelled.")
+            break
+        before = screenshot(cfg)
+        x1, y1, x2, y2 = middle_scan_rectangle(before, cfg)
+        # Horizontal gesture stays inside the established safe map rectangle.
+        cy = (y1 + y2) // 2
+        sx = int(x1 + (x2 - x1) * .76)
+        ex = int(x1 + (x2 - x1) * .24)
+        print("Attempting one horizontal shift...")
+        adb(cfg, "shell", "input", "swipe", str(sx), str(cy),
+            str(ex), str(cy), "650")
+        time.sleep(1.5)
+        after = screenshot(cfg)
+        first = cv2.cvtColor(before[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
+        second = cv2.cvtColor(after[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
+        orb = cv2.ORB_create(nfeatures=1400)
+        k1, d1 = orb.detectAndCompute(first, None)
+        k2, d2 = orb.detectAndCompute(second, None)
+        if d1 is None or d2 is None:
+            print("Horizontal shift unverified: missing landmarks. Stopping.")
+            break
+        pairs = cv2.BFMatcher(cv2.NORM_HAMMING).knnMatch(d1, d2, k=2)
+        good = [a for pair in pairs if len(pair) == 2
+                for a, b in [pair] if a.distance < .72 * b.distance]
+        if len(good) < 30:
+            print("Horizontal shift unverified: too few matches. Stopping.")
+            break
+        src = np.float32([k1[m.queryIdx].pt for m in good])
+        dst = np.float32([k2[m.trainIdx].pt for m in good])
+        transform, mask = cv2.estimateAffinePartial2D(
+            src, dst, method=cv2.RANSAC, ransacReprojThreshold=4)
+        inliers = int(mask.sum()) if mask is not None else 0
+        if transform is None or inliers < 30 or inliers / len(good) < .5:
+            print(f"Horizontal shift unverified ({inliers}/{len(good)} inliers). Stopping.")
+            break
+        dx, dy = float(transform[0, 2]), float(transform[1, 2])
+        print(f"Horizontal movement dx={dx:.1f}, dy={dy:.1f} "
+              f"({inliers}/{len(good)} inliers)")
+        if not (-950 <= dx <= -25 and abs(dy) <= 80):
+            print("Unexpected horizontal displacement; stopping.")
+            break
+        print("Horizontal shift verified. Reversing vertical direction.")
+    print("Serpentine diagnostic finished; no database writes or base clicks.")
+
+
 def main():
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama", "calibrate-movement", "scan-column"):
+    for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama", "calibrate-movement", "scan-column", "scan-serpentine"):
         commands.add_parser(name)
     commands.choices["scan-column"].add_argument(
         "--max-swipes", type=int, default=5,
         help="Maximum upward swipes (1-10; default 5). Read-only.")
+    commands.choices["scan-serpentine"].add_argument(
+        "--max-swipes", type=int, default=5,
+        help="Maximum vertical swipes per column (1-10).")
     query = commands.add_parser("search")
     query.add_argument("username")
     args = parser.parse_args()
-    if args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama", "calibrate-movement", "scan-column"):
+    if args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama", "calibrate-movement", "scan-column", "scan-serpentine"):
         cfg = load_config()
-        if args.command == "scan-column":
+        if args.command == "scan-serpentine":
+            connect(cfg)
+            scan_serpentine(cfg, max_swipes=args.max_swipes)
+        elif args.command == "scan-column":
             connect(cfg)
             scan_column(cfg, max_swipes=args.max_swipes)
         elif args.command == "calibrate-movement":

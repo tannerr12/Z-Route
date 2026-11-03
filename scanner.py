@@ -1012,9 +1012,13 @@ def record(db, server, username, tag, x=None, y=None, evidence=""):
 
 
 def scan_serpentine(cfg, max_swipes=5, columns=2):
-    """Read-only two-column navigation test; transition only at verified stops."""
-    if columns != 2:
-        raise ValueError("Only two columns are supported in the diagnostic")
+    """Read-only bounded serpentine scan with one terminal horizontal edge."""
+    if not 2 <= columns <= 20:
+        raise ValueError("columns must be between 2 and 20")
+    if not 1 <= max_swipes <= 10:
+        raise ValueError("max_swipes must be between 1 and 10")
+    successful_horizontal_shifts = 0
+    termination = "column limit reached"
     for column in range(columns):
         direction = "up" if column % 2 == 0 else "down"
         print(f"=== Column {column + 1}/{columns}: {direction} ===")
@@ -1022,6 +1026,7 @@ def scan_serpentine(cfg, max_swipes=5, columns=2):
         if column == columns - 1:
             break
         if reason != "stationary map / possible boundary":
+            termination = "vertical endpoint not verified"
             print("No verified stationary endpoint; horizontal transition cancelled.")
             break
         before = screenshot(cfg)
@@ -1058,6 +1063,18 @@ def scan_serpentine(cfg, max_swipes=5, columns=2):
             print(f"Horizontal shift unverified ({inliers}/{len(good)} inliers). Stopping.")
             break
         dx, dy = float(transform[0, 2]), float(transform[1, 2])
+        if (abs(dx) < 10 and abs(dy) < 10
+                and inliers / len(good) >= .8):
+            if successful_horizontal_shifts:
+                termination = "probable far horizontal boundary"
+                print(f"Horizontal boundary candidate: dx={dx:.1f}, dy={dy:.1f}, "
+                      f"{inliers}/{len(good)} stationary inliers.")
+                print("No further horizontal swipes. Inspect screenshots to confirm map edge.")
+            else:
+                termination = "stationary on first horizontal attempt"
+                print("First horizontal swipe produced no movement; "
+                      "cannot assume route completion.")
+            break
         inlier_offsets = (dst - src)[mask.ravel().astype(bool)]
         median_offset = np.median(inlier_offsets, axis=0)
         residuals = np.linalg.norm(inlier_offsets - median_offset, axis=1)
@@ -1081,8 +1098,11 @@ def scan_serpentine(cfg, max_swipes=5, columns=2):
         if not (-950 <= dx <= -25 and abs(dy) <= 80):
             print("Unexpected horizontal displacement; stopping.")
             break
+        successful_horizontal_shifts += 1
         print("Horizontal shift verified. Reversing vertical direction.")
-    print("Serpentine diagnostic finished; no database writes or base clicks.")
+    print(f"Serpentine diagnostic finished: {successful_horizontal_shifts} verified "
+          f"horizontal shifts; reason: {termination}.")
+    print("No database writes or base clicks.")
 
 
 def main():
@@ -1096,6 +1116,9 @@ def main():
     commands.choices["scan-serpentine"].add_argument(
         "--max-swipes", type=int, default=5,
         help="Maximum vertical swipes per column (1-10).")
+    commands.choices["scan-serpentine"].add_argument(
+        "--columns", type=int, default=2,
+        help="Maximum columns to scan (2-20; default 2).")
     query = commands.add_parser("search")
     query.add_argument("username")
     args = parser.parse_args()
@@ -1103,7 +1126,7 @@ def main():
         cfg = load_config()
         if args.command == "scan-serpentine":
             connect(cfg)
-            scan_serpentine(cfg, max_swipes=args.max_swipes)
+            scan_serpentine(cfg, max_swipes=args.max_swipes, columns=args.columns)
         elif args.command == "scan-column":
             connect(cfg)
             scan_column(cfg, max_swipes=args.max_swipes)

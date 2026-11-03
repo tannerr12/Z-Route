@@ -538,8 +538,8 @@ def combined_player_candidates(image, tokens, cfg):
     return sorted(accepted, key=lambda g: (g["box"][1], g["box"][0]))
 
 
-def scan_column(cfg):
-    """Bounded vertical test: two observations and at most one swipe."""
+def scan_column(cfg, max_swipes=5):
+    """Bounded read-only vertical scan, stopping on unverified movement."""
     folder = ROOT / "screenshots"
     folder.mkdir(exist_ok=True)
     stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
@@ -547,7 +547,10 @@ def scan_column(cfg):
     seen = set()
     previous_players = []
     previous = None
-    max_swipes = 1
+    if not 1 <= max_swipes <= 10:
+        raise ValueError("max_swipes must be between 1 and 10")
+    stop_reason = "swipe limit reached"
+    completed_views = 0
     for step in range(max_swipes + 1):
         dx = dy = None
         image = screenshot(cfg)
@@ -559,12 +562,14 @@ def scan_column(cfg):
             k1, d1 = orb.detectAndCompute(first, None)
             k2, d2 = orb.detectAndCompute(second, None)
             if d1 is None or d2 is None:
+                stop_reason = "missing landmark descriptors"
                 print("Cannot verify map movement; stopping.")
                 break
             pairs = cv2.BFMatcher(cv2.NORM_HAMMING).knnMatch(d1, d2, k=2)
             good = [a for pair in pairs if len(pair) == 2
                     for a, b in [pair] if a.distance < 0.72 * b.distance]
             if len(good) < 12:
+                stop_reason = "too few matching landmarks"
                 print("Too few matching landmarks; stopping:", len(good))
                 break
             src = np.float32([k1[m.queryIdx].pt for m in good])
@@ -590,6 +595,7 @@ def scan_column(cfg):
                 displacement = dst - src
                 distances = np.linalg.norm(displacement, axis=1)
                 moving = distances > 25
+                stop_reason = "low-confidence movement"
                 print(f"Low-confidence movement estimate ({inliers}/{len(good)} inliers); stopping.")
                 print(f"Landmark motion check: {int(moving.sum())}/{len(good)} "
                       "matches shifted over 25px.")
@@ -625,18 +631,21 @@ def scan_column(cfg):
                     median_move = np.median(displacements[moving], axis=0)
                     print(f"Moving landmark median: dx={median_move[0]:.1f}, "
                           f"dy={median_move[1]:.1f}px")
+                stop_reason = "stationary map / possible boundary"
                 print("Map motion not verified; stopping safely (not a confirmed boundary).")
                 print("Before:", before_path)
                 print("After:", after_path)
                 print("Matched landmarks:", match_path)
                 break
             if abs(dx) > 80 or dy > -25 or dy < -950:
+                stop_reason = "unexpected movement"
                 print("Unexpected movement direction or size; stopping.")
                 break
         print(f"Analyzing map view {step + 1} of {max_swipes + 1}...")
         try:
             players = debug_ollama(cfg)
         except (RuntimeError, OSError, TimeoutError) as exc:
+            stop_reason = "Ollama analysis failed"
             print(f"Map view {step + 1} analysis failed: {exc}")
             print("Preserving earlier observations; stopping without further swipes.")
             break
@@ -701,6 +710,7 @@ def scan_column(cfg):
                 observations.append({"view": step, **player})
             current_players.append((player, canonical_key))
         previous_players = current_players
+        completed_views += 1
         print(f"Unique provisional players so far: {len(seen)}")
         if step == max_swipes:
             break
@@ -709,7 +719,7 @@ def scan_column(cfg):
         cx = (x1 + x2) // 2
         sy = int(y1 + (y2-y1)*.72)
         ey = int(y1 + (y2-y1)*.32)
-        print("Performing one upward swipe...")
+        print(f"Performing upward swipe {step + 1} of {max_swipes}...")
         adb(cfg, "shell", "input", "swipe",
             str(cx), str(sy), str(cx), str(ey), "650")
         time.sleep(1.5)
@@ -717,6 +727,7 @@ def scan_column(cfg):
     path.write_text(json.dumps(observations, indent=2, ensure_ascii=False),
                     encoding="utf-8")
     print(f"Saved {len(observations)} unique provisional observations:", path)
+    print(f"Scan finished: {completed_views} analyzed views; reason: {stop_reason}.")
     print("Read-only test complete; no player database writes or base clicks.")
 
 
@@ -973,6 +984,9 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama", "calibrate-movement", "scan-column"):
         commands.add_parser(name)
+    commands.choices["scan-column"].add_argument(
+        "--max-swipes", type=int, default=5,
+        help="Maximum upward swipes (1-10; default 5). Read-only.")
     query = commands.add_parser("search")
     query.add_argument("username")
     args = parser.parse_args()
@@ -980,7 +994,7 @@ def main():
         cfg = load_config()
         if args.command == "scan-column":
             connect(cfg)
-            scan_column(cfg)
+            scan_column(cfg, max_swipes=args.max_swipes)
         elif args.command == "calibrate-movement":
             connect(cfg)
             calibrate_movement(cfg)

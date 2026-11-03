@@ -577,8 +577,26 @@ def scan_column(cfg):
                 after_path = folder / f"column_movement_after_{diagnostic_stamp}.png"
                 cv2.imwrite(str(before_path), previous)
                 cv2.imwrite(str(after_path), image)
+                match_path = folder / f"column_landmarks_{diagnostic_stamp}.png"
+                if mask is not None:
+                    selected = [m for m, ok in zip(good, mask.ravel()) if ok]
+                else:
+                    selected = good
+                overlay = cv2.drawMatches(
+                    first, k1, second, k2, selected[:80], None,
+                    flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+                cv2.imwrite(str(match_path), overlay)
+                displacement = dst - src
+                distances = np.linalg.norm(displacement, axis=1)
+                moving = distances > 25
                 print(f"Low-confidence movement estimate ({inliers}/{len(good)} inliers); stopping.")
+                print(f"Landmark motion check: {int(moving.sum())}/{len(good)} "
+                      "matches shifted over 25px.")
+                if transform is not None:
+                    print(f"RANSAC candidate shift: dx={transform[0, 2]:.1f}, "
+                          f"dy={transform[1, 2]:.1f}px")
                 print("Movement screenshots:", before_path, after_path)
+                print("Matched landmarks:", match_path)
                 break
             dx, dy = float(transform[0, 2]), float(transform[1, 2])
             print(f"Step {step}: map shifted dx={dx:.1f}, dy={dy:.1f} pixels "

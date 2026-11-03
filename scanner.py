@@ -1378,17 +1378,9 @@ def process_capture_ai(cfg, path, unique_players, save_players):
             raise RuntimeError(f"Unreadable screenshot: {path}")
         players = None
         last_error = None
-        for attempt in range(3):
-            try:
-                players = debug_ollama(cfg, image=image)
-                break
-            except (RuntimeError, OSError, TimeoutError, ValueError) as exc:
-                last_error = exc
-                if attempt < 2:
-                    time.sleep(0.5)
-        if players is None:
-            print(f"Three Ollama attempts failed for {path.name}: {last_error}; trying split fallback.")
-            players = analyze_split_fallback(cfg, image)
+        # One fast pass in the background worker. Preserve failed captures
+        # for a later retry rather than blocking the growing capture queue.
+        players = debug_ollama(cfg, image=image)
         if not isinstance(players, list):
             raise ValueError("AI response is not a list of players")
         meta = json.loads(path.with_suffix(".meta.json").read_text(encoding="utf-8"))

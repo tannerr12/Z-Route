@@ -657,7 +657,7 @@ def scan_column(cfg):
             if dx is not None:
                 candidates = []
                 for i, (prior, prior_key) in enumerate(previous_players):
-                    if i in matched_previous or prior.get("level") != player.get("level"):
+                    if i in matched_previous:
                         continue
                     old_guild = str(prior.get("guild") or "").casefold()
                     new_guild = str(player.get("guild") or "").casefold()
@@ -683,6 +683,11 @@ def scan_column(cfg):
                                    candidates[0][0] - candidates[1][0] >= .12):
                     similarity, distance, i, matched_key = candidates[0]
                     matched_previous.add(i)
+                    old_level = previous_players[i][0].get("level")
+                    new_level = player.get("level")
+                    if old_level != new_level:
+                        print(f"Conflicting unverified levels for {name!r}: "
+                              f"{old_level!r} vs {new_level!r}")
                     if matched_key != key:
                         print(f"Likely repeat: {name!r} -> "
                               f"{previous_players[i][0]['username']!r} "

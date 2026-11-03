@@ -66,16 +66,55 @@ def load_config():
 def adb(cfg, *args):
     exe = cfg.get("adb_path") or "adb"
     serial = cfg.get("adb_serial") or "127.0.0.1:5555"
-    return subprocess.run([exe, "-s", serial, *args],
-                          check=True, capture_output=True, timeout=30).stdout
+    started = time.perf_counter()
+    result = subprocess.run([exe, "-s", serial, *args],
+                            check=True, capture_output=True, timeout=30).stdout
+    metrics = cfg.get("_capture_metrics")
+    if metrics is not None:
+        category = "screenshot_adb" if args[:3] == ("exec-out", "screencap", "-p") else "swipe_adb" if args[:3] == ("shell", "input", "swipe") else "other_adb"
+        metrics.setdefault(category, []).append(time.perf_counter() - started)
+    return result
 
 
 def screenshot(cfg):
     raw = adb(cfg, "exec-out", "screencap", "-p")
+    started = time.perf_counter()
     image = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+    metrics = cfg.get("_capture_metrics")
+    if metrics is not None:
+        metrics.setdefault("png_decode", []).append(time.perf_counter() - started)
     if image is None:
         raise RuntimeError("Unable to decode screenshot")
+    # Capture thread alone calls screenshot(); preserve original encoded bytes
+    # for zero-reencode disk writes. The AI worker only reads saved files.
+    cfg["_last_capture_png"] = raw
+    cfg["_last_capture_image_id"] = id(image)
     return image
+
+
+def save_capture_png(cfg, path, image):
+    started = time.perf_counter()
+    if cfg.get("_last_capture_image_id") == id(image):
+        path.write_bytes(cfg["_last_capture_png"])
+    elif not cv2.imwrite(str(path), image):
+        raise RuntimeError(f"Failed to save screenshot: {path}")
+    metrics = cfg.get("_capture_metrics")
+    if metrics is not None:
+        metrics.setdefault("png_save", []).append(time.perf_counter() - started)
+
+
+def scaled_swipe(start, end, scale, low, high):
+    center = (start + end) / 2
+    return (max(low, min(high, int(round(center + (start-center)*scale)))),
+            max(low, min(high, int(round(center + (end-center)*scale)))))
+
+
+def print_capture_metrics(cfg):
+    metrics = cfg.get("_capture_metrics") or {}
+    print("Capture timing summary (mean seconds per operation):")
+    for name, values in metrics.items():
+        if values:
+            print(f"  {name}: {sum(values)/len(values):.3f}s across {len(values)} calls")
 
 
 def connection_lost_dialog(image):
@@ -609,7 +648,7 @@ def scan_diagnostic_folder(cfg):
     return folder
 
 
-def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=None, start_step=0, on_progress=None, swipe_ms=100, settle=0.2, capture_queue=None):
+def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=None, start_step=0, on_progress=None, swipe_ms=100, settle=0.2, capture_queue=None, vertical_scale=1.0):
     """Bounded read-only vertical scan, stopping on unverified movement."""
     if direction not in ("up", "down"):
         raise ValueError("direction must be up or down")
@@ -792,8 +831,7 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=Non
         if capture_queue is not None:
             col = cfg.get("_scan_grid_context", {}).get("column", 0)
             path = folder / f"capture_col_{col:03d}_view_{step:03d}.png"
-            if not cv2.imwrite(str(path), image):
-                raise RuntimeError(f"Failed to save {path}")
+            save_capture_png(cfg, path, image)
             meta = {"column": col, "view": step,
                     "row": step + 1 if direction == "up" else max_swipes - step + 1,
                     "direction": direction, "captured_at": datetime.now(timezone.utc).isoformat()}
@@ -807,6 +845,7 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=Non
             x1, y1, x2, y2 = middle_scan_rectangle(image, cfg)
             cx = (x1 + x2) // 2
             sy, ey = int(y1 + (y2-y1)*.72), int(y1 + (y2-y1)*.32)
+            sy, ey = scaled_swipe(sy, ey, vertical_scale, y1, y2)
             if direction == "down":
                 sy, ey = ey, sy
             if on_progress:
@@ -1431,7 +1470,7 @@ def capture_ai_report(folder):
           f"{failed} failed, {pending} pending; success rate {rate:.1f}%.")
 
 
-def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizontal_after=110, resume=False, swipe_ms=100, settle=0.2):
+def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizontal_after=110, resume=False, swipe_ms=100, settle=0.2, vertical_scale=1.0, horizontal_scale=1.0, profile=False):
     """Read-only bounded serpentine scan with one terminal horizontal edge."""
     if not 2 <= columns <= 500:
         raise ValueError("columns must be between 2 and 500")
@@ -1443,6 +1482,10 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
         raise ValueError("horizontal_after must be between 0 and columns - 1")
     if not 100 <= swipe_ms <= 1000 or not 0 <= settle <= 3:
         raise ValueError("Invalid swipe timing")
+    if not 1.0 <= vertical_scale <= 1.2 or not 1.0 <= horizontal_scale <= 1.2:
+        raise ValueError("Swipe scales must be between 1.0 and 1.2")
+    if profile:
+        cfg["_capture_metrics"] = {}
     # Grid coordinates are approximate scan-route positions, not game X/Y.
     # Checkpoint the CSV after every new username so interrupted scans retain data.
     export_folder = ROOT / "exports" / "players"
@@ -1450,7 +1493,8 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
     checkpoint_path = export_folder / "serpentine_checkpoint.json"
     settings = {"max_swipes": max_swipes, "columns": columns,
                 "boundary_after": boundary_after, "horizontal_after": horizontal_after,
-                "swipe_ms": swipe_ms, "settle": settle}
+                "swipe_ms": swipe_ms, "settle": settle,
+                "vertical_scale": vertical_scale, "horizontal_scale": horizontal_scale}
     if resume:
         if not checkpoint_path.exists():
             raise RuntimeError("No saved scan checkpoint exists.")
@@ -1572,6 +1616,7 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
                                                   on_player=record_player,
                                                   start_step=initial_step, swipe_ms=swipe_ms,
                                                   settle=settle, capture_queue=capture_queue,
+                                                  vertical_scale=vertical_scale,
                                                   on_progress=lambda step, phase: save_state(
                                                       column=column, step=step, phase=phase))
             # A short column may be real, but never turn early in a large-map run.
@@ -1597,6 +1642,7 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
             cy = (y1 + y2) // 2
             sx = int(x1 + (x2 - x1) * .76)
             ex = int(x1 + (x2 - x1) * .24)
+            sx, ex = scaled_swipe(sx, ex, horizontal_scale, x1, x2)
             print(f"Attempting horizontal shift {column + 1}...")
             adb(cfg, "shell", "input", "swipe", str(sx), str(cy),
                 str(ex), str(cy), "650")
@@ -1793,6 +1839,9 @@ def main():
     commands.choices["scan-column"].add_argument(
         "--max-swipes", type=int, default=5,
         help="Maximum upward swipes (1-500; default 5). Read-only.")
+    commands.choices["scan-serpentine"].add_argument("--vertical-scale", type=float, default=1.0)
+    commands.choices["scan-serpentine"].add_argument("--horizontal-scale", type=float, default=1.0)
+    commands.choices["scan-serpentine"].add_argument("--profile", action="store_true")
     commands.choices["scan-serpentine"].add_argument("--swipe-ms", type=int, default=100)
     commands.choices["scan-serpentine"].add_argument("--settle", type=float, default=0.2)
     commands.choices["scan-serpentine"].add_argument(
@@ -1827,7 +1876,9 @@ def main():
             connect(cfg)
             scan_serpentine(cfg, max_swipes=args.max_swipes, columns=args.columns,
                             boundary_after=args.boundary_after,
-                            horizontal_after=args.horizontal_after, resume=args.resume,
+                            horizontal_after=args.horizontal_after,
+                            vertical_scale=args.vertical_scale,
+                            horizontal_scale=args.horizontal_scale, profile=args.profile, resume=args.resume,
                             swipe_ms=args.swipe_ms, settle=args.settle)
         elif args.command == "scan-column":
             connect(cfg)

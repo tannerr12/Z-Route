@@ -1054,10 +1054,28 @@ def scan_serpentine(cfg, max_swipes=5, columns=2):
         transform, mask = cv2.estimateAffinePartial2D(
             src, dst, method=cv2.RANSAC, ransacReprojThreshold=4)
         inliers = int(mask.sum()) if mask is not None else 0
-        if transform is None or inliers < 30 or inliers / len(good) < .5:
+        if transform is None or mask is None or inliers < 30:
             print(f"Horizontal shift unverified ({inliers}/{len(good)} inliers). Stopping.")
             break
         dx, dy = float(transform[0, 2]), float(transform[1, 2])
+        inlier_offsets = (dst - src)[mask.ravel().astype(bool)]
+        median_offset = np.median(inlier_offsets, axis=0)
+        residuals = np.linalg.norm(inlier_offsets - median_offset, axis=1)
+        median_residual = float(np.median(residuals))
+        if inliers / len(good) < .5:
+            strong_horizontal = (
+                inliers >= 60 and median_residual <= 8
+                and abs(dx - float(median_offset[0])) <= 20
+                and abs(dy - float(median_offset[1])) <= 20
+                and -950 <= dx <= -25 and abs(dy) <= 80
+            )
+            if not strong_horizontal:
+                print(f"Horizontal shift unverified ({inliers}/{len(good)} inliers, "
+                      f"dx={dx:.1f}, dy={dy:.1f}, "
+                      f"median residual={median_residual:.1f}px). Stopping.")
+                break
+            print(f"Accepted horizontal landmark consensus despite low inlier ratio "
+                  f"({inliers}/{len(good)}, median residual {median_residual:.1f}px).")
         print(f"Horizontal movement dx={dx:.1f}, dy={dy:.1f} "
               f"({inliers}/{len(good)} inliers)")
         if not (-950 <= dx <= -25 and abs(dy) <= 80):

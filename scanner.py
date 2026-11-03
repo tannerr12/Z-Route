@@ -1366,6 +1366,80 @@ def record(db, server, username, tag, x=None, y=None, evidence=""):
 
 
 
+def process_capture_ai(cfg, path, unique_players, save_players):
+    """Process a durable capture; failures remain retryable without navigating."""
+    result_path = path.with_suffix(".players.json")
+    failure_path = path.with_suffix(".failed.json")
+    if result_path.exists():
+        return "skipped"
+    try:
+        image = cv2.imread(str(path))
+        if image is None:
+            raise RuntimeError(f"Unreadable screenshot: {path}")
+        players = None
+        last_error = None
+        for attempt in range(3):
+            try:
+                players = debug_ollama(cfg, image=image)
+                break
+            except (RuntimeError, OSError, TimeoutError, ValueError) as exc:
+                last_error = exc
+                if attempt < 2:
+                    time.sleep(0.5)
+        if players is None:
+            print(f"Three Ollama attempts failed for {path.name}: {last_error}; trying split fallback.")
+            players = analyze_split_fallback(cfg, image)
+        if not isinstance(players, list):
+            raise ValueError("AI response is not a list of players")
+        meta = json.loads(path.with_suffix(".meta.json").read_text(encoding="utf-8"))
+        for field in ("row", "column", "view", "direction", "captured_at"):
+            if field not in meta:
+                raise ValueError(f"Capture metadata missing {field}")
+        # Save result before CSV; offline retry reconciles results if interrupted.
+        result_path.write_text(json.dumps({"players": players, "metadata": meta},
+                                          ensure_ascii=False, indent=2), encoding="utf-8")
+        added = 0
+        for player in players:
+            if not isinstance(player, dict):
+                continue
+            name = player.get("username")
+            if not valid_scanned_username(name) or is_ignored_commander(player):
+                continue
+            key = name.strip().casefold()
+            if key in unique_players:
+                continue
+            unique_players[key] = {
+                "username": name.strip(), "guild": str(player.get("guild") or ""),
+                "level": player.get("level") if player.get("level") is not None else "",
+                "row": meta["row"], "col": meta["column"], "view": meta["view"],
+                "direction": meta["direction"], "observed_at": meta["captured_at"],
+                "coordinate_type": "approximate swipe grid"}
+            added += 1
+        if added:
+            save_players()
+        failure_path.unlink(missing_ok=True)
+        print(f"AI completed {path.name}: {len(players)} candidates, {added} new players.")
+        return "completed"
+    except Exception as exc:
+        failure_path.write_text(json.dumps({
+            "screenshot": path.name, "error": str(exc),
+            "failed_at": datetime.now(timezone.utc).isoformat(),
+        }, indent=2), encoding="utf-8")
+        print(f"AI failed {path.name}: {exc}; retained for offline retry.")
+        return "failed"
+
+
+def capture_ai_report(folder):
+    captures = list(folder.glob("capture_col_*_view_*.png"))
+    complete = sum(p.with_suffix(".players.json").exists() for p in captures)
+    failed = sum(p.with_suffix(".failed.json").exists() and
+                 not p.with_suffix(".players.json").exists() for p in captures)
+    pending = len(captures) - complete - failed
+    rate = 100 * complete / len(captures) if captures else 0
+    print(f"AI report: {len(captures)} captured, {complete} completed, "
+          f"{failed} failed, {pending} pending; success rate {rate:.1f}%.")
+
+
 def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizontal_after=110, resume=False, swipe_ms=100, settle=0.2):
     """Read-only bounded serpentine scan with one terminal horizontal edge."""
     if not 2 <= columns <= 500:
@@ -1464,44 +1538,7 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
             try:
                 if path is None:
                     return
-                result_path = path.with_suffix(".players.json")
-                if result_path.exists():
-                    continue
-                image = cv2.imread(str(path))
-                if image is None:
-                    raise RuntimeError(f"Unreadable screenshot: {path}")
-                players = None
-                for attempt in range(3):
-                    try:
-                        players = debug_ollama(cfg, image=image)
-                        break
-                    except (RuntimeError, OSError, TimeoutError, ValueError):
-                        if attempt < 2:
-                            time.sleep(1.5)
-                if players is None:
-                    players = analyze_split_fallback(cfg, image)
-                meta = json.loads(path.with_suffix(".meta.json").read_text(encoding="utf-8"))
-                for player in players:
-                    if not isinstance(player, dict):
-                        continue
-                    name = player.get("username")
-                    if not valid_scanned_username(name) or is_ignored_commander(player):
-                        continue
-                    key = name.casefold()
-                    if key in unique_players:
-                        continue
-                    unique_players[key] = {
-                        "username": name, "guild": str(player.get("guild") or ""),
-                        "level": player.get("level") if player.get("level") is not None else "",
-                        "row": meta["row"], "col": meta["column"], "view": meta["view"],
-                        "direction": meta["direction"], "observed_at": meta["captured_at"],
-                        "coordinate_type": "approximate swipe grid"}
-                    save_players()
-                result_path.write_text(json.dumps({"players": players, "metadata": meta},
-                                                   ensure_ascii=False), encoding="utf-8")
-                print(f"AI processed {path.name}: {len(players)} candidates.")
-            except Exception as exc:
-                print(f"AI processing failed for {path}: {exc}; screenshot retained.")
+                process_capture_ai(cfg, path, unique_players, save_players)
             finally:
                 capture_queue.task_done()
     worker = threading.Thread(target=analyze_captures, daemon=True, name="ollama-worker")
@@ -1649,6 +1686,7 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
         capture_queue.put(None)
         capture_queue.join()
         worker.join()
+        capture_ai_report(session_folder)
         print(f"Navigation checkpoint: {checkpoint_path} (column {state['column'] + 1}, "
               f"step {state['step']}, {state['direction']}, phase={state['phase']})")
         # Recover only this session's screenshots, retaining their original grid
@@ -1720,38 +1758,37 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
 
 
 def reprocess_failed(cfg, limit=None):
-    """Retry saved unanalyzed screenshots offline; never swipe or write to DB."""
-    folder = ROOT / "screenshots"
-    paths = sorted(folder.rglob("column_unanalyzed_*.png"))
-    pending = [p for p in paths if not p.with_suffix(".recovered.json").exists()]
+    """Offline retry of unprocessed background captures; no ADB or map movement."""
+    folders = sorted((ROOT / "screenshots").glob("session_*"))
+    pending = [p for folder in folders
+               for p in sorted(folder.glob("capture_col_*_view_*.png"))
+               if not p.with_suffix(".players.json").exists()]
     if limit is not None:
         pending = pending[:limit]
-    print(f"Found {len(paths)} failed screenshots; {len(pending)} queued for retry.")
-    recovered = 0
-    for index, path in enumerate(pending, 1):
-        print(f"Retrying {index}/{len(pending)}: {path.name}")
-        image = cv2.imread(str(path))
-        if image is None:
-            print(f"Could not read {path.name}; leaving for retry.")
+    print(f"Offline AI retry: {len(pending)} pending/failed captures.")
+    for path in pending:
+        # Session timestamp is embedded in both directory and CSV filename.
+        stamp = path.parent.name.removeprefix("session_")
+        csv_path = ROOT / "exports" / "players" / f"serpentine_players_{stamp}.csv"
+        if not csv_path.exists():
+            print(f"Missing session CSV for {path}; leaving screenshot pending.")
             continue
-        try:
-            players = debug_ollama(cfg, image=image)
-            # Save even empty successful responses to avoid endless retries.
-            result = {
-                "source_screenshot": path.name,
-                "reprocessed_at": datetime.now(timezone.utc).isoformat(),
-                "players": players,
-                "verified": False
-            }
-            output = path.with_suffix(".recovered.json")
-            output.write_text(json.dumps(result, ensure_ascii=False, indent=2),
-                              encoding="utf-8")
-            recovered += 1
-            print(f"Recovered {len(players)} provisional candidates: {output.name}")
-        except (RuntimeError, OSError, TimeoutError, ValueError) as exc:
-            print(f"Retry failed for {path.name}: {exc}")
-    print(f"Recovered {recovered}/{len(pending)} screenshots. Originals retained.")
-    print("Read-only offline reprocessing; no ADB swipes or database writes.")
+        fields = ["username", "guild", "level", "row", "col", "view",
+                  "direction", "observed_at", "coordinate_type"]
+        with csv_path.open(newline="", encoding="utf-8-sig") as handle:
+            unique = {row["username"].casefold(): row for row in csv.DictReader(handle)
+                      if row.get("username")}
+        def save():
+            tmp = csv_path.with_suffix(".csv.tmp")
+            with tmp.open("w", newline="", encoding="utf-8-sig") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fields)
+                writer.writeheader()
+                writer.writerows(unique.values())
+            tmp.replace(csv_path)
+        process_capture_ai(cfg, path, unique, save)
+    for folder in folders:
+        capture_ai_report(folder)
+    print("Offline retry finished; no map movement or database writes.")
 
 
 def main():

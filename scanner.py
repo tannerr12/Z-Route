@@ -970,6 +970,68 @@ def calibrate_movement(cfg):
     print("Calibration only: one swipe, no base clicks or database writes.")
 
 
+def benchmark_capture(cfg, swipes=20, settle=0.4):
+    """Measure capture throughput and map displacement; no Ollama or DB writes."""
+    if not 1 <= swipes <= 100:
+        raise ValueError("swipes must be between 1 and 100")
+    if not 0 <= settle <= 3:
+        raise ValueError("settle must be between 0 and 3 seconds")
+    folder = ROOT / "screenshots" / ("calibration_" + datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f"))
+    folder.mkdir(parents=True, exist_ok=True)
+    before = screenshot(cfg)
+    x1, y1, x2, y2 = middle_scan_rectangle(before, cfg)
+    cx = (x1 + x2) // 2
+    sy, ey = int(y1 + (y2-y1)*.72), int(y1 + (y2-y1)*.32)
+    orb = cv2.ORB_create(nfeatures=1400)
+    results = []
+    cv2.imwrite(str(folder / "view_000.png"), before)
+    for n in range(1, swipes + 1):
+        started = time.perf_counter()
+        adb(cfg, "shell", "input", "swipe", str(cx), str(sy), str(cx), str(ey), "350")
+        swipe_seconds = time.perf_counter() - started
+        time.sleep(settle)
+        started_capture = time.perf_counter()
+        after = screenshot(cfg)
+        capture_seconds = time.perf_counter() - started_capture
+        cv2.imwrite(str(folder / f"view_{n:03d}.png"), after)
+        first = cv2.cvtColor(before[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
+        second = cv2.cvtColor(after[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
+        k1, d1 = orb.detectAndCompute(first, None)
+        k2, d2 = orb.detectAndCompute(second, None)
+        dx = dy = None
+        inliers = 0
+        matches = 0
+        if d1 is not None and d2 is not None:
+            pairs = cv2.BFMatcher(cv2.NORM_HAMMING).knnMatch(d1, d2, k=2)
+            good = [a for pair in pairs if len(pair) == 2 for a, b in [pair]
+                    if a.distance < .72 * b.distance]
+            matches = len(good)
+            if matches >= 12:
+                src = np.float32([k1[m.queryIdx].pt for m in good])
+                dst = np.float32([k2[m.trainIdx].pt for m in good])
+                matrix, mask = cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC, ransacReprojThreshold=4)
+                if matrix is not None and mask is not None:
+                    inliers = int(mask.sum())
+                    if inliers >= 12 and inliers / matches >= .45:
+                        dx, dy = float(matrix[0, 2]), float(matrix[1, 2])
+        row = {"swipe": n, "swipe_seconds": round(swipe_seconds, 3),
+               "capture_seconds": round(capture_seconds, 3),
+               "settle_seconds": settle, "dx": dx, "dy": dy,
+               "matches": matches, "inliers": inliers}
+        results.append(row)
+        print(f"Calibration {n}/{swipes}: swipe={swipe_seconds:.2f}s capture={capture_seconds:.2f}s "
+              f"displacement=({dx},{dy}) inliers={inliers}/{matches}")
+        before = after
+        if dx is not None and abs(dy) < 8 and abs(dx) < 8:
+            print("Possible boundary; stopping benchmark to avoid stationary captures.")
+            break
+    (folder / "measurements.json").write_text(json.dumps({
+        "scan_region": [x1,y1,x2,y2], "swipe_duration_ms": 350,
+        "results": results}, indent=2), encoding="utf-8")
+    print(f"Calibration results: {folder}")
+    print("Inspect displacement confidence and screenshots before changing scan spacing.")
+
+
 def valid_scanned_username(name):
     """Game usernames cannot contain whitespace; reject OCR false positives."""
     return (isinstance(name, str) and bool(name.strip())
@@ -1484,8 +1546,10 @@ def reprocess_failed(cfg, limit=None):
 def main():
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama", "calibrate-movement", "scan-column", "scan-serpentine", "reprocess-failed"):
+    for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama", "calibrate-movement", "benchmark-capture", "scan-column", "scan-serpentine", "reprocess-failed"):
         commands.add_parser(name)
+    commands.choices["benchmark-capture"].add_argument("--swipes", type=int, default=20)
+    commands.choices["benchmark-capture"].add_argument("--settle", type=float, default=0.4)
     commands.choices["scan-column"].add_argument(
         "--max-swipes", type=int, default=5,
         help="Maximum upward swipes (1-500; default 5). Read-only.")
@@ -1508,7 +1572,7 @@ def main():
     query = commands.add_parser("search")
     query.add_argument("username")
     args = parser.parse_args()
-    if args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama", "calibrate-movement", "scan-column", "scan-serpentine", "reprocess-failed"):
+    if args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama", "calibrate-movement", "benchmark-capture", "scan-column", "scan-serpentine", "reprocess-failed"):
         cfg = load_config()
         if args.command == "reprocess-failed":
             if args.limit is not None and args.limit < 1:
@@ -1522,6 +1586,9 @@ def main():
         elif args.command == "scan-column":
             connect(cfg)
             scan_column(cfg, max_swipes=args.max_swipes)
+        elif args.command == "benchmark-capture":
+            connect(cfg)
+            benchmark_capture(cfg, swipes=args.swipes, settle=args.settle)
         elif args.command == "calibrate-movement":
             connect(cfg)
             calibrate_movement(cfg)

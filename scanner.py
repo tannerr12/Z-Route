@@ -570,7 +570,7 @@ def verify_sparse_vertical_shift(before, after, direction):
     return float(sign * displacement)
 
 
-def scan_column(cfg, max_swipes=5, direction="up"):
+def scan_column(cfg, max_swipes=5, direction="up", verify_after=0):
     """Bounded read-only vertical scan, stopping on unverified movement."""
     if direction not in ("up", "down"):
         raise ValueError("direction must be up or down")
@@ -589,7 +589,7 @@ def scan_column(cfg, max_swipes=5, direction="up"):
     for step in range(max_swipes + 1):
         dx = dy = None
         image = screenshot(cfg)
-        if previous is not None:
+        if previous is not None and step > verify_after:
             x1, y1, x2, y2 = middle_scan_rectangle(image, cfg)
             first = cv2.cvtColor(previous[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
             second = cv2.cvtColor(image[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
@@ -634,8 +634,36 @@ def scan_column(cfg, max_swipes=5, direction="up"):
                           f"{inliers}/{len(good)} inliers, "
                           f"median residual {np.median(residual):.1f}px, "
                           f"{moving_fraction:.0%} matches moving.")
+            # Secondary coherent vertical movement may be masked by static UI.
+            offsets = dst - src
+            candidates = offsets[
+                (offsets[:, 1] < -25 if direction == "up" else offsets[:, 1] > 25)
+                & (np.abs(offsets[:, 0]) <= 80)
+                & (np.abs(offsets[:, 1]) <= 950)]
+            secondary = None
+            if len(candidates) >= 12:
+                for center in candidates:
+                    nearby = np.linalg.norm(candidates - center, axis=1) <= 12
+                    count = int(nearby.sum())
+                    if secondary is None or count > secondary[0]:
+                        median = np.median(candidates[nearby], axis=0)
+                        residual = np.median(np.linalg.norm(
+                            candidates[nearby] - median, axis=1))
+                        secondary = (count, median, residual)
+            secondary_motion = None
+            if secondary is not None:
+                count, median, residual = secondary
+                if count >= 12 and count / len(good) >= .15 and residual <= 6 and abs(median[0]) <= 40:
+                    secondary_motion = median
+                    print(f"Secondary vertical consensus: {count}/{len(good)} matches, "
+                          f"dx={median[0]:.1f}, dy={median[1]:.1f}px.")
             uncertain = (transform is None or inliers < 12 or
                          (inliers / len(good) < .5 and not strong_motion))
+            if secondary_motion is not None and (uncertain or
+                    (transform is not None and abs(float(transform[1, 2])) < 10)):
+                transform = np.array([[1., 0., float(secondary_motion[0])],
+                                      [0., 1., float(secondary_motion[1])]])
+                uncertain = False
             if uncertain:
                 terrain_dy = verify_sparse_vertical_shift(first, second, direction)
                 if terrain_dy is not None:
@@ -1088,7 +1116,8 @@ def scan_serpentine(cfg, max_swipes=100, columns=2, boundary_after=50):
     for column in range(columns):
         direction = "up" if column % 2 == 0 else "down"
         print(f"=== Column {column + 1}/{columns}: {direction} ===")
-        reason, vertical_swipes = scan_column(cfg, max_swipes=max_swipes, direction=direction)
+        reason, vertical_swipes = scan_column(cfg, max_swipes=max_swipes, direction=direction,
+                                              verify_after=boundary_after)
         # A short column may be real, but never turn early in a large-map run.
         # This prevents an isolated stationary/low-texture frame from triggering
         # a horizontal transition before the configured search horizon.

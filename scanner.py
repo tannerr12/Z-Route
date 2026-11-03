@@ -1082,48 +1082,51 @@ def scan_serpentine(cfg, max_swipes=5, columns=2):
             break
         src = np.float32([k1[m.queryIdx].pt for m in good])
         dst = np.float32([k2[m.trainIdx].pt for m in good])
-        transform, mask = cv2.estimateAffinePartial2D(
-            src, dst, method=cv2.RANSAC, ransacReprojThreshold=4)
-        inliers = int(mask.sum()) if mask is not None else 0
-        if transform is None or mask is None or inliers < 30:
-            print(f"Horizontal shift unverified ({inliers}/{len(good)} inliers). Stopping.")
+        # Match groups may contain a dominant stationary overlay plus a moving
+        # map. Inspect the displacement vectors, not only the dominant RANSAC fit.
+        offsets = dst - src
+        moving = (offsets[:, 0] < -25) & (offsets[:, 0] >= -950) & (np.abs(offsets[:, 1]) <= 80)
+        moving_offsets = offsets[moving]
+        accepted = False
+        dx = dy = 0.0
+        if len(moving_offsets) >= 12:
+            # Find a coherent horizontal displacement cluster, allowing a few
+            # mismatches and avoiding accidental UI-animation matches.
+            best = np.zeros(len(moving_offsets), dtype=bool)
+            for candidate in moving_offsets:
+                cluster = np.linalg.norm(moving_offsets - candidate, axis=1) <= 12
+                if cluster.sum() > best.sum():
+                    best = cluster
+            if best.sum() >= 12:
+                consensus = moving_offsets[best]
+                median = np.median(consensus, axis=0)
+                residual = np.linalg.norm(consensus - median, axis=1)
+                dx, dy = float(median[0]), float(median[1])
+                accepted = (float(np.median(residual)) <= 6
+                            and best.sum() >= max(12, int(len(good) * .04)))
+                print(f"Horizontal moving consensus: {int(best.sum())}/{len(good)} "
+                      f"matches, dx={dx:.1f}, dy={dy:.1f}, "
+                      f"median residual={np.median(residual):.1f}px.")
+        if not accepted:
+            transform, mask = cv2.estimateAffinePartial2D(
+                src, dst, method=cv2.RANSAC, ransacReprojThreshold=4)
+            inliers = int(mask.sum()) if mask is not None else 0
+            if transform is not None and mask is not None and inliers >= 30:
+                dx, dy = float(transform[0, 2]), float(transform[1, 2])
+                if (abs(dx) < 10 and abs(dy) < 10
+                        and inliers / len(good) >= .8
+                        and len(moving_offsets) < 12):
+                    termination = ("probable far horizontal boundary"
+                                   if successful_horizontal_shifts else
+                                   "stationary on first horizontal attempt")
+                    print(f"Stationary horizontal view: {inliers}/{len(good)} "
+                          f"inliers, dx={dx:.1f}, dy={dy:.1f}.")
+                    break
+            termination = "horizontal movement unverified"
+            print(f"Horizontal movement unverified; {len(moving_offsets)} "
+                  f"plausible moving matches among {len(good)}. Stopping.")
             break
-        dx, dy = float(transform[0, 2]), float(transform[1, 2])
-        if (abs(dx) < 10 and abs(dy) < 10
-                and inliers / len(good) >= .8):
-            if successful_horizontal_shifts:
-                termination = "probable far horizontal boundary"
-                print(f"Horizontal boundary candidate: dx={dx:.1f}, dy={dy:.1f}, "
-                      f"{inliers}/{len(good)} stationary inliers.")
-                print("No further horizontal swipes. Inspect screenshots to confirm map edge.")
-            else:
-                termination = "stationary on first horizontal attempt"
-                print("First horizontal swipe produced no movement; "
-                      "cannot assume route completion.")
-            break
-        inlier_offsets = (dst - src)[mask.ravel().astype(bool)]
-        median_offset = np.median(inlier_offsets, axis=0)
-        residuals = np.linalg.norm(inlier_offsets - median_offset, axis=1)
-        median_residual = float(np.median(residuals))
-        if inliers / len(good) < .5:
-            strong_horizontal = (
-                inliers >= 60 and median_residual <= 8
-                and abs(dx - float(median_offset[0])) <= 20
-                and abs(dy - float(median_offset[1])) <= 20
-                and -950 <= dx <= -25 and abs(dy) <= 80
-            )
-            if not strong_horizontal:
-                print(f"Horizontal shift unverified ({inliers}/{len(good)} inliers, "
-                      f"dx={dx:.1f}, dy={dy:.1f}, "
-                      f"median residual={median_residual:.1f}px). Stopping.")
-                break
-            print(f"Accepted horizontal landmark consensus despite low inlier ratio "
-                  f"({inliers}/{len(good)}, median residual {median_residual:.1f}px).")
-        print(f"Horizontal movement dx={dx:.1f}, dy={dy:.1f} "
-              f"({inliers}/{len(good)} inliers)")
-        if not (-950 <= dx <= -25 and abs(dy) <= 80):
-            print("Unexpected horizontal displacement; stopping.")
-            break
+        print(f"Horizontal shift accepted: dx={dx:.1f}, dy={dy:.1f}")
         successful_horizontal_shifts += 1
         print("Horizontal shift verified. Reversing vertical direction.")
     print(f"Serpentine diagnostic finished: {successful_horizontal_shifts} verified "

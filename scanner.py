@@ -803,7 +803,8 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=Non
             if not isinstance(player, dict):
                 continue
             name = player.get("username")
-            if not isinstance(name, str) or not name.strip():
+            if not valid_scanned_username(name):
+                print(f"Ignoring invalid OCR username: {name!r}")
                 continue
             if is_ignored_commander(player):
                 print(f"Ignoring default Commander2 username: {name!r}")
@@ -947,6 +948,13 @@ def calibrate_movement(cfg):
     print("Before:", before_path)
     print("After:", after_path)
     print("Calibration only: one swipe, no base clicks or database writes.")
+
+
+def valid_scanned_username(name):
+    """Game usernames cannot contain whitespace; reject OCR false positives."""
+    return (isinstance(name, str) and bool(name.strip())
+            and not any(char.isspace() for char in name)
+            and any(char.isalpha() for char in name))
 
 
 def is_ignored_commander(player):
@@ -1195,7 +1203,7 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=110, horizont
             print(f"=== Column {column + 1}/{columns}: {direction} ===")
             def record_player(player, step):
                 name = str(player.get("username") or "").strip()
-                if not name:
+                if not valid_scanned_username(name):
                     return
                 key = name.casefold()
                 if key in unique_players:
@@ -1340,8 +1348,8 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=110, horizont
                         if not isinstance(player, dict) or is_ignored_commander(player):
                             continue
                         name = player.get("username")
-                        if not isinstance(name, str) or not name.strip() or not any(
-                                char.isalpha() for char in name):
+                        if not valid_scanned_username(name):
+                            print(f"Ignoring invalid recovered username: {name!r}")
                             continue
                         key = name.strip().casefold()
                         if key in unique_players:

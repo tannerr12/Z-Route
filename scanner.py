@@ -1152,8 +1152,8 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=110, horizont
         raise ValueError("horizontal_after must be between 0 and columns - 1")
     # Grid coordinates are approximate scan-route positions, not game X/Y.
     # Checkpoint the CSV after every new username so interrupted scans retain data.
-    export_folder = ROOT / "screenshots"
-    export_folder.mkdir(exist_ok=True)
+    export_folder = ROOT / "exports" / "players"
+    export_folder.mkdir(parents=True, exist_ok=True)
     export_stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
     export_path = export_folder / f"serpentine_players_{export_stamp}.csv"
     fields = ["username", "guild", "level", "row", "col", "view",

@@ -577,7 +577,29 @@ def scan_column(cfg, max_swipes=5):
             transform, mask = cv2.estimateAffinePartial2D(
                 src, dst, method=cv2.RANSAC, ransacReprojThreshold=4)
             inliers = int(mask.sum()) if mask is not None else 0
-            if transform is None or inliers < 12 or inliers / len(good) < .5:
+            # A moving map can yield many mismatched ORB pairs despite a
+            # substantial, geometrically consistent inlier cluster.
+            strong_motion = False
+            if transform is not None and mask is not None and inliers >= 80:
+                inlier_offsets = (dst - src)[mask.ravel().astype(bool)]
+                median_offset = np.median(inlier_offsets, axis=0)
+                residual = np.linalg.norm(inlier_offsets - median_offset, axis=1)
+                moving_fraction = float(np.mean(np.linalg.norm(dst - src, axis=1) > 25))
+                strong_motion = (
+                    np.median(residual) <= 8
+                    and moving_fraction >= .8
+                    and abs(float(median_offset[0])) <= 80
+                    and -950 <= float(median_offset[1]) <= -25
+                    and abs(float(transform[0, 2]) - float(median_offset[0])) <= 20
+                    and abs(float(transform[1, 2]) - float(median_offset[1])) <= 20
+                )
+                if strong_motion and inliers / len(good) < .5:
+                    print(f"Accepted strong moving-landmark consensus: "
+                          f"{inliers}/{len(good)} inliers, "
+                          f"median residual {np.median(residual):.1f}px, "
+                          f"{moving_fraction:.0%} matches moving.")
+            if transform is None or inliers < 12 or (
+                    inliers / len(good) < .5 and not strong_motion):
                 diagnostic_stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
                 before_path = folder / f"column_movement_before_{diagnostic_stamp}.png"
                 after_path = folder / f"column_movement_after_{diagnostic_stamp}.png"
@@ -656,6 +678,9 @@ def scan_column(cfg, max_swipes=5):
                 continue
             name = player.get("username")
             if not isinstance(name, str) or not name.strip():
+                continue
+            if not any(ch.isalpha() for ch in name):
+                print(f"Ignoring non-name candidate: {name!r}")
                 continue
             key = (str(player.get("guild") or "").casefold(), name.strip().casefold())
             box = player.get("box")

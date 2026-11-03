@@ -763,6 +763,18 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=Non
             failure_stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
             failure_path = folder / f"column_unanalyzed_{failure_stamp}.png"
             cv2.imwrite(str(failure_path), image)
+            context = cfg.get("_scan_grid_context", {})
+            metadata = {
+                "column": context.get("column"),
+                "view": step,
+                "row": (step + 1 if direction == "up"
+                        else max_swipes - step + 1),
+                "direction": direction,
+                "max_swipes": max_swipes,
+                "captured_at": datetime.now().astimezone().isoformat(),
+            }
+            failure_path.with_suffix(".meta.json").write_text(
+                json.dumps(metadata, indent=2), encoding="utf-8")
             print(f"Unanalyzed screenshot saved: {failure_path}")
             previous_players = []
             if consecutive_failures >= 5:
@@ -1179,6 +1191,7 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=110, horizont
     try:
         for column in range(columns):
             direction = "up" if column % 2 == 0 else "down"
+            cfg["_scan_grid_context"] = {"column": column + 1}
             print(f"=== Column {column + 1}/{columns}: {direction} ===")
             def record_player(player, step):
                 name = str(player.get("username") or "").strip()
@@ -1298,9 +1311,64 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=110, horizont
             successful_horizontal_shifts += 1
             print("Horizontal shift verified. Reversing vertical direction.")
     finally:
-        save_players()
-        print(f"Player grid CSV saved: {export_path} ({len(unique_players)} unique usernames).")
-        cfg.pop("_scan_session_folder", None)
+        # Recover only this session's screenshots, retaining their original grid
+        # coordinates. Never move the map during offline recovery.
+        try:
+            pending = sorted(session_folder.glob("column_unanalyzed_*.png"))
+            print(f"End-of-session recovery: {len(pending)} failed screenshots.")
+            for index, path in enumerate(pending, 1):
+                result_path = path.with_suffix(".recovered.json")
+                meta_path = path.with_suffix(".meta.json")
+                if result_path.exists() or not meta_path.exists():
+                    continue
+                try:
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    image = cv2.imread(str(path))
+                    if image is None:
+                        print(f"Recovery {index}: unreadable screenshot {path.name}")
+                        continue
+                    players = debug_ollama(cfg, image=image)
+                    result_path.write_text(json.dumps({
+                        "source_screenshot": path.name,
+                        "grid": meta,
+                        "reprocessed_at": datetime.now(timezone.utc).isoformat(),
+                        "players": players,
+                        "verified": False,
+                    }, indent=2, ensure_ascii=False), encoding="utf-8")
+                    recovered_count = 0
+                    for player in players:
+                        if not isinstance(player, dict) or is_ignored_commander(player):
+                            continue
+                        name = player.get("username")
+                        if not isinstance(name, str) or not name.strip() or not any(
+                                char.isalpha() for char in name):
+                            continue
+                        key = name.strip().casefold()
+                        if key in unique_players:
+                            continue
+                        unique_players[key] = {
+                            "username": name.strip(),
+                            "guild": str(player.get("guild") or ""),
+                            "level": player.get("level") if player.get("level") is not None else "",
+                            "row": meta["row"],
+                            "col": meta["column"],
+                            "view": meta["view"],
+                            "direction": meta["direction"],
+                            "observed_at": meta["captured_at"],
+                            "coordinate_type": "approximate swipe grid (recovered)",
+                        }
+                        save_players()
+                        recovered_count += 1
+                    print(f"Recovery {index}/{len(pending)}: {recovered_count} new players from {path.name}")
+                except (RuntimeError, OSError, TimeoutError, ValueError, KeyError, TypeError) as exc:
+                    print(f"Recovery failed for {path.name}: {exc}")
+        except Exception as exc:
+            print(f"Recovery pass interrupted: {exc}")
+        finally:
+            save_players()
+            print(f"Player grid CSV saved: {export_path} ({len(unique_players)} unique usernames).")
+            cfg.pop("_scan_grid_context", None)
+            cfg.pop("_scan_session_folder", None)
     print(f"Serpentine diagnostic finished: {successful_horizontal_shifts} verified "
           f"horizontal shifts; reason: {termination}.")
     print("No database writes or base clicks.")

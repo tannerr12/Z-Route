@@ -584,7 +584,32 @@ def scan_column(cfg):
             print(f"Step {step}: map shifted dx={dx:.1f}, dy={dy:.1f} pixels "
                   f"({inliers}/{len(good)} inliers)")
             if abs(dx) < 10 and abs(dy) < 10:
-                print("Likely hard boundary: stopping.")
+                diagnostic_stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
+                before_path = folder / f"column_movement_before_{diagnostic_stamp}.png"
+                after_path = folder / f"column_movement_after_{diagnostic_stamp}.png"
+                match_path = folder / f"column_landmarks_{diagnostic_stamp}.png"
+                cv2.imwrite(str(before_path), previous)
+                cv2.imwrite(str(after_path), image)
+                # Show exactly which landmarks supported the zero-motion estimate.
+                # Coordinates from ORB are local to the cropped map rectangle.
+                inlier_matches = [m for m, ok in zip(good, mask.ravel()) if ok]
+                overlay = cv2.drawMatches(
+                    first, k1, second, k2, inlier_matches[:80], None,
+                    flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+                cv2.imwrite(str(match_path), overlay)
+                displacements = dst - src
+                distances = np.linalg.norm(displacements, axis=1)
+                moving = distances > 25
+                print(f"Landmark motion check: {int(moving.sum())}/{len(good)} "
+                      "matched landmarks shifted over 25px.")
+                if moving.any():
+                    median_move = np.median(displacements[moving], axis=0)
+                    print(f"Moving landmark median: dx={median_move[0]:.1f}, "
+                          f"dy={median_move[1]:.1f}px")
+                print("Map motion not verified; stopping safely (not a confirmed boundary).")
+                print("Before:", before_path)
+                print("After:", after_path)
+                print("Matched landmarks:", match_path)
                 break
             if abs(dx) > 80 or dy > -25 or dy < -950:
                 print("Unexpected movement direction or size; stopping.")

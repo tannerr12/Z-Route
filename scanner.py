@@ -637,8 +637,8 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=Non
             movement_verified = False
             for movement_attempt in range(1, 4):
                 if movement_attempt > 1:
-                    print(f"Retrying movement verification ({movement_attempt}/3) after 1.5s...")
-                    time.sleep(1.5)
+                    print(f"Retrying movement verification ({movement_attempt}/3) after 0.3s...")
+                    time.sleep(0.3)
                     image = screenshot(cfg)  # No additional swipe on retry.
                     ensure_game_connected(cfg, image, on_progress)
                 x1, y1, x2, y2 = middle_scan_rectangle(image, cfg)

@@ -74,7 +74,7 @@ def promo_close_visible(image):
             np.count_nonzero((gold > 0) & diagonal2) > 15)
 
 
-def dismiss_promotions(cfg, max_attempts=12, wait_seconds=1.5):
+def dismiss_promotions(cfg, max_attempts=12, wait_seconds=0.5):
     dismissed = 0
     for _ in range(max_attempts):
         image = screenshot(cfg)
@@ -114,7 +114,7 @@ def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75):
                 raise RuntimeError("AI promotion classification not confirmed by X detector")
             tap_scaled(cfg, image, PROMO_CLOSE_CENTER, PROMO_REFERENCE_SIZE)
         actions += 1
-        time.sleep(2)
+        time.sleep(0.5)
     raise TimeoutError("Startup exceeded max_actions; stopped safely")
 
 

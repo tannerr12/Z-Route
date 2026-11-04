@@ -1194,7 +1194,7 @@ def debug_ollama(cfg, image=None, crop_override=None):
         "format": "json",
         "keep_alive": cfg.get("ollama", {}).get("keep_alive", "30m"),
         "messages": [
-            {"role": "user", "content": "Which player names are visible? List each name once. Maximum 20 names.",
+            {"role": "user", "content": "Which player names are visible? Do not repeat player names. List each unique name only once. Maximum 20 names.",
              "images": [base64.b64encode(png.tobytes()).decode("ascii")]}
         ],
         "options": {"temperature": 0, "num_predict": cfg.get("ollama", {}).get("num_predict", 512)}

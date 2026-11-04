@@ -13,7 +13,7 @@ Experimental Z-Route tools for scanning the game through BlueStacks, publishing 
 | Player Locator | Search a swipe-grid map of players; hover for names and distinguish guilds by color | `index.html` |
 | Map scanner | Capture BlueStacks screenshots and collect player observations using ADB and OCR | `scanner.py` |
 | Data Miner | Navigate game ranking screens and extract VS rankings and alliance donation rows with a local vision model | `data_miner/mine_rankings.py` |
-| VS Comparison | Compare two guilds by day and week using published VS ranking CSVs; show recorded scores, differences, daily winners and history | `vs.html` |\n| Donation Analytics | Load guild-specific CSV histories automatically; compare weeks, search players, inspect donation trends and contribution shares | `donations.html` |
+| VS Comparison | Analyze one guild’s individual member VS contributions, daily scores, weekly totals, low-score flags and trends | `vs.html` |\n| Donation Analytics | Load guild-specific CSV histories automatically; compare weeks, search players, inspect donation trends and contribution shares | `donations.html` |
 
 ## Repository data layout
 
@@ -118,6 +118,10 @@ The scanner and miner depend on visible game screens, OCR/vision accuracy, scrol
 - Track stable player identities across renames and guild transfers.
 - Add extraction completeness and data-quality indicators for each weekly leaderboard.
 
-## VS Comparison dashboard
+## VS Member Analytics dashboard
 
-Open [`vs.html`](https://tannerr12.github.io/Z-Route/vs.html) to compare guilds using `data/vs/guilds.json` and each guild's `data/vs/<GUILD>/rankings.csv`. CSV columns are `week_start,day,rank,username,alliance,points,captured_at,evidence`. Day values are `MON` through `SAT`; each guild's records are grouped by week and day. The dashboard sums unique player rows per day, shows daily winners, recorded weekly totals, score differences, and weekly history. It also offers guild A member leaderboards, player-level weekly VS score history, a configurable low-weekly-score threshold, week-over-week changes, contribution share, and completed-week trend classifications (improving, declining, stable, insufficient). Current-week scores are provisional and may appear low before the week is complete. **These sums are captured leaderboard points, not verified official alliance VS scores.** Missing days remain missing, and incomplete scans can understate scores. Initial D3AD and NOVA files contain **synthetic DEMO rows** for testing. The miner currently writes a local combined rankings CSV; publishing separate guild files is not yet automated.
+Open [VS Member Analytics](https://tannerr12.github.io/Z-Route/vs.html) to inspect a single guild's player contributions. The page loads `data/vs/guilds.json` and `data/vs/<GUILD>/rankings.csv`, using columns `week_start,day,rank,username,alliance,points,captured_at,evidence`. Days are MON through SAT.
+
+The dashboard shows recorded guild totals and weekly change, daily guild scores, daily player participation, and historical guild trends. Its main table lists **each player's daily VS points**, weekly total, previous-week score, week-over-week change, four-week trend, low-score flag, and contribution share. Filter by name, adjust the low-score threshold, and select a player for a historical chart.
+
+**Caveats:** The sums are captured leaderboard points rather than verified official guild scores. Missing records are not zero, partial scans can understate scores, and current-week low-score flags are provisional. The initial D3AD and NOVA fixtures are synthetic DEMO data. Publishing the miner's local VS output to per-guild CSVs is not yet automated.

@@ -77,6 +77,24 @@ def adb(cfg, *args):
 
 
 def screenshot(cfg):
+    if cfg.get("_raw_capture_enabled"):
+        import struct
+        raw = adb(cfg, "exec-out", "screencap")
+        if len(raw) < 12:
+            raise RuntimeError("Incomplete RAW screenshot")
+        width, height, fmt = struct.unpack_from("<III", raw)
+        channels = {1: 4, 2: 4, 3: 3}.get(fmt)
+        if not (0 < width <= 8192 and 0 < height <= 8192) or channels is None:
+            raise RuntimeError(f"Unsupported RAW framebuffer: {width}x{height}, format {fmt}")
+        offset = len(raw) - width * height * channels
+        if offset not in (12, 16):
+            raise RuntimeError(f"Invalid RAW framebuffer header: {offset}")
+        pixels = np.frombuffer(raw, np.uint8, count=width*height*channels, offset=offset)
+        pixels = pixels.reshape(height, width, channels)
+        image = cv2.cvtColor(pixels, cv2.COLOR_RGBA2BGR if channels == 4 else cv2.COLOR_RGB2BGR)
+        cfg["_last_capture_png"] = None
+        cfg["_last_capture_image_id"] = id(image)
+        return image
     raw = adb(cfg, "exec-out", "screencap", "-p")
     started = time.perf_counter()
     image = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
@@ -94,7 +112,7 @@ def screenshot(cfg):
 
 def save_capture_png(cfg, path, image):
     started = time.perf_counter()
-    if cfg.get("_last_capture_image_id") == id(image):
+    if cfg.get("_last_capture_image_id") == id(image) and cfg.get("_last_capture_png") is not None:
         path.write_bytes(cfg["_last_capture_png"])
     elif not cv2.imwrite(str(path), image):
         raise RuntimeError(f"Failed to save screenshot: {path}")
@@ -831,12 +849,17 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=Non
         if capture_queue is not None:
             col = cfg.get("_scan_grid_context", {}).get("column", 0)
             path = folder / f"capture_col_{col:03d}_view_{step:03d}.png"
-            save_capture_png(cfg, path, image)
             meta = {"column": col, "view": step,
                     "row": step + 1 if direction == "up" else max_swipes - step + 1,
                     "direction": direction, "captured_at": datetime.now(timezone.utc).isoformat()}
-            path.with_suffix(".meta.json").write_text(json.dumps(meta), encoding="utf-8")
-            capture_queue.put(path)
+            if cfg.get("_raw_capture_enabled"):
+                # Bounded in-memory handoff; the encoding worker writes a durable PNG
+                # and metadata before the Ollama worker receives the file path.
+                capture_queue.put((path, image, meta))
+            else:
+                save_capture_png(cfg, path, image)
+                path.with_suffix(".meta.json").write_text(json.dumps(meta), encoding="utf-8")
+                capture_queue.put(path)
             completed_views += 1
             print(f"Captured {path.name}; AI processing independently.")
             if step == max_swipes:
@@ -1813,7 +1836,7 @@ def capture_ai_report(folder):
           f"{failed} failed, {pending} pending; success rate {rate:.1f}%.")
 
 
-def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizontal_after=160, resume=False, swipe_ms=100, settle=0.2, vertical_scale=1.0, horizontal_scale=1.0, profile=False):
+def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizontal_after=160, resume=False, swipe_ms=100, settle=0.2, vertical_scale=1.0, horizontal_scale=1.0, profile=False, raw_capture=False):
     """Read-only bounded serpentine scan with one terminal horizontal edge."""
     if not 2 <= columns <= 150:
         raise ValueError("columns must be between 2 and 150")
@@ -1921,16 +1944,46 @@ def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizon
     if not resume:
         save_players()
         save_state()
-    capture_queue = queue.Queue()
+    # RAW capture is opt-in until its threaded scan path is validated.
+    cfg["_raw_capture_enabled"] = raw_capture
+    capture_queue = queue.Queue(maxsize=4) if raw_capture else queue.Queue()
+    ai_queue = queue.Queue()
+    encoding_errors = []
+    def encode_captures():
+        while True:
+            item = capture_queue.get()
+            try:
+                if item is None:
+                    return
+                path, image, meta = item
+                temporary = path.with_suffix(".png.tmp")
+                try:
+                    ok, encoded = cv2.imencode(".png", image)
+                    if not ok:
+                        raise RuntimeError("PNG encoding failed")
+                    temporary.write_bytes(encoded.tobytes())
+                    temporary.replace(path)
+                    path.with_suffix(".meta.json").write_text(json.dumps(meta), encoding="utf-8")
+                    ai_queue.put(path)
+                except Exception as exc:
+                    encoding_errors.append(str(exc))
+                    print(f"Encoding FAILED for {path.name}: {exc}", flush=True)
+                    temporary.unlink(missing_ok=True)
+            finally:
+                capture_queue.task_done()
+    encoder = None
+    if raw_capture:
+        encoder = threading.Thread(target=encode_captures, daemon=True, name="png-encoder")
+        encoder.start()
     def analyze_captures():
         while True:
-            path = capture_queue.get()
+            path = ai_queue.get()
             try:
                 if path is None:
                     return
                 process_capture_ai(cfg, path, unique_players, save_players)
             finally:
-                capture_queue.task_done()
+                ai_queue.task_done()
     worker = threading.Thread(target=analyze_captures, daemon=True, name="ollama-worker")
     worker.start()
     # On resume, retry a previously failed screenshot at most once across
@@ -1951,7 +2004,7 @@ def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizon
                 "reason": "one allowed resume retry after initial failure",
             }), encoding="utf-8")
             queued_retries += 1
-        capture_queue.put(path)
+        ai_queue.put(path)
     print(f"Resume AI queue: {queued_retries} failed screenshots queued for their one retry; "
           f"{skipped_retries} previously retried screenshots skipped.")
     successful_horizontal_shifts = 0
@@ -2106,9 +2159,16 @@ def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizon
         if profile:
             print_capture_metrics(cfg)
         print("Navigation stopped; waiting for queued AI analysis to finish...")
-        capture_queue.put(None)
-        capture_queue.join()
+        if raw_capture:
+            capture_queue.put(None)
+            capture_queue.join()
+            encoder.join()
+        ai_queue.put(None)
+        ai_queue.join()
         worker.join()
+        cfg["_raw_capture_enabled"] = False
+        if encoding_errors:
+            print(f"WARNING: {len(encoding_errors)} screenshot encoding failures; review session before resuming.")
         capture_ai_report(session_folder)
         print(f"Navigation checkpoint: {checkpoint_path} (column {state['column'] + 1}, "
               f"step {state['step']}, {state['direction']}, phase={state['phase']})")
@@ -2244,6 +2304,7 @@ def main():
     commands.choices["scan-serpentine"].add_argument("--vertical-scale", type=float, default=1.0)
     commands.choices["scan-serpentine"].add_argument("--horizontal-scale", type=float, default=1.0)
     commands.choices["scan-serpentine"].add_argument("--profile", action="store_true")
+    commands.choices["scan-serpentine"].add_argument("--raw-capture", action="store_true", help="Capture RAW framebuffer and encode PNG on a background thread.")
     commands.choices["scan-serpentine"].add_argument("--swipe-ms", type=int, default=100)
     commands.choices["scan-serpentine"].add_argument("--settle", type=float, default=0.2)
     commands.choices["scan-serpentine"].add_argument(
@@ -2292,7 +2353,7 @@ def main():
                             horizontal_after=args.horizontal_after,
                             vertical_scale=args.vertical_scale,
                             horizontal_scale=args.horizontal_scale, profile=args.profile, resume=args.resume,
-                            swipe_ms=args.swipe_ms, settle=args.settle)
+                            swipe_ms=args.swipe_ms, settle=args.settle, raw_capture=args.raw_capture)
         elif args.command == "scan-column":
             connect(cfg)
             scan_column(cfg, max_swipes=args.max_swipes)

@@ -1276,21 +1276,27 @@ def debug_ollama(cfg, image=None, crop_override=None):
             f"Ollama failed to complete screenshot analysis (done={answer.get('done')!r}). "
             f"Diagnostic saved to {path}. No swipe performed."
         ) from exc
-    # Reject repetitive or oversized generations before filtering Commander2 names.
-    raw_names = []
+    # Accept repeated names from valid JSON; deduplicate them before normalization.
+    # Keep the first occurrence, preserving the original name spelling and order.
+    deduplicated = []
+    seen_raw = set()
     for item in players:
         if isinstance(item, str):
-            raw_names.append(item.strip())
+            name = item.strip()
         elif isinstance(item, dict):
-            raw_names.append(str(item.get("nameplate") or item.get("username") or "").strip())
-    if len(raw_names) > 25 or (raw_names and len(raw_names) >= 8
-                               and len(set(raw_names)) < len(raw_names) / 2):
-        folder = scan_diagnostic_folder(cfg)
-        stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
-        path = folder / f"ollama_invalid_{stamp}.json"
-        path.write_text(json.dumps({"response": answer, "reason": "repetitive player list"},
-                                   indent=2, ensure_ascii=False), encoding="utf-8")
-        raise RuntimeError(f"Ollama returned a repetitive player list. Diagnostic saved to {path}")
+            name = str(item.get("nameplate") or item.get("username") or "").strip()
+        else:
+            continue
+        if not name:
+            continue
+        key = name.casefold()
+        if key in seen_raw:
+            continue
+        seen_raw.add(key)
+        deduplicated.append(item)
+    if len(deduplicated) != len(players):
+        print(f"Ollama duplicate names removed: {len(players) - len(deduplicated)}")
+    players = deduplicated
     # Split the optional [guild] prefix deterministically in Python.
     normalized = []
     seen_names = set()

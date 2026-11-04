@@ -1192,17 +1192,18 @@ def debug_ollama(cfg, image=None, crop_override=None):
         "stream": False,
         "think": False,
         "format": "json",
+        "keep_alive": cfg.get("ollama", {}).get("keep_alive", "30m"),
         "messages": [{
             "role": "user",
             "content": ("Read player nameplates in this Z Route map image. "
-                        "Return JSON with a players array. Each player has "
+                        Return JSON only, no explanation. Use a players array. Each player has "
                         "guild (string or null), username (exact visible text), "
                         "level (integer or null), and box [x1,y1,x2,y2] "
-                        "relative to this image. Ignore incomplete names, "
+                        relative to this image; use null if box is uncertain. Ignore incomplete names, "
                         "UI labels, mining camps, and resource nodes. Numeric labels 1-99 are not player usernames. Do not guess."),
             "images": [base64.b64encode(png.tobytes()).decode("ascii")]
         }],
-        "options": {"temperature": 0, "num_predict": 2048}
+        "options": {"temperature": 0, "num_predict": cfg.get("ollama", {}).get("num_predict", 2048)}
     }
     url = "http://127.0.0.1:11434/api/chat"
     req = urllib.request.Request(url,

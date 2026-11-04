@@ -1719,6 +1719,9 @@ def publish_scan_csv(folder, threshold=90.0, branch="main"):
     if state.get("phase") != "done" or (ROOT / state.get("session_relative", "")).resolve() != folder.resolve():
         print("GitHub publish skipped: this map capture session has not finished.")
         return False
+    if len(captures) < 100:
+        print(f"GitHub publish skipped: {len(captures)} captures; minimum 100 required to protect the full map.")
+        return False
     if not captures or pending:
         print(f"GitHub publish skipped: {pending} screenshots have not been processed yet.")
         return False
@@ -2236,7 +2239,7 @@ def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizon
     if termination == "column limit reached" and column == columns - 1:
         save_state(phase="done")
         retry_failed_after_scan(cfg, session_folder, unique_players, save_players)
-        publish_scan_csv(session_folder)
+        print("Publishing disabled for automatic scans; use publish-scan explicitly after reviewing results.")
     print(f"Serpentine diagnostic finished: {successful_horizontal_shifts} verified "
           f"horizontal shifts; reason: {termination}.")
     print("No database writes or base clicks.")
@@ -2284,7 +2287,7 @@ def reprocess_failed(cfg, limit=None, all_sessions=False):
     for folder in folders:
         capture_ai_report(folder)
     if not all_sessions and folders:
-        publish_scan_csv(folders[0])
+        print("Automatic publishing disabled; review results and use publish-scan explicitly.")
     print("Offline retry finished; no map movement or database writes.")
 
 

@@ -1190,6 +1190,8 @@ def debug_ollama(cfg, image=None, crop_override=None):
     request_data = {
         "model": cfg.get("ollama", {}).get("model", "qwen3-vl:4b"),
         "stream": False,
+        "think": False,
+        "format": "json",
         "messages": [{
             "role": "user",
             "content": ("Read player nameplates in this Z Route map image. "
@@ -1200,7 +1202,7 @@ def debug_ollama(cfg, image=None, crop_override=None):
                         "UI labels, mining camps, and resource nodes. Numeric labels 1-99 are not player usernames. Do not guess."),
             "images": [base64.b64encode(png.tobytes()).decode("ascii")]
         }],
-        "options": {"temperature": 0}
+        "options": {"temperature": 0, "num_predict": 2048}
     }
     url = "http://127.0.0.1:11434/api/chat"
     req = urllib.request.Request(url,
@@ -1237,6 +1239,17 @@ def debug_ollama(cfg, image=None, crop_override=None):
             f"Ollama failed to complete screenshot analysis (done={answer.get('done')!r}). "
             f"Diagnostic saved to {path}. No swipe performed."
         ) from exc
+    # Model bounding boxes must fit the actual crop dimensions.
+    image_width, image_height = crop.shape[1], crop.shape[0]
+    for player in players:
+        if not isinstance(player, dict):
+            continue
+        box = player.get("box")
+        if not (isinstance(box, list) and len(box) == 4
+                and all(isinstance(v, int) and not isinstance(v, bool) for v in box)
+                and 0 <= box[0] < box[2] <= image_width
+                and 0 <= box[1] < box[3] <= image_height):
+            player["box"] = None
     before_filter = len(players)
     players = [p for p in players if isinstance(p, dict) and valid_scanned_username(p.get("username")) and not is_ignored_commander(p)]
     if len(players) != before_filter:

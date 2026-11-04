@@ -1089,8 +1089,8 @@ def benchmark_capture(cfg, swipes=110, settle=0.2, swipe_ms=250):
         raise ValueError("swipes must be between 1 and 500")
     if not 0 <= settle <= 3:
         raise ValueError("settle must be between 0 and 3 seconds")
-    if not 100 <= swipe_ms <= 1000:
-        raise ValueError("swipe-ms must be between 100 and 1000")
+    if not 10 <= swipe_ms <= 1000:
+        raise ValueError("swipe-ms must be between 10 and 1000")
     folder = ROOT / "screenshots" / ("calibration_" + datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f"))
     folder.mkdir(parents=True, exist_ok=True)
     before = screenshot(cfg)

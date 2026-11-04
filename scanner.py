@@ -1194,8 +1194,6 @@ def debug_ollama(cfg, image=None, crop_override=None):
         "in square brackets immediately before the username (for example [D3AD] PlayerName). "
         "A nearby number is a player level only when clearly associated with that nameplate. "
         "Players may have no guild. Preserve exact visible username spelling and capitalization. "
-        "Ignore usernames beginning with Commander2, resource nodes, mining camps, "
-        "buildings, map coordinates, UI labels, and unrelated numeric labels 1-99. "
         "Do not infer text from context or invent obscured names. "
         "Return only a JSON object with a players array. Each entry must have "
         "username (string), guild (string or null), level (integer or null), "

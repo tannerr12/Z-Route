@@ -115,7 +115,8 @@ def select_day(cfg, day):
 
 
 def mine_day(cfg, week_start, day, max_swipes=40):
-    select_day(cfg, day)
+    if day != "WEEKLY":
+        select_day(cfg, day)
     seen_ranks = set()
     previous = None
     stationary = 0
@@ -157,6 +158,8 @@ def mine_week(cfg, week_start):
         count, reason = mine_day(cfg, week_start, day)
         print(f"{day}: {count} unique ranks; {reason}")
     print("Weekly tab selected:", select_this_week(cfg))
+    count, reason = mine_day(cfg, week_start, "WEEKLY")
+    print(f"WEEKLY: {count} unique ranks; {reason}")
 
 
 if __name__ == "__main__":

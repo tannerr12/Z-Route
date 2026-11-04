@@ -1215,7 +1215,7 @@ def debug_ollama(cfg, image=None, crop_override=None):
             if len(lines) >= 3 and lines[-1].strip() == "```":
                 cleaned = "\n".join(lines[1:-1]).strip()
         parsed = json.loads(cleaned)
-        if isinstance(parsed, dict) and isinstance(parsed.get("error"), str) and "no player names found" in parsed["error"].casefold():
+        if isinstance(parsed, dict) and isinstance(parsed.get("error"), str) and any(phrase in parsed["error"].casefold() for phrase in ("no player names found", "no visible player names found")):
             players = []
         elif isinstance(parsed, list):
             players = parsed

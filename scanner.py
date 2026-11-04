@@ -1453,7 +1453,7 @@ def process_capture_ai(cfg, path, unique_players, save_players):
             unique_players[key] = {
                 "username": name.strip(), "guild": str(player.get("guild") or ""),
                 "level": player.get("level") if player.get("level") is not None else "",
-                "row": meta["row"], "col": meta["column"], "view": meta["view"],
+                "row": min(int(meta["row"]), 60), "col": min(int(meta["column"]), 150), "view": meta["view"],
                 "direction": meta["direction"], "observed_at": meta["captured_at"],
                 "coordinate_type": "approximate swipe grid"}
             added += 1
@@ -1851,9 +1851,15 @@ def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizon
     print("No database writes or base clicks.")
 
 
-def reprocess_failed(cfg, limit=None):
-    """Offline retry of unprocessed background captures; no ADB or map movement."""
-    folders = sorted((ROOT / "screenshots").glob("session_*"))
+def reprocess_failed(cfg, limit=None, all_sessions=False):
+    """Offline retry of latest session by default; no ADB or map movement."""
+    folders = sorted((p for p in (ROOT / "screenshots").glob("session_*") if p.is_dir()), reverse=True)
+    if not all_sessions:
+        folders = folders[:1]
+    if not folders:
+        print("No screenshot session folders found.")
+        return
+    print("Offline AI session(s): " + ", ".join(p.name for p in folders))
     pending = [p for folder in folders
                for p in sorted(folder.glob("capture_col_*_view_*.png"))
                if not p.with_suffix(".players.json").exists()]
@@ -1879,7 +1885,11 @@ def reprocess_failed(cfg, limit=None):
                 writer.writeheader()
                 writer.writerows(unique.values())
             tmp.replace(csv_path)
-        process_capture_ai(cfg, path, unique, save)
+        cfg["_scan_session_folder"] = str(path.parent)
+        try:
+            process_capture_ai(cfg, path, unique, save)
+        finally:
+            cfg.pop("_scan_session_folder", None)
     for folder in folders:
         capture_ai_report(folder)
     print("Offline retry finished; no map movement or database writes.")
@@ -1919,7 +1929,10 @@ def main():
         help="Skip verification of the first N horizontal shifts (default 160).")
     commands.choices["reprocess-failed"].add_argument(
         "--limit", type=int, default=None,
-        help="Maximum number of pending screenshots to retry.")
+        help="Maximum number of pending/failed screenshots to retry.")
+    commands.choices["reprocess-failed"].add_argument(
+        "--all-sessions", action="store_true",
+        help="Retry all saved sessions instead of only the latest session.")
     query = commands.add_parser("search")
     query.add_argument("username")
     args = parser.parse_args()
@@ -1928,7 +1941,7 @@ def main():
         if args.command == "reprocess-failed":
             if args.limit is not None and args.limit < 1:
                 parser.error("--limit must be at least 1")
-            reprocess_failed(cfg, limit=args.limit)
+            reprocess_failed(cfg, limit=args.limit, all_sessions=args.all_sessions)
         elif args.command == "scan-serpentine":
             connect(cfg)
             scan_serpentine(cfg, max_swipes=args.max_swipes, columns=args.columns,

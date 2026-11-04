@@ -1188,7 +1188,7 @@ def debug_ollama(cfg, image=None, crop_override=None):
     if not ok:
         raise RuntimeError("Could not encode screenshot")
     request_data = {
-        "model": cfg.get("ollama", {}).get("model", "qwen2.5vl:3b"),
+        "model": cfg.get("ollama", {}).get("model", "qwen3-vl:4b"),
         "stream": False,
         "messages": [{
             "role": "user",

@@ -1128,6 +1128,69 @@ def benchmark_screenshot(cfg, samples=10):
     print("Benchmark only: production screenshot capture is unchanged.")
 
 
+def calibrate_capture_ai(cfg, samples=3):
+    """Compare PNG and raw captures, PNG save time, and Ollama name reading."""
+    if not 1 <= samples <= 10:
+        raise ValueError("samples must be between 1 and 10")
+    import struct
+    folder = ROOT / "screenshots" / ("capture_ai_" + datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f"))
+    folder.mkdir(parents=True, exist_ok=True)
+    report = []
+    for i in range(samples):
+        for mode in ("png", "raw"):
+            try:
+                started = time.perf_counter()
+                if mode == "png":
+                    payload = adb(cfg, "exec-out", "screencap", "-p")
+                    image = cv2.imdecode(np.frombuffer(payload, np.uint8), cv2.IMREAD_COLOR)
+                else:
+                    payload = adb(cfg, "exec-out", "screencap")
+                    if len(payload) < 12:
+                        raise ValueError("Incomplete raw framebuffer")
+                    width, height, fmt = struct.unpack_from("<III", payload)
+                    if not (0 < width <= 8192 and 0 < height <= 8192):
+                        raise ValueError(f"Invalid framebuffer size: {width}x{height}")
+                    channels = {1: 4, 2: 4, 3: 3}.get(fmt)
+                    if channels is None:
+                        raise ValueError(f"Unsupported framebuffer format: {fmt}")
+                    expected = width * height * channels
+                    offset = len(payload) - expected
+                    if offset not in (12, 16):
+                        raise ValueError(f"Invalid framebuffer header size: {offset}")
+                    pixels = np.frombuffer(payload, np.uint8, count=expected, offset=offset).reshape(height, width, channels)
+                    image = cv2.cvtColor(pixels, cv2.COLOR_RGBA2BGR if channels == 4 else cv2.COLOR_RGB2BGR)
+                capture_time = time.perf_counter() - started
+                if image is None:
+                    raise ValueError("Capture decoding failed")
+                ensure_game_connected(cfg, image)
+                path = folder / f"pair_{i+1:02d}_{mode}.png"
+                started = time.perf_counter()
+                if mode == "png":
+                    path.write_bytes(payload)
+                elif not cv2.imwrite(str(path), image):
+                    raise RuntimeError("PNG encoding failed")
+                save_time = time.perf_counter() - started
+                saved = cv2.imread(str(path))
+                if saved is None or saved.shape != image.shape or not np.array_equal(saved, image):
+                    raise RuntimeError("Saved PNG differs from captured image")
+                started = time.perf_counter()
+                players = debug_ollama(cfg, image=saved)
+                ai_time = time.perf_counter() - started
+                entry = {"pair": i+1, "mode": mode, "capture_seconds": round(capture_time, 3),
+                         "save_seconds": round(save_time, 3), "ai_seconds": round(ai_time, 3),
+                         "names": [p.get("username") if isinstance(p, dict) else str(p) for p in players],
+                         "image": path.name, "status": "ok"}
+                print(f"Pair {i+1} {mode.upper()}: capture={capture_time:.3f}s save={save_time:.3f}s "
+                      f"AI={ai_time:.2f}s names={len(players)}: {entry['names']}")
+            except Exception as exc:
+                entry = {"pair": i+1, "mode": mode, "status": "failed", "error": str(exc)}
+                print(f"Pair {i+1} {mode.upper()} FAILED: {exc}")
+            report.append(entry)
+            (folder / "report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"Calibration results: {folder}")
+    print("No map swipes, database writes, or production capture changes.")
+
+
 def benchmark_capture(cfg, swipes=110, settle=0.2, swipe_ms=250):
     """Measure capture throughput and map displacement; no Ollama or DB writes."""
     if not 1 <= swipes <= 500:
@@ -2165,9 +2228,10 @@ def reprocess_failed(cfg, limit=None, all_sessions=False):
 def main():
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama", "calibrate-movement", "benchmark-capture", "benchmark-screenshot", "scan-column", "scan-serpentine", "reprocess-failed", "publish-scan"):
+    for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama", "calibrate-movement", "benchmark-capture", "benchmark-screenshot", "calibrate-capture-ai", "scan-column", "scan-serpentine", "reprocess-failed", "publish-scan"):
         commands.add_parser(name)
     commands.choices["benchmark-screenshot"].add_argument("--samples", type=int, default=10)
+    commands.choices["calibrate-capture-ai"].add_argument("--samples", type=int, default=3)
     commands.choices["benchmark-capture"].add_argument("--swipes", type=int, default=110)
     commands.choices["benchmark-capture"].add_argument("--settle", type=float, default=0.2)
     commands.choices["benchmark-capture"].add_argument("--swipe-ms", type=int, default=250)
@@ -2229,6 +2293,9 @@ def main():
         elif args.command == "scan-column":
             connect(cfg)
             scan_column(cfg, max_swipes=args.max_swipes)
+        elif args.command == "calibrate-capture-ai":
+            connect(cfg)
+            calibrate_capture_ai(cfg, samples=args.samples)
         elif args.command == "benchmark-screenshot":
             connect(cfg)
             benchmark_screenshot(cfg, samples=args.samples)

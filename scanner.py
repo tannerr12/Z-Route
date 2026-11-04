@@ -1584,9 +1584,27 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
                 capture_queue.task_done()
     worker = threading.Thread(target=analyze_captures, daemon=True, name="ollama-worker")
     worker.start()
+    # On resume, retry a previously failed screenshot at most once across
+    # all subsequent resumes. New/pending screenshots still get their first pass.
+    queued_retries = 0
+    skipped_retries = 0
     for path in sorted(session_folder.glob("capture_col_*_view_*.png")):
-        if not path.with_suffix(".players.json").exists():
-            capture_queue.put(path)
+        if path.with_suffix(".players.json").exists():
+            continue
+        failed_path = path.with_suffix(".failed.json")
+        retry_marker = path.with_suffix(".resume-retried.json")
+        if failed_path.exists():
+            if retry_marker.exists():
+                skipped_retries += 1
+                continue
+            retry_marker.write_text(json.dumps({
+                "retried_at": datetime.now(timezone.utc).isoformat(),
+                "reason": "one allowed resume retry after initial failure",
+            }), encoding="utf-8")
+            queued_retries += 1
+        capture_queue.put(path)
+    print(f"Resume AI queue: {queued_retries} failed screenshots queued for their one retry; "
+          f"{skipped_retries} previously retried screenshots skipped.")
     successful_horizontal_shifts = 0
     termination = "column limit reached"
     try:

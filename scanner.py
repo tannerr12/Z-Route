@@ -1138,6 +1138,7 @@ def calibrate_capture_ai(cfg, samples=3):
     report = []
     for i in range(samples):
         for mode in ("png", "raw"):
+            print(f"Pair {i+1}/{samples} {mode.upper()}: starting capture...", flush=True)
             try:
                 started = time.perf_counter()
                 if mode == "png":
@@ -1160,6 +1161,7 @@ def calibrate_capture_ai(cfg, samples=3):
                     pixels = np.frombuffer(payload, np.uint8, count=expected, offset=offset).reshape(height, width, channels)
                     image = cv2.cvtColor(pixels, cv2.COLOR_RGBA2BGR if channels == 4 else cv2.COLOR_RGB2BGR)
                 capture_time = time.perf_counter() - started
+                print(f"Pair {i+1} {mode.upper()}: captured in {capture_time:.3f}s; checking and saving...", flush=True)
                 if image is None:
                     raise ValueError("Capture decoding failed")
                 ensure_game_connected(cfg, image)
@@ -1173,6 +1175,7 @@ def calibrate_capture_ai(cfg, samples=3):
                 saved = cv2.imread(str(path))
                 if saved is None or saved.shape != image.shape or not np.array_equal(saved, image):
                     raise RuntimeError("Saved PNG differs from captured image")
+                print(f"Pair {i+1} {mode.upper()}: saved in {save_time:.3f}s; requesting Ollama (up to 180s)...", flush=True)
                 started = time.perf_counter()
                 players = debug_ollama(cfg, image=saved)
                 ai_time = time.perf_counter() - started
@@ -1184,7 +1187,7 @@ def calibrate_capture_ai(cfg, samples=3):
                       f"AI={ai_time:.2f}s names={len(players)}: {entry['names']}")
             except Exception as exc:
                 entry = {"pair": i+1, "mode": mode, "status": "failed", "error": str(exc)}
-                print(f"Pair {i+1} {mode.upper()} FAILED: {exc}")
+                print(f"Pair {i+1} {mode.upper()} FAILED: {exc}", flush=True)
             report.append(entry)
             (folder / "report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"Calibration results: {folder}")

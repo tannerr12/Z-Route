@@ -1234,6 +1234,13 @@ def debug_ollama(cfg, image=None, crop_override=None):
         ):
             players = [{"nameplate": k, "level": int(v) if str(v).isdigit() else None}
                        for k, v in parsed.items()]
+        elif isinstance(parsed, dict) and len(parsed) == 1 and all(
+            isinstance(k, str) and isinstance(v, list) and all(isinstance(n, str) for n in v)
+            for k, v in parsed.items()
+        ):
+            # Some vision responses put the first name in the object key.
+            first_name, remaining_names = next(iter(parsed.items()))
+            players = [first_name, *remaining_names]
         else:
             raise ValueError("Ollama response must be a player list or object with players array")
     except (ValueError, json.JSONDecodeError) as exc:

@@ -1539,6 +1539,29 @@ def process_capture_ai(cfg, path, unique_players, save_players):
         return "failed"
 
 
+def retry_failed_after_scan(cfg, folder, unique_players, save_players):
+    """Retry each failed capture once after the initial AI queue has drained."""
+    failures = sorted(p for p in folder.glob("capture_col_*_view_*.png")
+                      if p.with_suffix(".failed.json").exists()
+                      and not p.with_suffix(".players.json").exists()
+                      and not p.with_suffix(".final-retried.json").exists())
+    print(f"Final AI retry: {len(failures)} failed screenshots eligible for one retry.")
+    recovered = 0
+    for index, path in enumerate(failures, 1):
+        # Write marker first so interrupted sessions cannot retry indefinitely.
+        marker = path.with_suffix(".final-retried.json")
+        marker.write_text(json.dumps({
+            "attempted_at": datetime.now(timezone.utc).isoformat(),
+            "reason": "one automatic retry after all captures were processed",
+        }, indent=2), encoding="utf-8")
+        outcome = process_capture_ai(cfg, path, unique_players, save_players)
+        if outcome == "completed":
+            recovered += 1
+        print(f"Final retry {index}/{len(failures)}: {outcome} ({path.name})")
+    print(f"Final AI retry finished: {recovered}/{len(failures)} recovered.")
+    capture_ai_report(folder)
+
+
 def publish_scan_csv(folder, threshold=90.0, branch="main"):
     """Publish a sufficiently analyzed session without merging scanner code."""
     import shutil
@@ -2002,6 +2025,7 @@ def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizon
             cfg.pop("_scan_session_folder", None)
     if termination == "column limit reached" and column == columns - 1:
         save_state(phase="done")
+        retry_failed_after_scan(cfg, session_folder, unique_players, save_players)
         publish_scan_csv(session_folder)
     print(f"Serpentine diagnostic finished: {successful_horizontal_shifts} verified "
           f"horizontal shifts; reason: {termination}.")

@@ -18,11 +18,13 @@ def classify_screen(cfg, image):
             "role": "user",
             "content": (
                 "Classify this Z-Route screenshot. Return only a JSON object "
-                "with screen one of login_warning, promotion, game, unknown; "
+                "with screen one of login_warning, promotion, city, other, unknown; "
                 "and confidence between 0 and 1. login_warning means the "
                 "account is logged in on another device and has a Confirm button. "
                 "promotion means a fullscreen sales offer with a gold X in the "
-                "upper-right. game means the normal playable game UI. "
+                "upper-right. city means the home city view with resource bar, "
+                "buildings and a VS event icon on the right. other means "
+                "a different in-game screen. "
                 "Do not invent screen types or coordinates."
             ),
             "images": [base64.b64encode(encoded.tobytes()).decode("ascii")]
@@ -40,7 +42,7 @@ def classify_screen(cfg, image):
     payload = json.loads(result["message"]["content"])
     screen = payload.get("screen")
     confidence = payload.get("confidence")
-    if screen not in {"login_warning", "promotion", "game", "unknown"}:
+    if screen not in {"login_warning", "promotion", "city", "other", "unknown"}:
         raise ValueError("Unrecognized screen classification")
     if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not 0 <= confidence <= 1:
         raise ValueError("Invalid confidence")

@@ -1188,13 +1188,10 @@ def debug_ollama(cfg, image=None, crop_override=None):
     if not ok:
         raise RuntimeError("Could not encode screenshot")
     system_prompt = (
-        "Read the visible player nameplates in this Z-Route world map screenshot. "
-        "Copy each complete nameplate exactly as shown, including any leading [guild] tag. "
-        "Do not split names, identify levels, or estimate bounding boxes. "
-        "Do not invent text. Return JSON only: "
-        '{"players":["[D3AD] Dtsch","Blommle"]}. '
-        "If no readable player names are visible, return a JSON object with an empty players array. "
-        "No explanation or reasoning."
+        'Extract visible player names from the image. '
+        'Return only JSON in this format: {"players":["[D3AD] Dtsch","Blommle"]}. '
+        'Do not explain, analyze, repeat, or include any other text. '
+        'Finish immediately after the JSON.'
     )
     request_data = {
         "model": cfg.get("ollama", {}).get("model", "qwen3-vl:4b"),
@@ -1204,7 +1201,7 @@ def debug_ollama(cfg, image=None, crop_override=None):
         "keep_alive": cfg.get("ollama", {}).get("keep_alive", "30m"),
         "messages": [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": "List the complete visible player nameplates as JSON strings.",
+            {"role": "user", "content": "List the player names in this image as JSON.",
              "images": [base64.b64encode(png.tobytes()).decode("ascii")]}
         ],
         "options": {"temperature": 0, "num_predict": cfg.get("ollama", {}).get("num_predict", 2048)}

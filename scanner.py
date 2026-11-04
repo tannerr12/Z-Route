@@ -1187,22 +1187,34 @@ def debug_ollama(cfg, image=None, crop_override=None):
     ok, png = cv2.imencode(".png", crop)
     if not ok:
         raise RuntimeError("Could not encode screenshot")
+    system_prompt = (
+        "You are a visual data extraction engine for Z-Route world-map screenshots. "
+        "Identify only player nameplates, not map objects. "
+        "A nameplate has a visible player username; an optional guild tag may appear "
+        "in square brackets immediately before the username (for example [D3AD] PlayerName). "
+        "A nearby number is a player level only when clearly associated with that nameplate. "
+        "Players may have no guild. Preserve exact visible username spelling and capitalization. "
+        "Ignore usernames beginning with Commander2, resource nodes, mining camps, "
+        "buildings, map coordinates, UI labels, and unrelated numeric labels 1-99. "
+        "Do not infer text from context or invent obscured names. "
+        "Return only a JSON object with a players array. Each entry must have "
+        "username (string), guild (string or null), level (integer or null), "
+        "box ([x1,y1,x2,y2] in crop pixels or null if uncertain). "
+        "Use null for unknown values. No explanation, commentary, or reasoning."
+    )
     request_data = {
         "model": cfg.get("ollama", {}).get("model", "qwen3-vl:4b"),
         "stream": False,
         "think": False,
         "format": "json",
         "keep_alive": cfg.get("ollama", {}).get("keep_alive", "30m"),
-        "messages": [{
-            "role": "user",
-            "content": ("Read player nameplates in this Z Route map image. "
-                        Return JSON only, no explanation. Use a players array. Each player has "
-                        "guild (string or null), username (exact visible text), "
-                        "level (integer or null), and box [x1,y1,x2,y2] "
-                        relative to this image; use null if box is uncertain. Ignore incomplete names, "
-                        "UI labels, mining camps, and resource nodes. Numeric labels 1-99 are not player usernames. Do not guess."),
-            "images": [base64.b64encode(png.tobytes()).decode("ascii")]
-        }],
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user",
+             "content": ("Extract all clearly readable player nameplates from this Z-Route map crop. "
+                         "Return the JSON players array only; use null for uncertain fields."),
+             "images": [base64.b64encode(png.tobytes()).decode("ascii")]}
+        ],
         "options": {"temperature": 0, "num_predict": cfg.get("ollama", {}).get("num_predict", 2048)}
     }
     url = "http://127.0.0.1:11434/api/chat"

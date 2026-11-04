@@ -1234,6 +1234,14 @@ def debug_ollama(cfg, image=None, crop_override=None):
         ):
             players = [{"nameplate": k, "level": int(v) if str(v).isdigit() else None}
                        for k, v in parsed.items()]
+        elif isinstance(parsed, dict) and parsed and all(
+            isinstance(k, str) and isinstance(v, list) and len(v) == 1
+            and isinstance(v[0], int) and not isinstance(v[0], bool)
+            for k, v in parsed.items()
+        ):
+            # Qwen sometimes maps each nameplate to a one-element level array.
+            players = [{"nameplate": name, "level": level[0]}
+                       for name, level in parsed.items()]
         elif isinstance(parsed, dict) and len(parsed) == 1 and all(
             isinstance(k, str) and isinstance(v, list) and all(isinstance(n, str) for n in v)
             for k, v in parsed.items()

@@ -18,6 +18,7 @@ from data_miner.target_locator import ask_vision, locate_text_button
 from data_miner.open_rankings import open_rankings
 from data_miner.open_vs import open_vs
 from data_miner.startup import run_ai_startup
+from data_miner.weekly_rankings import select_this_week
 
 DAYS = ("MON", "TUE", "WED", "THUR", "FRI", "SAT")
 OUT = Path(__file__).resolve().parent / "output"
@@ -155,6 +156,7 @@ def mine_week(cfg, week_start):
     for day in DAYS:
         count, reason = mine_day(cfg, week_start, day)
         print(f"{day}: {count} unique ranks; {reason}")
+    print("Weekly tab selected:", select_this_week(cfg))
 
 
 if __name__ == "__main__":

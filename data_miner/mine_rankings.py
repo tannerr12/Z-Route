@@ -19,6 +19,7 @@ from data_miner.open_rankings import open_rankings
 from data_miner.open_vs import open_vs
 from data_miner.startup import run_ai_startup
 from data_miner.weekly_rankings import select_this_week
+from data_miner.back_to_competition import back_to_competition
 
 DAYS = ("MON", "TUE", "WED", "THUR", "FRI", "SAT")
 OUT = Path(__file__).resolve().parent / "output"
@@ -160,6 +161,7 @@ def mine_week(cfg, week_start):
     print("Weekly tab selected:", select_this_week(cfg))
     count, reason = mine_day(cfg, week_start, "WEEKLY")
     print(f"WEEKLY: {count} unique ranks; {reason}")
+    print("Returned to Alliance Competition:", back_to_competition(cfg))
 
 
 if __name__ == "__main__":

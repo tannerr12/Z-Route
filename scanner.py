@@ -1194,10 +1194,10 @@ def debug_ollama(cfg, image=None, crop_override=None):
         "format": "json",
         "keep_alive": cfg.get("ollama", {}).get("keep_alive", "30m"),
         "messages": [
-            {"role": "user", "content": "Which player names are visible?",
+            {"role": "user", "content": "Which player names are visible? List each name once. Maximum 20 names.",
              "images": [base64.b64encode(png.tobytes()).decode("ascii")]}
         ],
-        "options": {"temperature": 0, "num_predict": cfg.get("ollama", {}).get("num_predict", 2048)}
+        "options": {"temperature": 0, "num_predict": cfg.get("ollama", {}).get("num_predict", 512)}
     }
     url = "http://127.0.0.1:11434/api/chat"
     req = urllib.request.Request(url,
@@ -1238,8 +1238,24 @@ def debug_ollama(cfg, image=None, crop_override=None):
             f"Ollama failed to complete screenshot analysis (done={answer.get('done')!r}). "
             f"Diagnostic saved to {path}. No swipe performed."
         ) from exc
+    # Reject repetitive or oversized generations before filtering Commander2 names.
+    raw_names = []
+    for item in players:
+        if isinstance(item, str):
+            raw_names.append(item.strip())
+        elif isinstance(item, dict):
+            raw_names.append(str(item.get("nameplate") or item.get("username") or "").strip())
+    if len(raw_names) > 25 or (raw_names and len(raw_names) >= 8
+                               and len(set(raw_names)) < len(raw_names) / 2):
+        folder = scan_diagnostic_folder(cfg)
+        stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f")
+        path = folder / f"ollama_invalid_{stamp}.json"
+        path.write_text(json.dumps({"response": answer, "reason": "repetitive player list"},
+                                   indent=2, ensure_ascii=False), encoding="utf-8")
+        raise RuntimeError(f"Ollama returned a repetitive player list. Diagnostic saved to {path}")
     # Split the optional [guild] prefix deterministically in Python.
     normalized = []
+    seen_names = set()
     for item in players:
         if isinstance(item, str):
             raw_name = item.strip()
@@ -1254,6 +1270,10 @@ def debug_ollama(cfg, image=None, crop_override=None):
         username = match.group(2).strip() if match else raw_name
         if not valid_scanned_username(username) or username.casefold().startswith("commander2"):
             continue
+        identity = (guild or "", username.casefold())
+        if identity in seen_names:
+            continue
+        seen_names.add(identity)
         normalized.append({"username": username, "guild": guild, "level": None, "box": None})
     players = normalized
     print("Ollama raw player candidates:", len(players))

@@ -92,7 +92,32 @@ def dismiss_promotions(cfg, max_attempts=12, wait_seconds=1.5):
     return dismissed
 
 
+def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75):
+    """Use Ollama to decide each action; fail closed on uncertain screens."""
+    from data_miner.vision import classify_screen
+
+    actions = 0
+    while actions < max_actions:
+        image = screenshot(cfg)
+        screen, confidence = classify_screen(cfg, image)
+        print(f"Screen: {screen}, confidence: {confidence:.2f}")
+        if confidence < confidence_threshold or screen == "unknown":
+            raise RuntimeError("Uncertain screen: no tap performed")
+        if screen == "game":
+            return actions
+        if screen == "login_warning":
+            if not popup_visible(image):
+                raise RuntimeError("AI login classification not confirmed by OCR")
+            tap_scaled(cfg, image, CONFIRM_CENTER, REFERENCE_SIZE)
+        elif screen == "promotion":
+            if not promo_close_visible(image):
+                raise RuntimeError("AI promotion classification not confirmed by X detector")
+            tap_scaled(cfg, image, PROMO_CLOSE_CENTER, PROMO_REFERENCE_SIZE)
+        actions += 1
+        time.sleep(2)
+    raise TimeoutError("Startup exceeded max_actions; stopped safely")
+
+
 if __name__ == "__main__":
     config = load_config()
-    print("Login popup dismissed:", dismiss_login_popup(config))
-    print("Promotional popups dismissed:", dismiss_promotions(config))
+    print("Startup actions:", run_ai_startup(config))

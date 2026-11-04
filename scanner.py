@@ -1188,17 +1188,13 @@ def debug_ollama(cfg, image=None, crop_override=None):
     if not ok:
         raise RuntimeError("Could not encode screenshot")
     system_prompt = (
-        "You are a visual data extraction engine for Z-Route world-map screenshots. "
-        "Identify only player nameplates, not map objects. "
-        "A nameplate has a visible player username; an optional guild tag may appear "
-        "in square brackets immediately before the username (for example [D3AD] PlayerName). "
-        "A nearby number is a player level only when clearly associated with that nameplate. "
-        "Players may have no guild. Preserve exact visible username spelling and capitalization. "
-        "Do not infer text from context or invent obscured names. "
-        "Return only a JSON object with a players array. Each entry must have "
-        "username (string), guild (string or null), level (integer or null), "
-        "box ([x1,y1,x2,y2] in crop pixels or null if uncertain). "
-        "Use null for unknown values. No explanation, commentary, or reasoning."
+        "Read the visible player nameplates in this Z-Route world map screenshot. "
+        "Copy each complete nameplate exactly as shown, including any leading [guild] tag. "
+        "Do not split names, identify levels, or estimate bounding boxes. "
+        "Do not invent text. Return JSON only: "
+        '{"players":["[D3AD] Dtsch","Blommle"]}. '
+        "If no readable player names are visible, return {\\\"players\\\":[]}. "
+        "No explanation or reasoning."
     )
     request_data = {
         "model": cfg.get("ollama", {}).get("model", "qwen3-vl:4b"),
@@ -1208,9 +1204,7 @@ def debug_ollama(cfg, image=None, crop_override=None):
         "keep_alive": cfg.get("ollama", {}).get("keep_alive", "30m"),
         "messages": [
             {"role": "system", "content": system_prompt},
-            {"role": "user",
-             "content": ("Extract all clearly readable player nameplates from this Z-Route map crop. "
-                         "Return the JSON players array only; use null for uncertain fields."),
+            {"role": "user", "content": "List the complete visible player nameplates as JSON strings.",
              "images": [base64.b64encode(png.tobytes()).decode("ascii")]}
         ],
         "options": {"temperature": 0, "num_predict": cfg.get("ollama", {}).get("num_predict", 2048)}
@@ -1250,21 +1244,24 @@ def debug_ollama(cfg, image=None, crop_override=None):
             f"Ollama failed to complete screenshot analysis (done={answer.get('done')!r}). "
             f"Diagnostic saved to {path}. No swipe performed."
         ) from exc
-    # Model bounding boxes must fit the actual crop dimensions.
-    image_width, image_height = crop.shape[1], crop.shape[0]
-    for player in players:
-        if not isinstance(player, dict):
+    # Split the optional [guild] prefix deterministically in Python.
+    normalized = []
+    for item in players:
+        if isinstance(item, str):
+            raw_name = item.strip()
+        elif isinstance(item, dict):
+            raw_name = str(item.get("nameplate") or item.get("username") or "").strip()
+            if item.get("guild") and not raw_name.startswith("["):
+                raw_name = f"[{item['guild']}] {raw_name}"
+        else:
             continue
-        box = player.get("box")
-        if not (isinstance(box, list) and len(box) == 4
-                and all(isinstance(v, int) and not isinstance(v, bool) for v in box)
-                and 0 <= box[0] < box[2] <= image_width
-                and 0 <= box[1] < box[3] <= image_height):
-            player["box"] = None
-    before_filter = len(players)
-    players = [p for p in players if isinstance(p, dict) and valid_scanned_username(p.get("username")) and not is_ignored_commander(p)]
-    if len(players) != before_filter:
-        print(f"Ignored {before_filter - len(players)} default Commander2 usernames.")
+        match = re.match(r"^\\[([^\\]\\r\\n]{1,12})\\]\\s*(.+)$", raw_name)
+        guild = match.group(1).strip() if match else None
+        username = match.group(2).strip() if match else raw_name
+        if not valid_scanned_username(username) or username.casefold().startswith("commander2"):
+            continue
+        normalized.append({"username": username, "guild": guild, "level": None, "box": None})
+    players = normalized
     print("Ollama raw player candidates:", len(players))
     for player in players:
         if not isinstance(player, dict):

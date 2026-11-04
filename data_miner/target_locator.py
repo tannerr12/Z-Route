@@ -50,6 +50,8 @@ def locate_text_button(cfg, image, target, context, region="any"):
     x,y = round((x1+x2)/2),round((y1+y2)/2)
     if region == "bottom" and y < h*.7:
         raise RuntimeError("Target not in expected bottom UI region")
+    if region == "top" and y > h*.25:
+        raise RuntimeError("Target not in expected top UI region")
     return x,y
 
 

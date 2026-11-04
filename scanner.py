@@ -1642,7 +1642,13 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
                 save_players()
                 print(f"CSV checkpoint: {len(unique_players)} unique usernames -> {export_path}")
 
-            reason, vertical_swipes = scan_column(cfg, max_swipes=max_swipes, direction=direction,
+            # Fixed 60-swipe column height for serpentine navigation.
+            column_swipe_limit = min(max_swipes, 60)
+            if initial_step > column_swipe_limit:
+                raise RuntimeError(
+                    f"Checkpoint step {initial_step} exceeds fixed column limit "
+                    f"{column_swipe_limit}. Inspect BlueStacks before resuming.")
+            reason, vertical_swipes = scan_column(cfg, max_swipes=column_swipe_limit, direction=direction,
                                                   verify_after=boundary_after,
                                                   on_player=record_player,
                                                   start_step=initial_step, swipe_ms=swipe_ms,
@@ -1650,6 +1656,10 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
                                                   vertical_scale=vertical_scale,
                                                   on_progress=lambda step, phase: save_state(
                                                       column=column, step=step, phase=phase))
+            if reason == "swipe limit reached" and vertical_swipes == column_swipe_limit:
+                print(f"Column {column + 1}: reached {column_swipe_limit} vertical swipes; "
+                      "turning horizontally without vertical movement verification.")
+                reason = "fixed column limit reached"
             # A short column may be real, but never turn early in a large-map run.
             # This prevents an isolated stationary/low-texture frame from triggering
             # a horizontal transition before the configured search horizon.
@@ -1661,7 +1671,7 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
                 print(f"Stopped after {vertical_swipes} swipes; horizontal transitions "
                       f"require at least {boundary_after}. No turn attempted.")
                 break
-            if reason != "stationary map / possible boundary":
+            if reason not in ("stationary map / possible boundary", "fixed column limit reached"):
                 termination = "vertical endpoint not verified"
                 print("No verified stationary endpoint; horizontal transition cancelled.")
                 break

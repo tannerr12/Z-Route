@@ -1539,6 +1539,77 @@ def process_capture_ai(cfg, path, unique_players, save_players):
         return "failed"
 
 
+def publish_scan_csv(folder, threshold=90.0, branch="main"):
+    """Publish a sufficiently analyzed session without merging scanner code."""
+    import shutil
+    import tempfile
+
+    captures = list(folder.glob("capture_col_*_view_*.png"))
+    completed = sum(p.with_suffix(".players.json").exists() for p in captures)
+    rate = 100 * completed / len(captures) if captures else 0.0
+    if not captures or rate < threshold:
+        print(f"GitHub publish skipped: {rate:.1f}% complete (requires {threshold:.1f}%).")
+        return False
+    stamp = folder.name.removeprefix("session_")
+    source = ROOT / "exports" / "players" / f"serpentine_players_{stamp}.csv"
+    if not source.is_file():
+        print(f"GitHub publish skipped: missing {source}")
+        return False
+    with source.open(newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle)
+        if not reader.fieldnames or "username" not in reader.fieldnames:
+            print("GitHub publish skipped: invalid player CSV.")
+            return False
+        rows = list(reader)
+    if not rows:
+        print("GitHub publish skipped: no players in CSV.")
+        return False
+    metadata = {
+        "session": folder.name,
+        "completed": completed,
+        "total": len(captures),
+        "completion_percent": round(rate, 2),
+        "player_count": len(rows),
+        "published_at": datetime.now(timezone.utc).isoformat(),
+    }
+    # Use a temporary worktree so the scanner's dev branch is never merged.
+    # Git uses the user's existing credentials; no token is stored in code.
+    temp = Path(tempfile.mkdtemp(prefix="zroute-publish-"))
+    worktree = temp / "checkout"
+    attached = False
+    try:
+        subprocess.run(["git", "-C", str(ROOT), "fetch", "origin", branch], check=True)
+        subprocess.run(["git", "-C", str(ROOT), "worktree", "add", "--detach",
+                        str(worktree), f"origin/{branch}"], check=True)
+        attached = True
+        destination = worktree / "data" / "map-players.csv"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+        (destination.parent / "map-players-meta.json").write_text(
+            json.dumps(metadata, indent=2) + "\\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(worktree), "add",
+                        "data/map-players.csv", "data/map-players-meta.json"], check=True)
+        changed = subprocess.run(["git", "-C", str(worktree), "diff", "--cached",
+                                  "--quiet"]).returncode
+        if changed == 0:
+            print("GitHub publish: data unchanged.")
+            return True
+        subprocess.run(["git", "-C", str(worktree), "commit", "-m",
+                        f"Update map player scan ({rate:.1f}% analyzed)"], check=True)
+        subprocess.run(["git", "-C", str(worktree), "push", "origin",
+                        f"HEAD:refs/heads/{branch}"], check=True)
+        print(f"GitHub publish successful: {len(rows)} players, {rate:.1f}% analyzed on {branch}.")
+        return True
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(f"GitHub publish failed; local CSV preserved: {exc}")
+        return False
+    finally:
+        if attached:
+            subprocess.run(["git", "-C", str(ROOT), "worktree", "remove",
+                            "--force", str(worktree)], check=False)
+        shutil.rmtree(temp, ignore_errors=True)
+
+
 def capture_ai_report(folder):
     captures = list(folder.glob("capture_col_*_view_*.png"))
     complete = sum(p.with_suffix(".players.json").exists() for p in captures)
@@ -1847,6 +1918,7 @@ def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizon
         capture_queue.join()
         worker.join()
         capture_ai_report(session_folder)
+        publish_scan_csv(session_folder)
         print(f"Navigation checkpoint: {checkpoint_path} (column {state['column'] + 1}, "
               f"step {state['step']}, {state['direction']}, phase={state['phase']})")
         # Recover only this session's screenshots, retaining their original grid
@@ -1958,13 +2030,15 @@ def reprocess_failed(cfg, limit=None, all_sessions=False):
             cfg.pop("_scan_session_folder", None)
     for folder in folders:
         capture_ai_report(folder)
+    if not all_sessions and folders:
+        publish_scan_csv(folders[0])
     print("Offline retry finished; no map movement or database writes.")
 
 
 def main():
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama", "calibrate-movement", "benchmark-capture", "scan-column", "scan-serpentine", "reprocess-failed"):
+    for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama", "calibrate-movement", "benchmark-capture", "scan-column", "scan-serpentine", "reprocess-failed", "publish-scan"):
         commands.add_parser(name)
     commands.choices["benchmark-capture"].add_argument("--swipes", type=int, default=110)
     commands.choices["benchmark-capture"].add_argument("--settle", type=float, default=0.2)
@@ -1999,10 +2073,18 @@ def main():
     commands.choices["reprocess-failed"].add_argument(
         "--all-sessions", action="store_true",
         help="Retry all saved sessions instead of only the latest session.")
+    commands.choices["publish-scan"].add_argument("--threshold", type=float, default=90.0)
     query = commands.add_parser("search")
     query.add_argument("username")
     args = parser.parse_args()
-    if args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama", "calibrate-movement", "benchmark-capture", "scan-column", "scan-serpentine", "reprocess-failed"):
+    if args.command == "publish-scan":
+        folders = sorted((p for p in (ROOT / "screenshots").glob("session_*") if p.is_dir()), reverse=True)
+        if not folders:
+            parser.error("No saved screenshot sessions.")
+        if not 0 < args.threshold <= 100:
+            parser.error("--threshold must be between 0 and 100")
+        publish_scan_csv(folders[0], threshold=args.threshold)
+    elif args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama", "calibrate-movement", "benchmark-capture", "scan-column", "scan-serpentine", "reprocess-failed"):
         cfg = load_config()
         if args.command == "reprocess-failed":
             if args.limit is not None and args.limit < 1:

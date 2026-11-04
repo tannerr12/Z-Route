@@ -103,8 +103,10 @@ def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75):
         print(f"Screen: {screen}, confidence: {confidence:.2f}")
         if confidence < confidence_threshold or screen == "unknown":
             raise RuntimeError("Uncertain screen: no tap performed")
-        if screen == "game":
+        if screen == "city":
             return actions
+        if screen == "other":
+            raise RuntimeError("Unexpected game screen; no tap performed")
         if screen == "login_warning":
             if not popup_visible(image):
                 raise RuntimeError("AI login classification not confirmed by OCR")

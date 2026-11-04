@@ -1193,7 +1193,7 @@ def debug_ollama(cfg, image=None, crop_override=None):
         "Do not split names, identify levels, or estimate bounding boxes. "
         "Do not invent text. Return JSON only: "
         '{"players":["[D3AD] Dtsch","Blommle"]}. '
-        "If no readable player names are visible, return {\\\"players\\\":[]}. "
+        "If no readable player names are visible, return a JSON object with an empty players array. "
         "No explanation or reasoning."
     )
     request_data = {

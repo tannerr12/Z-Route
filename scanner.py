@@ -1628,9 +1628,48 @@ def publish_scan_csv(folder, threshold=90.0, branch="main"):
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, destination)
         (destination.parent / "map-players-meta.json").write_text(
-            json.dumps(metadata, indent=2) + "\\n", encoding="utf-8")
+            json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+
+        # Preserve each published scan as an immutable historical snapshot.
+        history = destination.parent / "player_history"
+        history.mkdir(parents=True, exist_ok=True)
+        snapshot = history / f"{folder.name}.csv"
+        if snapshot.exists():
+            with snapshot.open("rb") as old, source.open("rb") as new:
+                if old.read() != new.read():
+                    print("GitHub publish skipped: historical snapshot already exists "
+                          "with different content; refusing to overwrite history.")
+                    return False
+        else:
+            shutil.copyfile(source, snapshot)
+
+        # Guild counts are observations, not proof of membership departure.
+        guild_counts = {}
+        for row in rows:
+            guild = (row.get("guild") or "").strip() or "(unknown)"
+            guild_counts[guild] = guild_counts.get(guild, 0) + 1
+        guild_summary = history / f"{folder.name}.guilds.json"
+        summary = {"session": folder.name, "published_at": metadata["published_at"],
+                   "guilds": [{"guild": tag, "observed_players": count}
+                              for tag, count in sorted(guild_counts.items())]}
+        if not guild_summary.exists():
+            guild_summary.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+        manifest_path = history / "index.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else []
+            if not isinstance(manifest, list):
+                raise ValueError("history index is not an array")
+        except (OSError, ValueError) as exc:
+            print(f"GitHub publish skipped: invalid historical index: {exc}")
+            return False
+        if not any(item.get("session") == folder.name for item in manifest):
+            manifest.append({**metadata, "csv": f"data/player_history/{folder.name}.csv",
+                             "guild_summary": f"data/player_history/{folder.name}.guilds.json"})
+            manifest.sort(key=lambda item: item["session"])
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         subprocess.run(["git", "-C", str(worktree), "add",
-                        "data/players.csv", "data/map-players-meta.json"], check=True)
+                        "data/players.csv", "data/map-players-meta.json",
+                        "data/player_history"], check=True)
         changed = subprocess.run(["git", "-C", str(worktree), "diff", "--cached",
                                   "--quiet"]).returncode
         if changed == 0:

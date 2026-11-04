@@ -3,17 +3,23 @@
   "bots": {
     "donations": {
       "enabled": true,
-      "day_of_week": "sun",
-      "hour": 23,
+      "day_of_week": "mon",
+      "hour": 1,
       "minute": 0,
-      "command": null
+      "command": null,
+      "game_day_of_week": "sun",
+      "game_hour": 23,
+      "game_minute": 0
     },
     "vs": {
       "enabled": true,
-      "day_of_week": "sat",
-      "hour": 23,
+      "day_of_week": "sun",
+      "hour": 1,
       "minute": 0,
-      "command": null
+      "command": null,
+      "game_day_of_week": "sat",
+      "game_hour": 23,
+      "game_minute": 0
     },
     "player_activity": {
       "enabled": true,
@@ -30,5 +36,6 @@
       "minute": 0,
       "command": null
     }
-  }
+  },
+  "game_timezone": "UTC-02:00"
 }

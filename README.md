@@ -2,7 +2,7 @@
 
 Experimental Z-Route tools for scanning the game through BlueStacks, publishing a searchable player map, and analyzing alliance donation and ranking history.
 
-**Live dashboards:** [Player Locator](https://tannerr12.github.io/Z-Route/) · [Donation Analytics](https://tannerr12.github.io/Z-Route/donations.html) · [VS Comparison](https://tannerr12.github.io/Z-Route/vs.html)
+**Live dashboards:** [Player Locator](https://tannerr12.github.io/Z-Route/) · [Donation Analytics](https://tannerr12.github.io/Z-Route/donations.html) · [VS Comparison](https://tannerr12.github.io/Z-Route/vs.html) · [Player Activity](https://tannerr12.github.io/Z-Route/activity.html)
 
 > The website is publicly accessible through GitHub Pages. The BlueStacks scanner and AI Data Miner are experimental and have not been fully validated end-to-end. Donation records currently include **synthetic demo data** marked `DEMO`; do not interpret them as real guild results.
 
@@ -125,3 +125,12 @@ Open [VS Member Analytics](https://tannerr12.github.io/Z-Route/vs.html) to inspe
 The dashboard shows recorded guild totals and weekly change, daily guild scores, daily player participation, and historical guild trends. Its main table lists **each player's daily VS points**, weekly total, previous-week score, week-over-week change, four-week trend, low-score flag, and contribution share. Filter by name, low score, declining trend, or incomplete daily records; sort by score, decline, or name. Member overview metrics include median score, mean score, number of declining players, and top-five contribution share. Select a player to view their history, personal best, four-week average, days recorded, and weekly rank. Adjust the low-score threshold to fit guild expectations.
 
 **Caveats:** The sums are captured leaderboard points rather than verified official guild scores. Missing records are not zero, partial scans can understate scores, and current-week low-score flags are provisional. The initial D3AD and NOVA fixtures are synthetic DEMO data. Publishing the miner's local VS output to per-guild CSVs is not yet automated.
+
+
+## Player Activity dashboard
+
+Open [Player Activity](https://tannerr12.github.io/Z-Route/activity.html) for two CSV-backed views: attacks and alliance Join/Leave events. Source files are `data/player_activity/attacks.csv` and `data/player_activity/guild_changes.csv`. The page automatically loads committed CSVs, provides player/guild/date filtering, rankings, daily event counts, a searchable table, and filtered CSV export. The starting CSVs contain headers only; the ADB log-scanning bot has not yet been implemented and the site does not capture events itself.
+
+Attack CSV columns: `timestamp,attacker,attacker_guild,attacker_server,attacked,attacked_guild,destination_server,destination_x,destination_y,outcome,scanned_at`. The future bot should record only attacks where the victim has a guild tag, the victim name does not start with `Commander2`, and the destination server is `#125`. Multiple distinct attacks between the same players must be kept; deduplicate on an event identifier when available, or on event time and participants/coordinates, noting identical-time collisions are possible.
+
+Membership CSV columns: `timestamp,player,guild,event,scanned_at`, with event values such as `joined`, `left`, and `removed`. Entries represent activity in the scanned alliance; they do not prove a player transferred directly between two named guilds. Event times should retain the in-game clock as displayed unless the scanner verifies its timezone.

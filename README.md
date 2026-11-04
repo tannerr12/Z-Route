@@ -2,7 +2,7 @@
 
 Experimental Z-Route tools for scanning the game through BlueStacks, publishing a searchable player map, and analyzing alliance donation and ranking history.
 
-**Live dashboards:** [Player Locator](https://tannerr12.github.io/Z-Route/) · [Donation Analytics](https://tannerr12.github.io/Z-Route/donations.html)
+**Live dashboards:** [Player Locator](https://tannerr12.github.io/Z-Route/) · [Donation Analytics](https://tannerr12.github.io/Z-Route/donations.html) · [VS Comparison](https://tannerr12.github.io/Z-Route/vs.html)
 
 > The website is publicly accessible through GitHub Pages. The BlueStacks scanner and AI Data Miner are experimental and have not been fully validated end-to-end. Donation records currently include **synthetic demo data** marked `DEMO`; do not interpret them as real guild results.
 
@@ -13,7 +13,7 @@ Experimental Z-Route tools for scanning the game through BlueStacks, publishing 
 | Player Locator | Search a swipe-grid map of players; hover for names and distinguish guilds by color | `index.html` |
 | Map scanner | Capture BlueStacks screenshots and collect player observations using ADB and OCR | `scanner.py` |
 | Data Miner | Navigate game ranking screens and extract VS rankings and alliance donation rows with a local vision model | `data_miner/mine_rankings.py` |
-| Donation Analytics | Load guild-specific CSV histories automatically; compare weeks, search players, inspect donation trends and contribution shares | `donations.html` |
+| VS Comparison | Compare two guilds by day and week using published VS ranking CSVs; show recorded scores, differences, daily winners and history | `vs.html` |\n| Donation Analytics | Load guild-specific CSV histories automatically; compare weeks, search players, inspect donation trends and contribution shares | `donations.html` |
 
 ## Repository data layout
 
@@ -117,3 +117,7 @@ The scanner and miner depend on visible game screens, OCR/vision accuracy, scrol
 - Automate reviewed CSV publication to GitHub while preventing demo records from mixing with real data.
 - Track stable player identities across renames and guild transfers.
 - Add extraction completeness and data-quality indicators for each weekly leaderboard.
+
+## VS Comparison dashboard
+
+Open [`vs.html`](https://tannerr12.github.io/Z-Route/vs.html) to compare guilds using `data/vs/guilds.json` and each guild's `data/vs/<GUILD>/rankings.csv`. CSV columns are `week_start,day,rank,username,alliance,points,captured_at,evidence`. Day values are `MON` through `SAT`; each guild's records are grouped by week and day. The dashboard sums unique player rows per day, shows daily winners, recorded weekly totals, score differences, and weekly history. **These sums are captured leaderboard points, not verified official alliance VS scores.** Missing days remain missing, and incomplete scans can understate scores. Initial D3AD and NOVA files contain **synthetic DEMO rows** for testing. The miner currently writes a local combined rankings CSV; publishing separate guild files is not yet automated.

@@ -22,6 +22,7 @@ from data_miner.weekly_rankings import select_this_week
 from data_miner.back_to_competition import back_to_competition, back_to_city
 from data_miner.open_alliance import open_alliance
 from data_miner.open_member_rankings import open_member_rankings
+from data_miner.select_donations import select_donate_this_week
 
 DAYS = ("MON", "TUE", "WED", "THUR", "FRI", "SAT")
 OUT = Path(__file__).resolve().parent / "output"
@@ -167,6 +168,7 @@ def mine_week(cfg, week_start):
     print("Returned to town:", back_to_city(cfg))
     print("Alliance opened:", open_alliance(cfg))
     print("Member Rankings opened:", open_member_rankings(cfg))
+    print("Donate / This Week selected:", select_donate_this_week(cfg))
 
 
 if __name__ == "__main__":

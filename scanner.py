@@ -1169,7 +1169,7 @@ def is_ignored_commander(player):
     if not isinstance(name, str):
         return False
     normalized = name.strip()
-    normalized = re.sub(r"^\\[[^\\]]{1,12}\\]\\s*", "", normalized)
+    normalized = re.sub(r"^\[[^\]\r\n]{1,12}\]\s*", "", normalized)
     normalized = re.sub(r"^[A-Za-z0-9]{2,8}[!|:]\\s+", "", normalized)
     return normalized.casefold().startswith("commander2")
 

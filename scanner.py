@@ -1546,9 +1546,28 @@ def publish_scan_csv(folder, threshold=90.0, branch="main"):
 
     captures = list(folder.glob("capture_col_*_view_*.png"))
     completed = sum(p.with_suffix(".players.json").exists() for p in captures)
+    failed = sum(p.with_suffix(".failed.json").exists() and
+                 not p.with_suffix(".players.json").exists() for p in captures)
+    pending = len(captures) - completed - failed
     rate = 100 * completed / len(captures) if captures else 0.0
-    if not captures or rate < threshold:
-        print(f"GitHub publish skipped: {rate:.1f}% complete (requires {threshold:.1f}%).")
+    checkpoint = ROOT / "exports" / "players" / "serpentine_checkpoint.json"
+    if not checkpoint.exists():
+        print("GitHub publish skipped: scan completion checkpoint missing.")
+        return False
+    try:
+        state = json.loads(checkpoint.read_text(encoding="utf-8"))
+    except (ValueError, OSError) as exc:
+        print(f"GitHub publish skipped: unreadable scan checkpoint: {exc}")
+        return False
+    if state.get("phase") != "done" or (ROOT / state.get("session_relative", "")).resolve() != folder.resolve():
+        print("GitHub publish skipped: this map capture session has not finished.")
+        return False
+    if not captures or pending:
+        print(f"GitHub publish skipped: {pending} screenshots have not been processed yet.")
+        return False
+    if rate < threshold:
+        print(f"GitHub publish skipped: {failed}/{len(captures)} failed "
+              f"({100-rate:.1f}%); maximum allowed failure rate is {100-threshold:.1f}%.")
         return False
     stamp = folder.name.removeprefix("session_")
     source = ROOT / "exports" / "players" / f"serpentine_players_{stamp}.csv"
@@ -1918,7 +1937,6 @@ def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizon
         capture_queue.join()
         worker.join()
         capture_ai_report(session_folder)
-        publish_scan_csv(session_folder)
         print(f"Navigation checkpoint: {checkpoint_path} (column {state['column'] + 1}, "
               f"step {state['step']}, {state['direction']}, phase={state['phase']})")
         # Recover only this session's screenshots, retaining their original grid
@@ -1984,6 +2002,7 @@ def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizon
             cfg.pop("_scan_session_folder", None)
     if termination == "column limit reached" and column == columns - 1:
         save_state(phase="done")
+        publish_scan_csv(session_folder)
     print(f"Serpentine diagnostic finished: {successful_horizontal_shifts} verified "
           f"horizontal shifts; reason: {termination}.")
     print("No database writes or base clicks.")

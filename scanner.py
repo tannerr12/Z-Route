@@ -1083,6 +1083,51 @@ def calibrate_movement(cfg):
     print("Calibration only: one swipe, no base clicks or database writes.")
 
 
+def benchmark_screenshot(cfg, samples=10):
+    """Compare PNG and raw ADB framebuffer capture without moving the map."""
+    if not 1 <= samples <= 100:
+        raise ValueError("samples must be between 1 and 100")
+    import struct
+    results = {}
+    reference = None
+    for mode in ("png", "raw"):
+        timings = []
+        for i in range(samples):
+            started = time.perf_counter()
+            if mode == "png":
+                payload = adb(cfg, "exec-out", "screencap", "-p")
+                image = cv2.imdecode(np.frombuffer(payload, np.uint8), cv2.IMREAD_COLOR)
+            else:
+                payload = adb(cfg, "exec-out", "screencap")
+                if len(payload) < 12:
+                    raise RuntimeError("Raw framebuffer header is incomplete")
+                width, height, pixel_format = struct.unpack_from("<III", payload)
+                if not (0 < width <= 8192 and 0 < height <= 8192):
+                    raise RuntimeError(f"Unexpected raw dimensions: {width}x{height}")
+                channels = {1: 4, 2: 4, 3: 3}.get(pixel_format)
+                if channels is None:
+                    raise RuntimeError(f"Unsupported Android pixel format: {pixel_format}")
+                expected = width * height * channels
+                offset = len(payload) - expected
+                if offset not in (12, 16):
+                    raise RuntimeError(f"Unexpected framebuffer payload length/header: {len(payload)}/{offset}")
+                pixels = np.frombuffer(payload, dtype=np.uint8, count=expected, offset=offset)
+                pixels = pixels.reshape((height, width, channels))
+                image = cv2.cvtColor(pixels, cv2.COLOR_RGBA2BGR if channels == 4 else cv2.COLOR_RGB2BGR)
+            elapsed = time.perf_counter() - started
+            if image is None:
+                raise RuntimeError(f"{mode} screenshot decode failed")
+            if reference is None:
+                reference = image.shape
+            if image.shape != reference:
+                raise RuntimeError(f"Screenshot dimensions differ: {image.shape} vs {reference}")
+            timings.append(elapsed)
+            print(f"{mode.upper()} {i+1}/{samples}: {elapsed:.3f}s, {len(payload)/1048576:.2f} MiB")
+        results[mode] = sum(timings) / len(timings)
+    print(f"Average PNG: {results['png']:.3f}s; raw: {results['raw']:.3f}s")
+    print("Benchmark only: production screenshot capture is unchanged.")
+
+
 def benchmark_capture(cfg, swipes=110, settle=0.2, swipe_ms=250):
     """Measure capture throughput and map displacement; no Ollama or DB writes."""
     if not 1 <= swipes <= 500:
@@ -2120,8 +2165,9 @@ def reprocess_failed(cfg, limit=None, all_sessions=False):
 def main():
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama", "calibrate-movement", "benchmark-capture", "scan-column", "scan-serpentine", "reprocess-failed", "publish-scan"):
+    for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama", "calibrate-movement", "benchmark-capture", "benchmark-screenshot", "scan-column", "scan-serpentine", "reprocess-failed", "publish-scan"):
         commands.add_parser(name)
+    commands.choices["benchmark-screenshot"].add_argument("--samples", type=int, default=10)
     commands.choices["benchmark-capture"].add_argument("--swipes", type=int, default=110)
     commands.choices["benchmark-capture"].add_argument("--settle", type=float, default=0.2)
     commands.choices["benchmark-capture"].add_argument("--swipe-ms", type=int, default=250)
@@ -2166,7 +2212,7 @@ def main():
         if not 0 < args.threshold <= 100:
             parser.error("--threshold must be between 0 and 100")
         publish_scan_csv(folders[0], threshold=args.threshold)
-    elif args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama", "calibrate-movement", "benchmark-capture", "scan-column", "scan-serpentine", "reprocess-failed"):
+    elif args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama", "calibrate-movement", "benchmark-capture", "benchmark-screenshot", "scan-column", "scan-serpentine", "reprocess-failed"):
         cfg = load_config()
         if args.command == "reprocess-failed":
             if args.limit is not None and args.limit < 1:
@@ -2183,6 +2229,9 @@ def main():
         elif args.command == "scan-column":
             connect(cfg)
             scan_column(cfg, max_swipes=args.max_swipes)
+        elif args.command == "benchmark-screenshot":
+            connect(cfg)
+            benchmark_screenshot(cfg, samples=args.samples)
         elif args.command == "benchmark-capture":
             connect(cfg)
             benchmark_capture(cfg, swipes=args.swipes, settle=args.settle, swipe_ms=args.swipe_ms)

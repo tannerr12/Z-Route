@@ -26,5 +26,8 @@
     "rows": 2,
     "columns": 2,
     "overlap": 0.2
+  },
+  "ollama": {
+    "model": "qwen3-vl:4b"
   }
 }

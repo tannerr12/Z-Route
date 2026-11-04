@@ -1471,7 +1471,7 @@ def capture_ai_report(folder):
           f"{failed} failed, {pending} pending; success rate {rate:.1f}%.")
 
 
-def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizontal_after=110, resume=False, swipe_ms=100, settle=0.2, vertical_scale=1.0, horizontal_scale=1.0, profile=False):
+def scan_serpentine(cfg, max_swipes=150, columns=170, boundary_after=62, horizontal_after=160, resume=False, swipe_ms=100, settle=0.2, vertical_scale=1.0, horizontal_scale=1.0, profile=False):
     """Read-only bounded serpentine scan with one terminal horizontal edge."""
     if not 2 <= columns <= 500:
         raise ValueError("columns must be between 2 and 500")
@@ -1479,8 +1479,8 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
         raise ValueError("max_swipes must be between 1 and 500")
     if not 1 <= boundary_after <= max_swipes:
         raise ValueError("boundary_after must be between 1 and max_swipes")
-    if not 0 <= horizontal_after < columns:
-        raise ValueError("horizontal_after must be between 0 and columns - 1")
+    if not 0 <= horizontal_after <= 500:
+        raise ValueError("horizontal_after must be between 0 and 500")
     if not 100 <= swipe_ms <= 1000 or not 0 <= settle <= 3:
         raise ValueError("Invalid swipe timing")
     if not 1.0 <= vertical_scale <= 1.2 or not 1.0 <= horizontal_scale <= 1.2:
@@ -1505,8 +1505,15 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
         # identical swipe geometry, so old runs remain resumable.
         previous_settings.setdefault("vertical_scale", 1.0)
         previous_settings.setdefault("horizontal_scale", 1.0)
-        if previous_settings != settings:
-            raise RuntimeError("Scan settings differ from checkpoint; use the original settings.")
+        # Verification timing can be raised without changing swipe geometry.
+        geometry_keys = ("max_swipes", "columns", "swipe_ms", "settle",
+                         "vertical_scale", "horizontal_scale")
+        if any(previous_settings.get(key) != settings.get(key) for key in geometry_keys):
+            raise RuntimeError("Scan geometry differs from checkpoint; use the original settings.")
+        boundary_after = max(boundary_after, previous_settings.get("boundary_after", 0))
+        horizontal_after = max(horizontal_after, previous_settings.get("horizontal_after", 0))
+        print(f"Movement verification: vertical after {boundary_after} swipes per column; "
+              f"horizontal after {horizontal_after} shifts.")
         if state.get("phase") == "connection_lost":
             raise RuntimeError("Game connection was lost. Reconnecting changes the map position; "
                                "automatic --continue is unsafe until repositioning is implemented. "
@@ -1880,12 +1887,12 @@ def main():
         "--boundary-after", type=int, default=62,
         help="Skip vertical movement checks for this many swipes per column (default 62).")
     commands.choices["scan-serpentine"].add_argument(
-        "--columns", type=int, default=150,
-        help="Maximum columns to scan (2-500; default 150)."
+        "--columns", type=int, default=170,
+        help="Maximum columns to scan (2-500; default 170)."
     )
     commands.choices["scan-serpentine"].add_argument(
-        "--horizontal-after", type=int, default=110,
-        help="Skip verification of the first N horizontal shifts (default 110).")
+        "--horizontal-after", type=int, default=160,
+        help="Skip verification of the first N horizontal shifts (default 160).")
     commands.choices["reprocess-failed"].add_argument(
         "--limit", type=int, default=None,
         help="Maximum number of pending screenshots to retry.")

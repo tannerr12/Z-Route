@@ -20,6 +20,7 @@ from data_miner.open_vs import open_vs
 from data_miner.startup import run_ai_startup
 from data_miner.weekly_rankings import select_this_week
 from data_miner.back_to_competition import back_to_competition, back_to_city
+from data_miner.open_alliance import open_alliance
 
 DAYS = ("MON", "TUE", "WED", "THUR", "FRI", "SAT")
 OUT = Path(__file__).resolve().parent / "output"
@@ -163,6 +164,7 @@ def mine_week(cfg, week_start):
     print(f"WEEKLY: {count} unique ranks; {reason}")
     print("Returned to Alliance Competition:", back_to_competition(cfg))
     print("Returned to town:", back_to_city(cfg))
+    print("Alliance opened:", open_alliance(cfg))
 
 
 if __name__ == "__main__":

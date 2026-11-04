@@ -1219,6 +1219,8 @@ def debug_ollama(cfg, image=None, crop_override=None):
             players = parsed
         elif isinstance(parsed, dict) and isinstance(parsed.get("players"), list):
             players = parsed["players"]
+        elif isinstance(parsed, dict) and isinstance(parsed.get("player_names"), list):
+            players = parsed["player_names"]
         else:
             raise ValueError("Ollama response must be a player list or object with players array")
     except (ValueError, json.JSONDecodeError) as exc:

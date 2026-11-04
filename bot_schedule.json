@@ -1,0 +1,9 @@
+{
+  "timezone": "UTC",
+  "bots": {
+    "donations": {"enabled": true, "day_of_week": "sun", "hour": 23, "minute": 0, "command": null},
+    "vs": {"enabled": true, "day_of_week": "sat", "hour": 23, "minute": 0, "command": null},
+    "player_activity": {"enabled": true, "day_of_week": "*", "hour": 4, "minute": 0, "command": null},
+    "map": {"enabled": false, "day_of_week": "*", "hour": 0, "minute": 0, "command": null}
+  }
+}

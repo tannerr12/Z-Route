@@ -1191,10 +1191,22 @@ def debug_ollama(cfg, image=None, crop_override=None):
         "model": cfg.get("ollama", {}).get("model", "qwen3-vl:4b-instruct"),
         "stream": False,
         "think": False,
-        "format": "json",
+        "format": {
+            "type": "object",
+            "properties": {
+                "players": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "maxItems": 20,
+                    "uniqueItems": True
+                }
+            },
+            "required": ["players"],
+            "additionalProperties": False
+        },
         "keep_alive": cfg.get("ollama", {}).get("keep_alive", "30m"),
         "messages": [
-            {"role": "user", "content": 'Identify the player names visible in the image. Return only a valid JSON array of strings. Each string must contain one player name exactly as shown, including any guild tag. Include each unique player name only once, maximum 20 names. If no player names are visible, return []. Do not return JSON objects, error messages, levels, explanations, markdown, or repeated names.',
+            {"role": "user", "content": 'Identify player names visible in the image. Respond only with a JSON object containing the key "players", whose value is an array of unique player-name strings (maximum 20). Preserve guild tags exactly as visible. If no player names are visible, return {"players":[]}. Do not include levels, explanations, or additional keys.',
              "images": [base64.b64encode(png.tobytes()).decode("ascii")]}
         ],
         "options": {"temperature": 0, "num_predict": cfg.get("ollama", {}).get("num_predict", 512)}

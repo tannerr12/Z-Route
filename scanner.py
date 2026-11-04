@@ -1471,7 +1471,7 @@ def capture_ai_report(folder):
           f"{failed} failed, {pending} pending; success rate {rate:.1f}%.")
 
 
-def scan_serpentine(cfg, max_swipes=150, columns=170, boundary_after=62, horizontal_after=160, resume=False, swipe_ms=100, settle=0.2, vertical_scale=1.0, horizontal_scale=1.0, profile=False):
+def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizontal_after=160, resume=False, swipe_ms=100, settle=0.2, vertical_scale=1.0, horizontal_scale=1.0, profile=False):
     """Read-only bounded serpentine scan with one terminal horizontal edge."""
     if not 2 <= columns <= 500:
         raise ValueError("columns must be between 2 and 500")
@@ -1887,8 +1887,8 @@ def main():
         "--boundary-after", type=int, default=62,
         help="Skip vertical movement checks for this many swipes per column (default 62).")
     commands.choices["scan-serpentine"].add_argument(
-        "--columns", type=int, default=170,
-        help="Maximum columns to scan (2-500; default 170)."
+        "--columns", type=int, default=150,
+        help="Maximum columns to scan (2-500; default 150; use --columns 170 for new 160-shift verification runs)."
     )
     commands.choices["scan-serpentine"].add_argument(
         "--horizontal-after", type=int, default=160,

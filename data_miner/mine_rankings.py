@@ -24,6 +24,7 @@ from data_miner.open_alliance import open_alliance
 from data_miner.open_member_rankings import open_member_rankings
 from data_miner.select_donations import select_donate_this_week
 from data_miner.mine_donations import mine_donations
+from data_miner.publish_donations import publish_guild
 
 DAYS = ("MON", "TUE", "WED", "THUR", "FRI", "SAT")
 OUT = Path(__file__).resolve().parent / "output"
@@ -150,7 +151,7 @@ def mine_day(cfg, week_start, day, max_swipes=40):
     raise RuntimeError(f"{day}: swipe safety limit reached; review screenshots before continuing")
 
 
-def mine_week(cfg, week_start):
+def mine_week(cfg, week_start, guild):
     # Caller supplies ISO date for Monday of the desired competition week.
     monday = datetime.strptime(week_start, "%Y-%m-%d")
     if monday.weekday() != 0:
@@ -172,11 +173,13 @@ def mine_week(cfg, week_start):
     print("Donate / This Week selected:", select_donate_this_week(cfg))
     donation_count, donation_stop = mine_donations(cfg, week_start)
     print(f"Donations: {donation_count} unique ranks; {donation_stop}")
+    print("Prepared guild CSV:", publish_guild(guild))
 
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--week-start", required=True, help="Monday YYYY-MM-DD")
+    parser.add_argument("--guild", required=True, help="Alliance tag, e.g. D3AD")
     args = parser.parse_args()
-    mine_week(load_config(), args.week_start)
+    mine_week(load_config(), args.week_start, args.guild)

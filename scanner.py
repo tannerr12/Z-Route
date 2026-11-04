@@ -1685,9 +1685,10 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
             ex = int(x1 + (x2 - x1) * .24)
             sx, ex = scaled_swipe(sx, ex, horizontal_scale, x1, x2)
             print(f"Attempting horizontal shift {column + 1}...")
+            # Faster horizontal transitions: 250 ms gesture and 0.5 s settle.
             adb(cfg, "shell", "input", "swipe", str(sx), str(cy),
-                str(ex), str(cy), "650")
-            time.sleep(1.5)
+                str(ex), str(cy), "250")
+            time.sleep(0.5)
             if column + 1 <= horizontal_after:
                 print(f"Horizontal verification deferred until shift {horizontal_after + 1}. "
                       "Reversing vertical direction.")

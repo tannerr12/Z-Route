@@ -1249,7 +1249,7 @@ def debug_ollama(cfg, image=None, crop_override=None):
                 raw_name = f"[{item['guild']}] {raw_name}"
         else:
             continue
-        match = re.match(r"^\\[([^\\]\\r\\n]{1,12})\\]\\s*(.+)$", raw_name)
+        match = re.match(r"^\[([^\]\r\n]{1,12})\]\s*(.+)$", raw_name)
         guild = match.group(1).strip() if match else None
         username = match.group(2).strip() if match else raw_name
         if not valid_scanned_username(username) or username.casefold().startswith("commander2"):

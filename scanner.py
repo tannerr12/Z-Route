@@ -1624,13 +1624,13 @@ def publish_scan_csv(folder, threshold=90.0, branch="main"):
         subprocess.run(["git", "-C", str(ROOT), "worktree", "add", "--detach",
                         str(worktree), f"origin/{branch}"], check=True)
         attached = True
-        destination = worktree / "data" / "map-players.csv"
+        destination = worktree / "data" / "players.csv"
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, destination)
         (destination.parent / "map-players-meta.json").write_text(
             json.dumps(metadata, indent=2) + "\\n", encoding="utf-8")
         subprocess.run(["git", "-C", str(worktree), "add",
-                        "data/map-players.csv", "data/map-players-meta.json"], check=True)
+                        "data/players.csv", "data/map-players-meta.json"], check=True)
         changed = subprocess.run(["git", "-C", str(worktree), "diff", "--cached",
                                   "--quiet"]).returncode
         if changed == 0:

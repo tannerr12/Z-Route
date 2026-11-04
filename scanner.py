@@ -2276,7 +2276,7 @@ def main():
         if not 0 < args.threshold <= 100:
             parser.error("--threshold must be between 0 and 100")
         publish_scan_csv(folders[0], threshold=args.threshold)
-    elif args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama", "calibrate-movement", "benchmark-capture", "benchmark-screenshot", "scan-column", "scan-serpentine", "reprocess-failed"):
+    elif args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama", "calibrate-movement", "benchmark-capture", "benchmark-screenshot", "calibrate-capture-ai", "scan-column", "scan-serpentine", "reprocess-failed"):
         cfg = load_config()
         if args.command == "reprocess-failed":
             if args.limit is not None and args.limit < 1:

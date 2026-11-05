@@ -2403,7 +2403,17 @@ def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizon
     if termination == "column limit reached" and column == columns - 1:
         save_state(phase="done")
         retry_failed_after_scan(cfg, session_folder, unique_players, save_players)
-        print("Publishing disabled for automatic scans; use publish-scan explicitly after reviewing results.")
+        # Publish only after the full scan and its final AI retry pass.
+        # publish_scan_csv independently enforces >=7000 players, >=90% analyzed,
+        # zero pending captures, and an immutable session snapshot.
+        print(f"Auto-publish check: {len(unique_players)} players found (minimum 7000).")
+        if len(unique_players) >= 7000:
+            if publish_scan_csv(session_folder):
+                print("Auto-publish succeeded: latest data and historical snapshot pushed to main.")
+            else:
+                print("Auto-publish skipped or failed; local scan data remains saved.")
+        else:
+            print("Auto-publish skipped: fewer than 7000 players; existing live data preserved.")
     print(f"Serpentine diagnostic finished: {successful_horizontal_shifts} verified "
           f"horizontal shifts; reason: {termination}.")
     print("No database writes or base clicks.")

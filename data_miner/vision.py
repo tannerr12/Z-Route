@@ -11,7 +11,7 @@ def classify_screen(cfg, image):
     if not ok:
         raise RuntimeError("Could not encode screenshot")
     request = {
-        "model": cfg.get("ollama", {}).get("model", "qwen3-vl:4b"),
+        "model": cfg.get("ollama", {}).get("model", "qwen3-vl:4b-instruct"),
         "stream": False,
         "format": "json",
         "messages": [{

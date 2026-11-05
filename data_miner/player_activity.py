@@ -133,14 +133,17 @@ def extract(cfg, image, tab):
             continue
         if tab == "War":
             attacker, victim = event.get("attacker"), event.get("attacked")
-            guild = event.get("attacked_guild")
+            guild = str(event.get("attacked_guild") or "").strip().strip("[]")
             server = str(event.get("destination_server") or "").lstrip("#")
-            if not all(isinstance(v, str) and v.strip() for v in (attacker, victim, guild)):
+            if not all(isinstance(v, str) and v.strip() for v in (attacker, victim)):
                 continue
-            guild = guild.strip().strip("[]")
-            if not re.fullmatch(r"[A-Za-z0-9_-]{1,12}", guild):
+            # Commander2-prefixed victims are NPC targets and are excluded.
+            if victim.strip().casefold().startswith("commander2"):
                 continue
-            if victim.strip().casefold().startswith("commander2") or server != "125":
+            # Untagged victims are valid targets; do not require an alliance tag.
+            if guild and not re.fullmatch(r"[A-Za-z0-9_-]{1,12}", guild):
+                continue
+            if server != "125":
                 continue
             try:
                 x, y = int(event["destination_x"]), int(event["destination_y"])

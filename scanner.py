@@ -688,11 +688,46 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=Non
     completed_views = 0
     failed_views = 0
     consecutive_failures = 0
+    def capture_with_retry(step):
+        # Read-only retries: never swipe, tap, reconnect, or reset BlueStacks.
+        # A screenshot timeout does not establish whether a previous swipe
+        # completed, so preserve the current checkpoint and map position.
+        delays = (2, 4, 8, 16)
+        log_path = folder / "adb_screenshot_errors.log"
+        for attempt in range(1, 6):
+            started = time.monotonic()
+            try:
+                image = screenshot(cfg)
+                if attempt > 1:
+                    message = (f"[ADB RECOVERED] view={step} attempt={attempt}/5 "
+                               f"elapsed={time.monotonic()-started:.1f}s")
+                    print(message, flush=True)
+                    with log_path.open("a", encoding="utf-8") as log:
+                        log.write(f"{datetime.now(timezone.utc).isoformat()} {message}\n")
+                return image
+            except (subprocess.TimeoutExpired, subprocess.CalledProcessError,
+                    OSError) as exc:
+                elapsed = time.monotonic() - started
+                message = (f"[ADB SCREENSHOT ERROR] view={step} attempt={attempt}/5 "
+                           f"elapsed={elapsed:.1f}s type={type(exc).__name__} "
+                           f"details={exc}")
+                print(message, flush=True)
+                with log_path.open("a", encoding="utf-8") as log:
+                    log.write(f"{datetime.now(timezone.utc).isoformat()} {message}\n")
+                if attempt == 5:
+                    raise RuntimeError(
+                        f"ADB screenshot failed after 5 attempts at view {step}; "
+                        f"no additional swipe performed. Check {log_path}. "
+                        "Checkpoint and captured screenshots preserved.") from exc
+                delay = delays[attempt-1]
+                print(f"[ADB RETRY] Waiting {delay}s before retrying screenshot at same position", flush=True)
+                time.sleep(delay)
+
     for step in range(start_step, max_swipes + 1):
         if on_progress:
             on_progress(step, "view")
         dx = dy = None
-        image = screenshot(cfg)
+        image = capture_with_retry(step)
         ensure_game_connected(cfg, image, on_progress)
         if previous is not None and step > verify_after:
             movement_verified = False
@@ -700,7 +735,7 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=Non
                 if movement_attempt > 1:
                     print(f"Retrying movement verification ({movement_attempt}/3) after 0.3s...")
                     time.sleep(0.3)
-                    image = screenshot(cfg)  # No additional swipe on retry.
+                    image = capture_with_retry(step)  # No additional swipe on retry.
                     ensure_game_connected(cfg, image, on_progress)
                 x1, y1, x2, y2 = middle_scan_rectangle(image, cfg)
                 first = cv2.cvtColor(previous[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)

@@ -25,12 +25,22 @@ def tap_scaled(cfg, image, point, reference):
 
 
 def popup_visible(image):
+    """Recognize the known account warning across screen resolutions."""
     height, width = image.shape[:2]
-    region = image[int(height * .37):int(height * .52),
-                   int(width * .10):int(width * .90)]
+    # The modal's text position varies by emulator scale.
+    region = image[int(height * .27):int(height * .67),
+                   int(width * .06):int(width * .94)]
     gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
-    text = pytesseract.image_to_string(gray).lower()
-    return "account" in text and "another device" in text
+    gray = cv2.resize(gray, None, fx=1.6, fy=1.6,
+                      interpolation=cv2.INTER_LINEAR)
+    variants = (gray, cv2.equalizeHist(gray))
+    for variant in variants:
+        text = pytesseract.image_to_string(variant, config="--psm 6").casefold()
+        normalized = " ".join(text.split())
+        if ("another device" in normalized and
+            ("account" in normalized or "logged in" in normalized)):
+            return True
+    return False
 
 
 def dismiss_login_popup(cfg, timeout=30, poll_interval=2):
@@ -116,7 +126,7 @@ def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75):
         # Unknown view: use the existing vision classifier, but never tap
         # based on AI alone without confirming the known visual target.
         print("Checking screen with Ollama (may take time)...", flush=True)
-        screen, confidence = classify_screen(cfg, image)
+        try:\n            screen, confidence = classify_screen(cfg, image)\n        except TimeoutError as exc:\n            raise RuntimeError("Ollama screen classification timed out; stopped without tapping. Check Ollama load or run again.") from exc
         print(f"Screen: {screen}, confidence: {confidence:.2f}", flush=True)
         if confidence < confidence_threshold or screen == "unknown":
             raise RuntimeError("Uncertain screen: no tap performed")

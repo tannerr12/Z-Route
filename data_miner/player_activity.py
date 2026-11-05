@@ -183,7 +183,7 @@ def scan_tab(cfg, tab, max_swipes, folder, verbose):
         evidence = folder / tab.lower().replace("/", "_") / f"{step:03d}.png"
         evidence.parent.mkdir(parents=True, exist_ok=True)
         save_capture_png(cfg, evidence, image)
-        found = extract(cfg, image, tab)
+        # Only the scrolling log area is needed for event extraction.\n        h, w = image.shape[:2]\n        log_image = image[int(h*.16):int(h*.87), int(w*.025):int(w*.975)]\n        found = extract(cfg, log_image, tab)
         for row in found:
             rows.setdefault(event_key(tab, row), row)
         if verbose:
@@ -220,6 +220,7 @@ def main():
     if not 0 <= args.max_swipes <= 100:
         parser.error("--max-swipes must be between 0 and 100")
     cfg = load_config()
+    cfg["_vision_verbose"] = args.verbose
     folder = EVIDENCE / datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     folder.mkdir(parents=True, exist_ok=True)
     if not args.skip_startup:

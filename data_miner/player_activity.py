@@ -25,9 +25,9 @@ ATTACK_FIELDS = ["timestamp", "attacker", "attacker_guild", "attacker_server",
                  "attacked", "attacked_guild", "destination_server",
                  "destination_x", "destination_y", "outcome", "scanned_at"]
 CHANGE_FIELDS = ["timestamp", "player", "guild", "event", "scanned_at"]
-TIME_RE = re.compile(r"^20\\d{2}[.-]\\d{1,2}[.-]\\d{1,2}[ T]\\d{1,2}:\\d{2}:\\d{2}$")
-GUILD_RE = re.compile(r"^\\[([A-Za-z0-9_-]{1,12})\\]$")
-COORD_RE = re.compile(r"\\[#(\\d+)\\s+X:(\\d+)\\s*,\\s*Y:(\\d+)\\]", re.I)
+TIME_RE = re.compile(r"^20\d{2}[.-]\d{1,2}[.-]\d{1,2}[ T]\d{1,2}:\d{2}:\d{2}$")
+GUILD_RE = re.compile(r"^\[([A-Za-z0-9_-]{1,12})\]$")
+COORD_RE = re.compile(r"\[#(\d+)\s+X:(\d+)\s*,\s*Y:(\d+)\]", re.I)
 
 
 def verified_screen(cfg, expected):

@@ -213,7 +213,11 @@ def scan_tab(cfg, tab, max_swipes, folder, verbose):
         evidence = folder / tab.lower().replace("/", "_") / f"{step:03d}.png"
         evidence.parent.mkdir(parents=True, exist_ok=True)
         save_capture_png(cfg, evidence, image)
-        # Only the scrolling log area is needed for event extraction.\n        h, w = image.shape[:2]\n        log_image = image[int(h*.16):int(h*.87), int(w*.025):int(w*.975)]\n        found = extract(cfg, log_image, tab)
+        # Include the visible date heading above the scrolling activity rows.
+        h, w = image.shape[:2]
+        log_image = image[int(h * .08):int(h * .87),
+                          int(w * .025):int(w * .975)]
+        found = extract(cfg, log_image, tab)
         for row in found:
             rows.setdefault(event_key(tab, row), row)
         if verbose:

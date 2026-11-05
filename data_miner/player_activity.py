@@ -73,7 +73,20 @@ def open_log(cfg):
     print(f"Alliance Log verified locally; tapping ({x}, {y})", flush=True)
     adb(cfg, "shell", "input", "tap", str(x), str(y))
     time.sleep(.8)
-    verified_screen(cfg, "Log with War and Join/Leave tabs")
+    # Verify the fixed Log header locally. The vision classifier has repeatedly
+    # rejected this screen despite visible LOG and Join/Leave labels.
+    import pytesseract
+    image = screenshot(cfg)
+    ensure_game_connected(cfg, image)
+    header = image[:int(image.shape[0] * .12), :]
+    header_text = pytesseract.image_to_string(
+        cv2.resize(header, None, fx=2, fy=2), config="--psm 11"
+    ).casefold()
+    if "log" not in header_text or "join" not in header_text:
+        raise RuntimeError(
+            f"Alliance Log header not verified locally (OCR={header_text!r})"
+        )
+    print("Alliance Log verified locally; ready to scan", flush=True)
 
 
 def select_tab(cfg, tab):

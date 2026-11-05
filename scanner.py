@@ -1760,6 +1760,8 @@ def publish_scan_csv(folder, threshold=90.0, branch="main"):
               "for a historical snapshot or live update.")
         return False
     metadata = {
+        "grid_columns": int(state.get("settings", {}).get("columns", 150)),
+        "grid_rows": 60,
         "session": folder.name,
         "completed": completed,
         "total": len(captures),
@@ -1855,7 +1857,7 @@ def capture_ai_report(folder):
           f"{failed} failed, {pending} pending; success rate {rate:.1f}%.")
 
 
-def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizontal_after=160, resume=False, swipe_ms=100, settle=0.2, vertical_scale=1.0, horizontal_scale=1.0, profile=False, raw_capture=False):
+def scan_serpentine(cfg, max_swipes=150, columns=125, boundary_after=62, horizontal_after=160, resume=False, swipe_ms=100, settle=0.2, vertical_scale=1.0, horizontal_scale=1.0, profile=False, raw_capture=False):
     """Read-only bounded serpentine scan with one terminal horizontal edge."""
     if not 2 <= columns <= 150:
         raise ValueError("columns must be between 2 and 150")
@@ -2346,8 +2348,8 @@ def main():
         "--boundary-after", type=int, default=62,
         help="Skip vertical movement checks for this many swipes per column (default 62).")
     commands.choices["scan-serpentine"].add_argument(
-        "--columns", type=int, default=150,
-        help="Maximum columns to scan (2-150; default and hard maximum 150; automatically stops after column 150)."
+        "--columns", type=int, default=None,
+        help="Maximum columns to scan (2-150; default 125; --continue inherits saved checkpoint width)."
     )
     commands.choices["scan-serpentine"].add_argument(
         "--horizontal-after", type=int, default=160,
@@ -2377,7 +2379,17 @@ def main():
             reprocess_failed(cfg, limit=args.limit, all_sessions=args.all_sessions)
         elif args.command == "scan-serpentine":
             connect(cfg)
-            scan_serpentine(cfg, max_swipes=args.max_swipes, columns=args.columns,
+            # Resume must retain the original horizontal geometry (including old 150-column scans).
+            columns = args.columns
+            if columns is None and args.resume:
+                checkpoint = ROOT / "exports" / "players" / "serpentine_checkpoint.json"
+                if checkpoint.exists():
+                    saved = json.loads(checkpoint.read_text(encoding="utf-8"))
+                    columns = int(saved.get("settings", {}).get("columns", 125))
+                    print(f"Resuming checkpoint's original {columns}-column grid.")
+            if columns is None:
+                columns = 125
+            scan_serpentine(cfg, max_swipes=args.max_swipes, columns=columns,
                             boundary_after=args.boundary_after,
                             horizontal_after=args.horizontal_after,
                             vertical_scale=args.vertical_scale,

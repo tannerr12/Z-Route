@@ -80,7 +80,9 @@ def promo_close_point(image):
         if lines is None:
             continue
         rising, falling = [], []
-        for x1, y1, x2, y2 in lines[:, 0]:
+        # OpenCV builds can return (N,1,4), (N,4), or a single line.
+        line_rows = np.asarray(lines).reshape(-1, 4)
+        for x1, y1, x2, y2 in line_rows:
             dx, dy = int(x2-x1), int(y2-y1)
             if abs(dx) < 6 or abs(dy) < 6:
                 continue

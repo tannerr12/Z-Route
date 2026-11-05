@@ -13,11 +13,15 @@ def open_alliance(cfg):
         raise RuntimeError(f"Expected city view, got {screen} ({confidence:.2f})")
     x, y = locate_text_button(
         cfg, image,
-        "Alliance button with gold crossed swords icon and Alliance label",
-        "Z-Route town view with right-side vertical menu", "any")
+        "Alliance button labeled Alliance in the city navigation (not VS, events, or an alliance building)",
+        "Z-Route city screen. Locate the actual Alliance menu button, not decorative icons or the VS event.", "any")
     h, w = image.shape[:2]
+    print(f"Alliance candidate: ({x}, {y}) on {w}x{h} screen", flush=True)
     if x < w * .65 or y < h * .55:
-        raise RuntimeError("Detected Alliance target outside expected right-side lower menu")
+        raise RuntimeError(
+            f"Alliance candidate ({x}, {y}) outside expected right-side lower menu "
+            f"(x >= {w*.65:.0f}, y >= {h*.55:.0f}); no tap performed"
+        )
     adb(cfg, "shell", "input", "tap", str(x), str(y))
     time.sleep(.5)
     result = ask_vision(cfg, screenshot(cfg),

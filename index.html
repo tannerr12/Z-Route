@@ -5,13 +5,14 @@
 </style></head><body><main><nav style="margin-bottom:14px"><a href="./donations.html" style="color:#8cc9ff">Donation Analytics →</a> · <a href="./vs.html" style="color:#8cc9ff">VS Comparison →</a> · <a href="./activity.html" style="color:#8cc9ff">Player Activity →</a></nav>
 <div class="top"><div><h1>Z-Route Player Locator</h1><p>Search players and explore guild positions on an approximate swipe grid.</p></div><span id="source" class="muted">Loading CSV…</span></div>
 <div class="controls"><label for="scanSelect">Scan date</label><select id="scanSelect" aria-label="Select historical scan"><option value="">Loading scans…</option></select><input id="search" type="search" placeholder="Search username…" aria-label="Search username"><select id="guildFilter" aria-label="Filter guild"><option value="">All guilds</option></select><button id="clear">Clear filters</button></div>
-<div class="layout"><section class="panel"><div class="map-actions"><button id="zoomIn" title="Zoom in">＋</button><button id="zoomOut" title="Zoom out">－</button><button id="resetView">Reset view</button><span class="muted" style="margin:auto 0 auto auto">Wheel to zoom · Drag to pan</span></div><div id="mapWrap" class="map-wrap"><canvas id="map" aria-label="Player location map"></canvas><div id="tip" class="tooltip"></div></div><div class="status"><span id="count" class="muted">Loading players…</span><span class="muted">150 columns × 60 rows · approximate positions</span></div><div id="detail" class="detail" hidden></div></section>
+<div class="layout"><section class="panel"><div class="map-actions"><button id="zoomIn" title="Zoom in">＋</button><button id="zoomOut" title="Zoom out">－</button><button id="resetView">Reset view</button><span class="muted" style="margin:auto 0 auto auto">Wheel to zoom · Drag to pan</span></div><div id="mapWrap" class="map-wrap"><canvas id="map" aria-label="Player location map"></canvas><div id="tip" class="tooltip"></div></div><div class="status"><span id="count" class="muted">Loading players…</span><span id="gridSize" class="muted">125 columns × 60 rows · approximate positions</span></div><div id="detail" class="detail" hidden></div></section>
 <aside class="panel"><strong>Guilds</strong><p class="muted">Click a guild to filter; click again to show all.</p><div id="legend" class="legend"></div></aside></div>
 <p id="message" class="muted" role="status"></p>
 </main><script>
 'use strict';
 const $=id=>document.getElementById(id),canvas=$('map'),ctx=canvas.getContext('2d'),wrap=$('mapWrap'),tip=$('tip');
 let players=[],filtered=[],colors=new Map(),guildCounts=new Map(),hover=null,selected=null;
+let gridColumns=125,gridRows=60;
 let scale=1,offsetX=0,offsetY=0,drag=null,viewW=1,viewH=1;
 const palette=['#59c8ff','#b0a2ff','#ff997f','#6fe0ac','#ffd26e','#fa83c0','#8bd4d6','#d3a36f','#c5ec85','#f18fff'];
 function parseCSV(text){
@@ -28,17 +29,17 @@ function parseCSV(text){
 function hash(s){let h=2166136261;for(const c of s.toLowerCase()){h=Math.imul(h^c.charCodeAt(0),16777619)}return h>>>0}
 function guildColor(g){if(!colors.has(g)){const used=new Set(colors.values());let color=palette[hash(g)%palette.length];if(used.has(color)){for(const c of palette)if(!used.has(c)){color=c;break}}if(used.has(color)){const hue=hash(g)%360;color='hsl('+hue+' 76% 69%)'}colors.set(g,color)}return colors.get(g)}
 function normalize(rows){
- // The scanner's row value for downward columns uses max_swipes (150) rather than the actual height.
- // For downward captures, derive row from the view index using a configurable 60-row grid.
+ // Downward rows are reconstructed from their view index using the 60-row scan height.
+ // Historical CSV columns are already 1-based; retain the original positions.
  const byName=new Map();
  for(const r of rows){const name=(r.username||'').trim();if(!name)continue;
  const col=Number(r.col),rawRow=Number(r.row),view=Number(r.view),dir=(r.direction||'').toLowerCase();
  let row=rawRow;
- if(dir==='down'&&Number.isFinite(view)&&r.view!=='')row=60-view;
+ if(dir==='down'&&Number.isFinite(view)&&r.view!=='')row=gridRows-view;
  if(!Number.isFinite(col)||!Number.isFinite(row)||col<0||row<0)continue;
- // Scanner columns are zero-based, whereas the map labels are one-based.
- const p={name,guild:(r.guild||'Unknown').trim()||'Unknown',level:r.level||'',col:col+1,row:Math.max(1,Math.min(60,row)),observed:r.observed_at||'',coordinateType:r.coordinate_type||'approximate swipe grid'};
- if(p.col>150)continue;
+ // Scanner exports columns as 1-based values.
+ const p={name,guild:(r.guild||'Unknown').trim()||'Unknown',level:r.level||'',col:col,row:Math.max(1,Math.min(gridRows,row)),observed:r.observed_at||'',coordinateType:r.coordinate_type||'approximate swipe grid'};
+ if(p.col<1||p.col>gridColumns)continue;
  const key=name.toLowerCase();if(!byName.has(key)||p.observed>byName.get(key).observed)byName.set(key,p);
  }
  return [...byName.values()];
@@ -67,7 +68,7 @@ function filter(){
  if(selected&&!filtered.includes(selected)){selected=null;$('detail').hidden=true}
  hover=null;tip.style.display='none';renderLegend();draw();
 }
-function project(p){const margin=18,w=viewW-2*margin,h=viewH-2*margin;return {x:(margin+(p.col-.5)*w/150)*scale+offsetX,y:(margin+(p.row-.5)*h/60)*scale+offsetY}}
+function project(p){const margin=18,w=viewW-2*margin,h=viewH-2*margin;return {x:(margin+(p.col-.5)*w/gridColumns)*scale+offsetX,y:(margin+(p.row-.5)*h/gridRows)*scale+offsetY}}
 function draw(){
  const d=window.devicePixelRatio||1;viewW=canvas.clientWidth;viewH=canvas.clientHeight;
  if(!viewW||!viewH)return;
@@ -109,10 +110,13 @@ async function loadScan(item){
   if(!/^data\/(?:player_history\/session_[a-zA-Z0-9_]+\.csv|players\.csv)$/.test(path))throw Error('Invalid scan path');
   const response=await fetch('./'+path,{cache:'no-store'});
   if(!response.ok)throw Error('HTTP '+response.status);
+  gridColumns=Number.isInteger(Number(item?.grid_columns))&&Number(item.grid_columns)>=2?Number(item.grid_columns):150;
+  gridRows=Number.isInteger(Number(item?.grid_rows))&&Number(item.grid_rows)>=1?Number(item.grid_rows):60;
   const nextPlayers=normalize(parseCSV(await response.text()));
   if(seq!==loadSequence)return;
   players=nextPlayers;selected=null;$('detail').hidden=true;
   $('guildFilter').value='';$('source').textContent=players.length.toLocaleString()+' players';
+  $('gridSize').textContent=gridColumns+' columns × '+gridRows+' rows · approximate positions';
   $('message').textContent='Locations are estimated from scanner swipes, not exact in-game coordinates.';
   populate();
  }catch(e){if(seq!==loadSequence)return;$('source').textContent='CSV unavailable';$('message').className='error';$('message').textContent='Unable to load selected scan: '+e.message}

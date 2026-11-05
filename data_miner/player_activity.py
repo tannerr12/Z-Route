@@ -77,9 +77,22 @@ def open_log(cfg):
 
 
 def select_tab(cfg, tab):
-    verified_screen(cfg, "Log with War and Join/Leave tabs")
-    click_label(cfg, tab + " tab", "Alliance Log, top tab bar", "top")
-    verified_screen(cfg, "Log with " + tab + " tab selected")
+    """Verify Log header locally and tap the fixed tab coordinates."""
+    import pytesseract
+    image = screenshot(cfg)
+    ensure_game_connected(cfg, image)
+    h, w = image.shape[:2]
+    header = image[:int(h*.12), :]
+    text = pytesseract.image_to_string(
+        cv2.resize(header, None, fx=2, fy=2), config="--psm 11"
+    ).casefold()
+    if "war" not in text or "join" not in text:
+        raise RuntimeError(f"Alliance Log tabs not verified (OCR={text!r}); no tap")
+    positions = {"War": .115, "Join/Leave": .36}
+    x, y = round(w*positions[tab]), round(h*.063)
+    print(f"Log tabs verified; selecting {tab} at ({x}, {y})", flush=True)
+    adb(cfg, "shell", "input", "tap", str(x), str(y))
+    time.sleep(.6)
 
 
 def extract(cfg, image, tab):
@@ -94,7 +107,7 @@ def extract(cfg, image, tab):
             "attacked_guild (tag without brackets or empty), destination_server "
             "(number string from the coordinates AFTER victim Base), destination_x, "
             "destination_y (integer or null), outcome (exact visible outcome or empty). "
-            "Only use visible text; do not infer missing values. Exclude partial rows.")
+            "The date may be shown as a heading above the rows while each row has only a time; combine the visible date and row time into YYYY.MM.DD HH:MM:SS. Only use visible text; do not infer missing values. Exclude partial rows.")
     else:
         prompt = (
             "Read only FULLY VISIBLE Join/Leave events from the scrolling Alliance Log. "
@@ -231,6 +244,8 @@ def main():
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--write-csv", action="store_true",
                         help="Append deduplicated events to local CSVs; off by default")
+    parser.add_argument("--already-in-log", action="store_true",
+                        help="Skip startup and navigation when Log is already open")
     parser.add_argument("--skip-startup", action="store_true",
                         help="Use only when already on the Alliance home screen")
     args = parser.parse_args()
@@ -240,10 +255,11 @@ def main():
     cfg["_vision_verbose"] = args.verbose
     folder = EVIDENCE / datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     folder.mkdir(parents=True, exist_ok=True)
-    if not args.skip_startup:
-        run_ai_startup(cfg)
-        open_alliance(cfg)
-    open_log(cfg)
+    if not args.already_in_log:
+        if not args.skip_startup:
+            run_ai_startup(cfg)
+            open_alliance(cfg)
+        open_log(cfg)
     for tab in ("War", "Join/Leave"):
         select_tab(cfg, tab)
         rows, reason = scan_tab(cfg, tab, args.max_swipes, folder, args.verbose)

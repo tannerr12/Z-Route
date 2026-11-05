@@ -126,7 +126,12 @@ def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75):
         # Unknown view: use the existing vision classifier, but never tap
         # based on AI alone without confirming the known visual target.
         print("Checking screen with Ollama (may take time)...", flush=True)
-        try:\n            screen, confidence = classify_screen(cfg, image)\n        except TimeoutError as exc:\n            raise RuntimeError("Ollama screen classification timed out; stopped without tapping. Check Ollama load or run again.") from exc
+        try:
+            screen, confidence = classify_screen(cfg, image)
+        except TimeoutError as exc:
+            raise RuntimeError(
+                "Ollama screen classification timed out; stopped without tapping."
+            ) from exc
         print(f"Screen: {screen}, confidence: {confidence:.2f}", flush=True)
         if confidence < confidence_threshold or screen == "unknown":
             raise RuntimeError("Uncertain screen: no tap performed")

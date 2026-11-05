@@ -3,6 +3,7 @@ import base64
 import json
 import urllib.request
 import cv2
+import time
 
 
 def ask_vision(cfg, image, instruction):
@@ -13,8 +14,10 @@ def ask_vision(cfg, image, instruction):
     payload = {
         "model": cfg.get("ollama", {}).get("model", "qwen3-vl:4b-instruct"),
         "stream": False,
+        "think": False,
         "format": "json",
-        "options": {"temperature": 0},
+        "keep_alive": cfg.get("ollama", {}).get("keep_alive", "30m"),
+        "options": {"temperature": 0, "num_predict": cfg.get("ollama", {}).get("num_predict", 512)},
         "messages": [{"role": "user", "content": instruction +
             f" Image size: {w}x{h} pixels. Return only valid JSON.",
             "images": [base64.b64encode(png.tobytes()).decode("ascii")]}]
@@ -23,8 +26,11 @@ def ask_vision(cfg, image, instruction):
         "http://127.0.0.1:11434/api/chat",
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"})
+    started = time.perf_counter()
     with urllib.request.urlopen(req, timeout=180) as response:
         result = json.load(response)
+    if cfg.get("_vision_verbose"):
+        print(f"Ollama vision: {time.perf_counter()-started:.1f}s ({w}x{h})", flush=True)
     if not result.get("done"):
         raise RuntimeError("Incomplete Ollama response")
     return json.loads(result["message"]["content"])

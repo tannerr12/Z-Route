@@ -146,10 +146,25 @@ def connection_lost_dialog(image):
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
     gray = cv2.resize(gray, None, fx=1.6, fy=1.6,
                       interpolation=cv2.INTER_LINEAR)
-    text = pytesseract.image_to_string(gray, config="--psm 6").casefold()
-    compact = " ".join(text.split())
-    return ("failed to connect" in compact and
-            ("server" in compact or "reconnect" in compact))
+    # External Tesseract processes may hang indefinitely without a timeout.
+    # Retry the same crop without moving the map; fail closed on persistent errors.
+    for attempt in range(1, 4):
+        try:
+            text = pytesseract.image_to_string(
+                gray, config="--psm 6", timeout=5).casefold()
+            compact = " ".join(text.split())
+            return ("failed to connect" in compact and
+                    ("server" in compact or "reconnect" in compact))
+        except (RuntimeError, OSError) as exc:
+            print(f"[CONNECTION OCR RETRY] attempt={attempt}/3 "
+                  f"type={type(exc).__name__}: {exc}", flush=True)
+            if attempt == 3:
+                raise RuntimeError(
+                    "Connection check OCR failed three times; stopping without "
+                    "another swipe. The scan CSV and checkpoint are preserved."
+                ) from exc
+            time.sleep(attempt)
+    return False
 
 
 def ensure_game_connected(cfg, image, on_progress=None):

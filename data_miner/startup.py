@@ -93,14 +93,31 @@ def dismiss_promotions(cfg, max_attempts=12, wait_seconds=0.5):
 
 
 def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75):
-    """Use Ollama to decide each action; fail closed on uncertain screens."""
+    """Fast local handling for known overlays; vision for unknown screens."""
     from data_miner.vision import classify_screen
 
     actions = 0
     while actions < max_actions:
         image = screenshot(cfg)
+        # These are narrow, existing visual detectors; no Ollama call required.
+        if popup_visible(image):
+            print("Login warning detected locally; tapping Confirm", flush=True)
+            tap_scaled(cfg, image, CONFIRM_CENTER, REFERENCE_SIZE)
+            actions += 1
+            time.sleep(0.8)
+            continue
+        if promo_close_visible(image):
+            print("Promotion close icon detected locally; closing", flush=True)
+            tap_scaled(cfg, image, PROMO_CLOSE_CENTER, PROMO_REFERENCE_SIZE)
+            actions += 1
+            time.sleep(0.8)
+            continue
+
+        # Unknown view: use the existing vision classifier, but never tap
+        # based on AI alone without confirming the known visual target.
+        print("Checking screen with Ollama (may take time)...", flush=True)
         screen, confidence = classify_screen(cfg, image)
-        print(f"Screen: {screen}, confidence: {confidence:.2f}")
+        print(f"Screen: {screen}, confidence: {confidence:.2f}", flush=True)
         if confidence < confidence_threshold or screen == "unknown":
             raise RuntimeError("Uncertain screen: no tap performed")
         if screen == "city":

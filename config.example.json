@@ -28,6 +28,6 @@
     "overlap": 0.2
   },
   "ollama": {
-    "model": "qwen3-vl:4b"
+    "model": "qwen3-vl:4b-instruct"
   }
 }

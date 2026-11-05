@@ -8,5 +8,15 @@
     "published_at": "2026-11-04T22:48:59.187701+00:00",
     "csv": "data/player_history/session_20261104_174838_743243.csv",
     "guild_summary": "data/player_history/session_20261104_174838_743243.guilds.json"
+  },
+  {
+    "session": "session_20261105_090723_946348",
+    "completed": 9148,
+    "total": 9150,
+    "completion_percent": 99.98,
+    "player_count": 7339,
+    "published_at": "2026-11-05T19:35:53.717141+00:00",
+    "csv": "data/player_history/session_20261105_090723_946348.csv",
+    "guild_summary": "data/player_history/session_20261105_090723_946348.guilds.json"
   }
 ]

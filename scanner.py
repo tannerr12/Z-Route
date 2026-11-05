@@ -5,6 +5,7 @@ import urllib.request
 import csv
 import queue
 import threading
+import traceback
 from difflib import SequenceMatcher
 import json
 import re
@@ -855,11 +856,11 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=Non
             if cfg.get("_raw_capture_enabled"):
                 # Bounded in-memory handoff; the encoding worker writes a durable PNG
                 # and metadata before the Ollama worker receives the file path.
-                capture_queue.put((path, image, meta))
+                cfg["_enqueue_raw"]((path, image, meta))
             else:
                 save_capture_png(cfg, path, image)
                 path.with_suffix(".meta.json").write_text(json.dumps(meta), encoding="utf-8")
-                capture_queue.put(path)
+                ai_queue.put(path)
             completed_views += 1
             print(f"Captured {path.name}; AI processing independently.")
             if step == max_swipes:
@@ -1950,9 +1951,33 @@ def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizon
     # RAW capture is opt-in until its threaded scan path is validated.
     cfg["_raw_capture_enabled"] = raw_capture
     capture_queue = queue.Queue(maxsize=64) if raw_capture else queue.Queue()
+    encoder_failure = threading.Event()
+    encoder_last_error = []
+    encoder_log = session_folder / "encoder_errors.log"
+    def report_encoder_error(message):
+        detail = f"[{datetime.now(timezone.utc).isoformat()}] {message}\n"
+        encoder_last_error.append(detail)
+        print(f"[ENCODER ERROR] {detail}", flush=True)
+        with encoder_log.open("a", encoding="utf-8") as log:
+            log.write(detail)
+    def enqueue_raw(item):
+        while True:
+            if encoder_failure.is_set() or (encoder is not None and not encoder.is_alive()):
+                raise RuntimeError(f"RAW encoder worker stopped; see {encoder_log}")
+            try:
+                capture_queue.put(item, timeout=5)
+                return
+            except queue.Full:
+                print(f"[ENCODER WAIT] RAW queue full ({capture_queue.qsize()}/64); encoder_alive={encoder.is_alive() if encoder else False}; AI_pending={ai_queue.qsize()}", flush=True)
     ai_queue = queue.Queue()
     encoding_errors = []
     def encode_captures():
+        try:
+            _encode_captures_loop()
+        except BaseException:
+            encoder_failure.set()
+            report_encoder_error("FATAL encoder thread exception:\n" + traceback.format_exc())
+    def _encode_captures_loop():
         while True:
             item = capture_queue.get()
             try:
@@ -1970,11 +1995,12 @@ def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizon
                     ai_queue.put(path)
                 except Exception as exc:
                     encoding_errors.append(str(exc))
-                    print(f"Encoding FAILED for {path.name}: {exc}", flush=True)
+                    report_encoder_error(f"Encoding FAILED for {path.name}:\n{traceback.format_exc()}")
                     temporary.unlink(missing_ok=True)
             finally:
                 capture_queue.task_done()
     encoder = None
+    cfg["_enqueue_raw"] = enqueue_raw if raw_capture else None
     if raw_capture:
         encoder = threading.Thread(target=encode_captures, daemon=True, name="png-encoder")
         encoder.start()
@@ -2163,9 +2189,12 @@ def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizon
             print_capture_metrics(cfg)
         print("Navigation stopped; waiting for queued AI analysis to finish...")
         if raw_capture:
-            capture_queue.put(None)
-            capture_queue.join()
-            encoder.join()
+            if encoder.is_alive():
+                enqueue_raw(None)
+                capture_queue.join()
+                encoder.join()
+            else:
+                print(f"[ENCODER ERROR] Worker already stopped; pending RAW frames={capture_queue.qsize()}; log={encoder_log}", flush=True)
         ai_queue.put(None)
         ai_queue.join()
         worker.join()

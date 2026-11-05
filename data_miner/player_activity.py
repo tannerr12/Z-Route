@@ -115,7 +115,8 @@ def extract(cfg, image, tab):
             "YYYY.MM.DD HH:MM:SS), player (exact username), guild (visible guild tag "
             "without brackets, or empty), event ('joined' or 'left'). "
             "Do not guess missing dates, names, or events; exclude partial rows.")
-    result = ask_vision(cfg, image, prompt + " Ignore navigation, headers and overlays.")
+    result = ask_vision(cfg, image, prompt + " Ignore navigation, headers and overlays.",
+                        max_tokens=2048, retries=1)
     events = result.get("events")
     if not isinstance(events, list):
         raise RuntimeError(f"{tab}: Ollama did not return an events array")

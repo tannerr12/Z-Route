@@ -102,30 +102,43 @@ def dismiss_promotions(cfg, max_attempts=12, wait_seconds=0.5):
     return dismissed
 
 
+def wait_for_next_overlay(cfg, timeout=3.0, interval=0.3):
+    """Poll for the next overlay before requesting expensive AI classification."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        image = screenshot(cfg)
+        if popup_visible(image) or promo_close_visible(image):
+            return image
+        time.sleep(min(interval, max(0, deadline - time.monotonic())))
+    return screenshot(cfg)
+
+
 def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75):
-    """Fast local handling for known overlays; vision for unknown screens."""
+    """Dismiss known overlays locally; wait for sequential ads to appear."""
     from data_miner.vision import classify_screen
 
     actions = 0
+    pending_image = None
     while actions < max_actions:
-        image = screenshot(cfg)
-        # These are narrow, existing visual detectors; no Ollama call required.
+        image = pending_image if pending_image is not None else screenshot(cfg)
+        pending_image = None
         if popup_visible(image):
             print("Login warning detected locally; tapping Confirm", flush=True)
             tap_scaled(cfg, image, CONFIRM_CENTER, REFERENCE_SIZE)
             actions += 1
-            time.sleep(0.8)
+            print("Waiting up to 3s for next overlay...", flush=True)
+            pending_image = wait_for_next_overlay(cfg)
             continue
         if promo_close_visible(image):
             print("Promotion close icon detected locally; closing", flush=True)
             tap_scaled(cfg, image, PROMO_CLOSE_CENTER, PROMO_REFERENCE_SIZE)
             actions += 1
-            time.sleep(0.8)
+            print("Waiting up to 3s for next overlay...", flush=True)
+            pending_image = wait_for_next_overlay(cfg)
             continue
 
-        # Unknown view: use the existing vision classifier, but never tap
-        # based on AI alone without confirming the known visual target.
-        print("Checking screen with Ollama (may take time)...", flush=True)
+        # The absence of an overlay is not proof that the city is ready.
+        print("Checking stabilized screen with Ollama...", flush=True)
         try:
             screen, confidence = classify_screen(cfg, image)
         except TimeoutError as exc:
@@ -148,7 +161,7 @@ def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75):
                 raise RuntimeError("AI promotion classification not confirmed by X detector")
             tap_scaled(cfg, image, PROMO_CLOSE_CENTER, PROMO_REFERENCE_SIZE)
         actions += 1
-        time.sleep(0.5)
+        pending_image = wait_for_next_overlay(cfg)
     raise TimeoutError("Startup exceeded max_actions; stopped safely")
 
 

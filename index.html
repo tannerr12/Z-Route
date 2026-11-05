@@ -124,7 +124,7 @@ async function load(){
   if(!response.ok)throw Error('HTTP '+response.status);
   const entries=await response.json();
   if(!Array.isArray(entries))throw Error('Invalid scan index');
-  scanEntries=entries.filter(x=>x&&typeof x.session==='string'&&typeof x.csv==='string').sort((a,b)=>String(b.published_at||b.session).localeCompare(String(a.published_at||a.session)));
+  scanEntries=entries.filter(x=>x&&typeof x.session==='string'&&typeof x.csv==='string'&&Number(x.player_count)>=7000).sort((a,b)=>String(b.published_at||b.session).localeCompare(String(a.published_at||a.session)));
   select.replaceChildren();
   for(const entry of scanEntries)select.add(new Option(scanLabel(entry),entry.session));
   if(!scanEntries.length){select.add(new Option('Latest scan','latest'));await loadScan(null);return}

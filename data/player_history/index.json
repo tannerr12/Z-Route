@@ -3,11 +3,21 @@
     "session": "session_20261104_174838_743243",
     "completed": 12,
     "total": 12,
-    "completion_percent": 100.0,
+    "completion_percent": 100,
     "player_count": 8,
     "published_at": "2026-11-04T22:48:59.187701+00:00",
     "csv": "data/player_history/session_20261104_174838_743243.csv",
     "guild_summary": "data/player_history/session_20261104_174838_743243.guilds.json"
+  },
+  {
+    "session": "session_20261104_210126_recovered",
+    "completed": null,
+    "total": null,
+    "completion_percent": null,
+    "player_count": 8927,
+    "published_at": "2026-11-04T21:01:26Z",
+    "csv": "data/player_history/session_20261104_210126_recovered.csv",
+    "recovery_note": "Recovered from original November 4 commit 9de11760; exact scan session metadata unavailable."
   },
   {
     "session": "session_20261105_090723_946348",

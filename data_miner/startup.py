@@ -56,32 +56,55 @@ def dismiss_login_popup(cfg, timeout=30, poll_interval=2):
     raise TimeoutError("Login popup still visible after retries")
 
 
-def promo_close_visible(image):
-    """Detect the light-gold X in the upper-right promotional overlay.
-
-    Limit detection to the known close-button region to avoid tapping
-    unrelated X icons elsewhere in the game.
-    """
+def promo_close_point(image):
+    """Find a gold X using two intersecting diagonal strokes in known top-right ROIs."""
     height, width = image.shape[:2]
-    x = round(PROMO_CLOSE_CENTER[0] * width / PROMO_REFERENCE_SIZE[0])
-    y = round(PROMO_CLOSE_CENTER[1] * height / PROMO_REFERENCE_SIZE[1])
-    half = max(12, round(width * 0.045))
-    crop = image[max(0, y-half):min(height, y+half),
-                 max(0, x-half):min(width, x+half)]
-    if crop.size == 0:
-        return False
-    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-    # Gold/beige pixels in both diagonal strokes of the close icon.
-    gold = cv2.inRange(hsv, (10, 35, 145), (40, 255, 255))
-    n = gold.shape[0]
-    if n < 10:
-        return False
-    yy, xx = np.indices(gold.shape)
-    tolerance = max(3, round(n * 0.13))
-    diagonal1 = np.abs(xx - yy) < tolerance
-    diagonal2 = np.abs((xx + yy) - (n - 1)) < tolerance
-    return (np.count_nonzero((gold > 0) & diagonal1) > 15 and
-            np.count_nonzero((gold > 0) & diagonal2) > 15)
+    # Earlier promotions and the Intelligence Weekly Card place X differently.
+    centers = [
+        (PROMO_CLOSE_CENTER[0] / PROMO_REFERENCE_SIZE[0],
+         PROMO_CLOSE_CENTER[1] / PROMO_REFERENCE_SIZE[1]),
+        (0.91, 0.11),
+    ]
+    for fx, fy in centers:
+        x, y = round(fx * width), round(fy * height)
+        half = max(14, round(width * 0.055))
+        x0, y0 = max(0, x-half), max(0, y-half)
+        crop = image[y0:min(height, y+half), x0:min(width, x+half)]
+        if crop.size == 0:
+            continue
+        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv, (10, 25, 140), (45, 255, 255))
+        lines = cv2.HoughLinesP(mask, 1, np.pi/180, threshold=9,
+                                minLineLength=max(9, round(width*.018)),
+                                maxLineGap=5)
+        if lines is None:
+            continue
+        rising, falling = [], []
+        for x1, y1, x2, y2 in lines[:, 0]:
+            dx, dy = int(x2-x1), int(y2-y1)
+            if abs(dx) < 6 or abs(dy) < 6:
+                continue
+            slope = dy/dx
+            if .55 <= slope <= 1.7:
+                rising.append(((x1+x2)/2, (y1+y2)/2))
+            elif -1.7 <= slope <= -.55:
+                falling.append(((x1+x2)/2, (y1+y2)/2))
+        for px, py in rising:
+            for qx, qy in falling:
+                if abs(px-qx) <= half*.45 and abs(py-qy) <= half*.45:
+                    return (round(x0+(px+qx)/2), round(y0+(py+qy)/2))
+    return None
+
+
+def promo_close_visible(image):
+    return promo_close_point(image) is not None
+
+
+def close_verified_promo(cfg, image):
+    point = promo_close_point(image)
+    if point is None:
+        raise RuntimeError("Promotion X not locally verified; no tap performed")
+    adb(cfg, "shell", "input", "tap", str(point[0]), str(point[1]))
 
 
 def dismiss_promotions(cfg, max_attempts=12, wait_seconds=0.5):
@@ -94,7 +117,7 @@ def dismiss_promotions(cfg, max_attempts=12, wait_seconds=0.5):
             if not promo_close_visible(screenshot(cfg)):
                 return dismissed
             image = screenshot(cfg)
-        tap_scaled(cfg, image, PROMO_CLOSE_CENTER, PROMO_REFERENCE_SIZE)
+        close_verified_promo(cfg, image)
         dismissed += 1
         time.sleep(wait_seconds)
     if promo_close_visible(screenshot(cfg)):

@@ -6,6 +6,9 @@ import csv
 import queue
 import threading
 import traceback
+import faulthandler
+import os
+import ctypes
 from difflib import SequenceMatcher
 import json
 import re
@@ -1954,6 +1957,58 @@ def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizon
     encoder_failure = threading.Event()
     encoder_last_error = []
     encoder_log = session_folder / "encoder_errors.log"
+    runtime_log = session_folder / "scanner_runtime.log"
+    fault_file = (session_folder / "python_faults.log").open("a", encoding="utf-8")
+    faulthandler.enable(file=fault_file, all_threads=True)
+    monitor_stop = threading.Event()
+    progress = {"capture": time.monotonic(), "encode": time.monotonic(), "ai": time.monotonic(),
+                "captured": 0, "encoded": 0, "analyzed": 0}
+    def log_runtime(message):
+        line = f"[{datetime.now(timezone.utc).isoformat()}] {message}"
+        print(line, flush=True)
+        with runtime_log.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+    def memory_mb():
+        if os.name != "nt":
+            return "n/a"
+        class PMC(ctypes.Structure):
+            _fields_ = [("cb", ctypes.c_ulong), ("PageFaultCount", ctypes.c_ulong),
+                        ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
+                        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t), ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t), ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                        ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t)]
+        counters = PMC()
+        counters.cb = ctypes.sizeof(counters)
+        ok = ctypes.windll.psapi.GetProcessMemoryInfo(
+            ctypes.windll.kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb)
+        return f"{counters.WorkingSetSize / 1048576:.0f}MB" if ok else "unavailable"
+    worker = None
+    encoder = None
+    def watchdog():
+        while not monitor_stop.wait(10):
+            now = time.monotonic()
+            try:
+                log_runtime("[HEALTH] "
+                    f"column={state['column']+1}/{columns} view={state['step']} phase={state['phase']} "
+                    f"RAW={capture_queue.qsize()}/64 AI={ai_queue.qsize()} "
+                    f"encoder_alive={encoder.is_alive() if encoder else 'off'} "
+                    f"AI_alive={worker.is_alive() if worker else False} RAM={memory_mb()} "
+                    f"captured={progress['captured']} encoded={progress['encoded']} analyzed={progress['analyzed']} "
+                    f"capture_idle={now-progress['capture']:.0f}s "
+                    f"encode_idle={now-progress['encode']:.0f}s AI_idle={now-progress['ai']:.0f}s")
+                if raw_capture and capture_queue.qsize() and now-progress["encode"] > 30:
+                    log_runtime("[WATCHDOG WARNING] RAW images waiting, no encoding completion in 30s")
+                if ai_queue.qsize() and now-progress["ai"] > 120:
+                    log_runtime("[WATCHDOG WARNING] AI backlog with no completed result in 120s")
+                if raw_capture and encoder and not encoder.is_alive():
+                    encoder_failure.set()
+                    log_runtime("[WATCHDOG ERROR] Encoder thread is not alive")
+                if worker and not worker.is_alive():
+                    log_runtime("[WATCHDOG ERROR] AI thread is not alive")
+            except Exception:
+                print("[WATCHDOG ERROR] " + traceback.format_exc(), flush=True)
+    monitor = threading.Thread(target=watchdog, daemon=True, name="scanner-watchdog")
+    monitor.start()
     def report_encoder_error(message):
         detail = f"[{datetime.now(timezone.utc).isoformat()}] {message}\n"
         encoder_last_error.append(detail)
@@ -1961,6 +2016,23 @@ def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizon
         with encoder_log.open("a", encoding="utf-8") as log:
             log.write(detail)
     def enqueue_raw(item):
+        if isinstance(item, tuple):
+            path, image, meta = item
+            raw_path = path.with_suffix(".raw.npy")
+            temp = path.with_suffix(".raw.tmp")
+            # Persist the screenshot before navigation can advance.
+            with temp.open("wb") as handle:
+                np.save(handle, image, allow_pickle=False)
+                handle.flush()
+                os.fsync(handle.fileno())
+            temp.replace(raw_path)
+            metadata_path = path.with_suffix(".meta.json")
+            metadata_temp = path.with_suffix(".meta.json.tmp")
+            metadata_temp.write_text(json.dumps(meta), encoding="utf-8")
+            metadata_temp.replace(metadata_path)
+            item = path
+            progress["capture"] = time.monotonic()
+            progress["captured"] += 1
         while True:
             if encoder_failure.is_set() or (encoder is not None and not encoder.is_alive()):
                 raise RuntimeError(f"RAW encoder worker stopped; see {encoder_log}")
@@ -1983,23 +2055,27 @@ def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizon
             try:
                 if item is None:
                     return
-                path, image, meta = item
+                path = item
+                raw_path = path.with_suffix(".raw.npy")
                 temporary = path.with_suffix(".png.tmp")
                 try:
+                    with raw_path.open("rb") as handle:
+                        image = np.load(handle, allow_pickle=False)
                     ok, encoded = cv2.imencode(".png", image)
                     if not ok:
                         raise RuntimeError("PNG encoding failed")
                     temporary.write_bytes(encoded.tobytes())
                     temporary.replace(path)
-                    path.with_suffix(".meta.json").write_text(json.dumps(meta), encoding="utf-8")
                     ai_queue.put(path)
+                    raw_path.unlink(missing_ok=True)
+                    progress["encode"] = time.monotonic()
+                    progress["encoded"] += 1
                 except Exception as exc:
                     encoding_errors.append(str(exc))
                     report_encoder_error(f"Encoding FAILED for {path.name}:\n{traceback.format_exc()}")
                     temporary.unlink(missing_ok=True)
             finally:
                 capture_queue.task_done()
-    encoder = None
     cfg["_enqueue_raw"] = enqueue_raw if raw_capture else None
     if raw_capture:
         encoder = threading.Thread(target=encode_captures, daemon=True, name="png-encoder")
@@ -2010,11 +2086,31 @@ def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizon
             try:
                 if path is None:
                     return
-                process_capture_ai(cfg, path, unique_players, save_players)
+                try:
+                    process_capture_ai(cfg, path, unique_players, save_players)
+                except Exception:
+                    log_runtime("[AI ERROR] " + traceback.format_exc())
+                finally:
+                    progress["ai"] = time.monotonic()
+                    progress["analyzed"] += 1
             finally:
                 ai_queue.task_done()
     worker = threading.Thread(target=analyze_captures, daemon=True, name="ollama-worker")
     worker.start()
+    # Requeue durable RAW frames from this session, without moving the map.
+    if raw_capture:
+        recovered = 0
+        for raw_path in sorted(session_folder.glob("capture_col_*_view_*.raw.npy")):
+            path = Path(str(raw_path)[:-8] + ".png")
+            if path.exists() and path.with_suffix(".meta.json").exists():
+                raw_path.unlink(missing_ok=True)
+                continue
+            if not path.with_suffix(".meta.json").exists():
+                log_runtime(f"[RECOVERY WARNING] Metadata missing for {raw_path.name}")
+                continue
+            enqueue_raw(path)
+            recovered += 1
+        log_runtime(f"[RECOVERY] Requeued {recovered} durable RAW captures")
     # On resume, retry a previously failed screenshot at most once across
     # all subsequent resumes. New/pending screenshots still get their first pass.
     queued_retries = 0
@@ -2198,7 +2294,10 @@ def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizon
         ai_queue.put(None)
         ai_queue.join()
         worker.join()
+        monitor_stop.set()
+        monitor.join(timeout=2)
         cfg["_raw_capture_enabled"] = False
+        cfg["_enqueue_raw"] = None
         if encoding_errors:
             print(f"WARNING: {len(encoding_errors)} screenshot encoding failures; review session before resuming.")
         capture_ai_report(session_folder)

@@ -11,7 +11,7 @@ def ask_vision(cfg, image, instruction):
     if not ok:
         raise RuntimeError("Screenshot encoding failed")
     payload = {
-        "model": cfg.get("ollama", {}).get("model", "qwen2.5vl:3b"),
+        "model": cfg.get("ollama", {}).get("model", "qwen3-vl:4b"),
         "stream": False,
         "format": "json",
         "options": {"temperature": 0},

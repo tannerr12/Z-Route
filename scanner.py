@@ -77,6 +77,24 @@ def adb(cfg, *args):
 
 
 def screenshot(cfg):
+    if cfg.get("_raw_capture_enabled"):
+        import struct
+        raw = adb(cfg, "exec-out", "screencap")
+        if len(raw) < 12:
+            raise RuntimeError("Incomplete RAW screenshot")
+        width, height, fmt = struct.unpack_from("<III", raw)
+        channels = {1: 4, 2: 4, 3: 3}.get(fmt)
+        if not (0 < width <= 8192 and 0 < height <= 8192) or channels is None:
+            raise RuntimeError(f"Unsupported RAW framebuffer: {width}x{height}, format {fmt}")
+        offset = len(raw) - width * height * channels
+        if offset not in (12, 16):
+            raise RuntimeError(f"Invalid RAW framebuffer header: {offset}")
+        pixels = np.frombuffer(raw, np.uint8, count=width*height*channels, offset=offset)
+        pixels = pixels.reshape(height, width, channels)
+        image = cv2.cvtColor(pixels, cv2.COLOR_RGBA2BGR if channels == 4 else cv2.COLOR_RGB2BGR)
+        cfg["_last_capture_png"] = None
+        cfg["_last_capture_image_id"] = id(image)
+        return image
     raw = adb(cfg, "exec-out", "screencap", "-p")
     started = time.perf_counter()
     image = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
@@ -94,7 +112,7 @@ def screenshot(cfg):
 
 def save_capture_png(cfg, path, image):
     started = time.perf_counter()
-    if cfg.get("_last_capture_image_id") == id(image):
+    if cfg.get("_last_capture_image_id") == id(image) and cfg.get("_last_capture_png") is not None:
         path.write_bytes(cfg["_last_capture_png"])
     elif not cv2.imwrite(str(path), image):
         raise RuntimeError(f"Failed to save screenshot: {path}")
@@ -831,12 +849,17 @@ def scan_column(cfg, max_swipes=5, direction="up", verify_after=0, on_player=Non
         if capture_queue is not None:
             col = cfg.get("_scan_grid_context", {}).get("column", 0)
             path = folder / f"capture_col_{col:03d}_view_{step:03d}.png"
-            save_capture_png(cfg, path, image)
             meta = {"column": col, "view": step,
                     "row": step + 1 if direction == "up" else max_swipes - step + 1,
                     "direction": direction, "captured_at": datetime.now(timezone.utc).isoformat()}
-            path.with_suffix(".meta.json").write_text(json.dumps(meta), encoding="utf-8")
-            capture_queue.put(path)
+            if cfg.get("_raw_capture_enabled"):
+                # Bounded in-memory handoff; the encoding worker writes a durable PNG
+                # and metadata before the Ollama worker receives the file path.
+                capture_queue.put((path, image, meta))
+            else:
+                save_capture_png(cfg, path, image)
+                path.with_suffix(".meta.json").write_text(json.dumps(meta), encoding="utf-8")
+                capture_queue.put(path)
             completed_views += 1
             print(f"Captured {path.name}; AI processing independently.")
             if step == max_swipes:
@@ -1083,14 +1106,125 @@ def calibrate_movement(cfg):
     print("Calibration only: one swipe, no base clicks or database writes.")
 
 
+def benchmark_screenshot(cfg, samples=10):
+    """Compare PNG and raw ADB framebuffer capture without moving the map."""
+    if not 1 <= samples <= 100:
+        raise ValueError("samples must be between 1 and 100")
+    import struct
+    results = {}
+    reference = None
+    for mode in ("png", "raw"):
+        timings = []
+        for i in range(samples):
+            started = time.perf_counter()
+            if mode == "png":
+                payload = adb(cfg, "exec-out", "screencap", "-p")
+                image = cv2.imdecode(np.frombuffer(payload, np.uint8), cv2.IMREAD_COLOR)
+            else:
+                payload = adb(cfg, "exec-out", "screencap")
+                if len(payload) < 12:
+                    raise RuntimeError("Raw framebuffer header is incomplete")
+                width, height, pixel_format = struct.unpack_from("<III", payload)
+                if not (0 < width <= 8192 and 0 < height <= 8192):
+                    raise RuntimeError(f"Unexpected raw dimensions: {width}x{height}")
+                channels = {1: 4, 2: 4, 3: 3}.get(pixel_format)
+                if channels is None:
+                    raise RuntimeError(f"Unsupported Android pixel format: {pixel_format}")
+                expected = width * height * channels
+                offset = len(payload) - expected
+                if offset not in (12, 16):
+                    raise RuntimeError(f"Unexpected framebuffer payload length/header: {len(payload)}/{offset}")
+                pixels = np.frombuffer(payload, dtype=np.uint8, count=expected, offset=offset)
+                pixels = pixels.reshape((height, width, channels))
+                image = cv2.cvtColor(pixels, cv2.COLOR_RGBA2BGR if channels == 4 else cv2.COLOR_RGB2BGR)
+            elapsed = time.perf_counter() - started
+            if image is None:
+                raise RuntimeError(f"{mode} screenshot decode failed")
+            if reference is None:
+                reference = image.shape
+            if image.shape != reference:
+                raise RuntimeError(f"Screenshot dimensions differ: {image.shape} vs {reference}")
+            timings.append(elapsed)
+            print(f"{mode.upper()} {i+1}/{samples}: {elapsed:.3f}s, {len(payload)/1048576:.2f} MiB")
+        results[mode] = sum(timings) / len(timings)
+    print(f"Average PNG: {results['png']:.3f}s; raw: {results['raw']:.3f}s")
+    print("Benchmark only: production screenshot capture is unchanged.")
+
+
+def calibrate_capture_ai(cfg, samples=3):
+    """Compare PNG and raw captures, PNG save time, and Ollama name reading."""
+    if not 1 <= samples <= 10:
+        raise ValueError("samples must be between 1 and 10")
+    import struct
+    folder = ROOT / "screenshots" / ("capture_ai_" + datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f"))
+    folder.mkdir(parents=True, exist_ok=True)
+    report = []
+    for i in range(samples):
+        for mode in ("png", "raw"):
+            print(f"Pair {i+1}/{samples} {mode.upper()}: starting capture...", flush=True)
+            try:
+                started = time.perf_counter()
+                if mode == "png":
+                    payload = adb(cfg, "exec-out", "screencap", "-p")
+                    image = cv2.imdecode(np.frombuffer(payload, np.uint8), cv2.IMREAD_COLOR)
+                else:
+                    payload = adb(cfg, "exec-out", "screencap")
+                    if len(payload) < 12:
+                        raise ValueError("Incomplete raw framebuffer")
+                    width, height, fmt = struct.unpack_from("<III", payload)
+                    if not (0 < width <= 8192 and 0 < height <= 8192):
+                        raise ValueError(f"Invalid framebuffer size: {width}x{height}")
+                    channels = {1: 4, 2: 4, 3: 3}.get(fmt)
+                    if channels is None:
+                        raise ValueError(f"Unsupported framebuffer format: {fmt}")
+                    expected = width * height * channels
+                    offset = len(payload) - expected
+                    if offset not in (12, 16):
+                        raise ValueError(f"Invalid framebuffer header size: {offset}")
+                    pixels = np.frombuffer(payload, np.uint8, count=expected, offset=offset).reshape(height, width, channels)
+                    image = cv2.cvtColor(pixels, cv2.COLOR_RGBA2BGR if channels == 4 else cv2.COLOR_RGB2BGR)
+                capture_time = time.perf_counter() - started
+                print(f"Pair {i+1} {mode.upper()}: captured in {capture_time:.3f}s; checking and saving...", flush=True)
+                if image is None:
+                    raise ValueError("Capture decoding failed")
+                ensure_game_connected(cfg, image)
+                path = folder / f"pair_{i+1:02d}_{mode}.png"
+                started = time.perf_counter()
+                if mode == "png":
+                    path.write_bytes(payload)
+                elif not cv2.imwrite(str(path), image):
+                    raise RuntimeError("PNG encoding failed")
+                save_time = time.perf_counter() - started
+                saved = cv2.imread(str(path))
+                if saved is None or saved.shape != image.shape or not np.array_equal(saved, image):
+                    raise RuntimeError("Saved PNG differs from captured image")
+                print(f"Pair {i+1} {mode.upper()}: saved in {save_time:.3f}s; requesting Ollama (up to 180s)...", flush=True)
+                started = time.perf_counter()
+                players = debug_ollama(cfg, image=saved)
+                ai_time = time.perf_counter() - started
+                entry = {"pair": i+1, "mode": mode, "capture_seconds": round(capture_time, 3),
+                         "save_seconds": round(save_time, 3), "ai_seconds": round(ai_time, 3),
+                         "names": [p.get("username") if isinstance(p, dict) else str(p) for p in players],
+                         "image": path.name, "status": "ok"}
+                print(f"Pair {i+1} {mode.upper()}: capture={capture_time:.3f}s save={save_time:.3f}s "
+                      f"AI={ai_time:.2f}s names={len(players)}: {entry['names']}")
+            except Exception as exc:
+                entry = {"pair": i+1, "mode": mode, "status": "failed", "error": str(exc)}
+                print(f"Pair {i+1} {mode.upper()} FAILED: {exc}", flush=True)
+            report.append(entry)
+            (folder / "report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"Calibration results: {folder}")
+    print("No map swipes, database writes, or production capture changes.")
+
+
 def benchmark_capture(cfg, swipes=110, settle=0.2, swipe_ms=250):
     """Measure capture throughput and map displacement; no Ollama or DB writes."""
     if not 1 <= swipes <= 500:
         raise ValueError("swipes must be between 1 and 500")
     if not 0 <= settle <= 3:
         raise ValueError("settle must be between 0 and 3 seconds")
-    if not 100 <= swipe_ms <= 1000:
-        raise ValueError("swipe-ms must be between 100 and 1000")
+    if not 10 <= swipe_ms <= 1000:
+        raise ValueError("swipe-ms must be between 10 and 1000")
     folder = ROOT / "screenshots" / ("calibration_" + datetime.now().astimezone().strftime("%Y%m%d_%H%M%S_%f"))
     folder.mkdir(parents=True, exist_ok=True)
     before = screenshot(cfg)
@@ -1169,7 +1303,7 @@ def is_ignored_commander(player):
     if not isinstance(name, str):
         return False
     normalized = name.strip()
-    normalized = re.sub(r"^\\[[^\\]]{1,12}\\]\\s*", "", normalized)
+    normalized = re.sub(r"^\[[^\]\r\n]{1,12}\]\s*", "", normalized)
     normalized = re.sub(r"^[A-Za-z0-9]{2,8}[!|:]\\s+", "", normalized)
     return normalized.casefold().startswith("commander2")
 
@@ -1188,19 +1322,28 @@ def debug_ollama(cfg, image=None, crop_override=None):
     if not ok:
         raise RuntimeError("Could not encode screenshot")
     request_data = {
-        "model": cfg.get("ollama", {}).get("model", "qwen2.5vl:3b"),
+        "model": cfg.get("ollama", {}).get("model", "qwen3-vl:4b-instruct"),
         "stream": False,
-        "messages": [{
-            "role": "user",
-            "content": ("Read player nameplates in this Z Route map image. "
-                        "Return JSON with a players array. Each player has "
-                        "guild (string or null), username (exact visible text), "
-                        "level (integer or null), and box [x1,y1,x2,y2] "
-                        "relative to this image. Ignore incomplete names, "
-                        "UI labels, mining camps, and resource nodes. Numeric labels 1-99 are not player usernames. Do not guess."),
-            "images": [base64.b64encode(png.tobytes()).decode("ascii")]
-        }],
-        "options": {"temperature": 0}
+        "think": False,
+        "format": {
+            "type": "object",
+            "properties": {
+                "players": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "maxItems": 20,
+                    "uniqueItems": True
+                }
+            },
+            "required": ["players"],
+            "additionalProperties": False
+        },
+        "keep_alive": cfg.get("ollama", {}).get("keep_alive", "30m"),
+        "messages": [
+            {"role": "user", "content": 'Identify player names visible in the image. Respond only with a JSON object containing the key "players", whose value is an array of unique player-name strings (maximum 20). Preserve guild tags exactly as visible. If no player names are visible, return {"players":[]}. Do not include levels, explanations, or additional keys.',
+             "images": [base64.b64encode(png.tobytes()).decode("ascii")]}
+        ],
+        "options": {"temperature": 0, "num_predict": cfg.get("ollama", {}).get("num_predict", 512)}
     }
     url = "http://127.0.0.1:11434/api/chat"
     req = urllib.request.Request(url,
@@ -1218,10 +1361,40 @@ def debug_ollama(cfg, image=None, crop_override=None):
             if len(lines) >= 3 and lines[-1].strip() == "```":
                 cleaned = "\n".join(lines[1:-1]).strip()
         parsed = json.loads(cleaned)
-        if isinstance(parsed, list):
+        if isinstance(parsed, dict) and isinstance(parsed.get("error"), str) and any(phrase in parsed["error"].casefold() for phrase in ("no player names found", "no visible player names found")):
+            players = []
+        elif isinstance(parsed, list):
             players = parsed
         elif isinstance(parsed, dict) and isinstance(parsed.get("players"), list):
             players = parsed["players"]
+        elif isinstance(parsed, dict) and isinstance(parsed.get("player_names"), list):
+            players = parsed["player_names"]
+        elif isinstance(parsed, dict) and isinstance(parsed.get("visible_player_names"), list):
+            players = parsed["visible_player_names"]
+        elif isinstance(parsed, dict) and isinstance(parsed.get("names"), list):
+            players = parsed["names"]
+        elif isinstance(parsed, dict) and parsed and all(
+            isinstance(k, str) and isinstance(v, (str, int))
+            and (str(v).strip() == "" or str(v).isdigit())
+            for k, v in parsed.items()
+        ):
+            players = [{"nameplate": k, "level": int(v) if str(v).isdigit() else None}
+                       for k, v in parsed.items()]
+        elif isinstance(parsed, dict) and parsed and all(
+            isinstance(k, str) and isinstance(v, list) and len(v) == 1
+            and isinstance(v[0], int) and not isinstance(v[0], bool)
+            for k, v in parsed.items()
+        ):
+            # Qwen sometimes maps each nameplate to a one-element level array.
+            players = [{"nameplate": name, "level": level[0]}
+                       for name, level in parsed.items()]
+        elif isinstance(parsed, dict) and len(parsed) == 1 and all(
+            isinstance(k, str) and isinstance(v, list) and all(isinstance(n, str) for n in v)
+            for k, v in parsed.items()
+        ):
+            # Some vision responses put the first name in the object key.
+            first_name, remaining_names = next(iter(parsed.items()))
+            players = [first_name, *remaining_names]
         else:
             raise ValueError("Ollama response must be a player list or object with players array")
     except (ValueError, json.JSONDecodeError) as exc:
@@ -1237,10 +1410,50 @@ def debug_ollama(cfg, image=None, crop_override=None):
             f"Ollama failed to complete screenshot analysis (done={answer.get('done')!r}). "
             f"Diagnostic saved to {path}. No swipe performed."
         ) from exc
-    before_filter = len(players)
-    players = [p for p in players if isinstance(p, dict) and valid_scanned_username(p.get("username")) and not is_ignored_commander(p)]
-    if len(players) != before_filter:
-        print(f"Ignored {before_filter - len(players)} default Commander2 usernames.")
+    # Accept repeated names from valid JSON; deduplicate them before normalization.
+    # Keep the first occurrence, preserving the original name spelling and order.
+    deduplicated = []
+    seen_raw = set()
+    for item in players:
+        if isinstance(item, str):
+            name = item.strip()
+        elif isinstance(item, dict):
+            name = str(item.get("nameplate") or item.get("username") or "").strip()
+        else:
+            continue
+        if not name:
+            continue
+        key = name.casefold()
+        if key in seen_raw:
+            continue
+        seen_raw.add(key)
+        deduplicated.append(item)
+    if len(deduplicated) != len(players):
+        print(f"Ollama duplicate names removed: {len(players) - len(deduplicated)}")
+    players = deduplicated
+    # Split the optional [guild] prefix deterministically in Python.
+    normalized = []
+    seen_names = set()
+    for item in players:
+        if isinstance(item, str):
+            raw_name = item.strip()
+        elif isinstance(item, dict):
+            raw_name = str(item.get("nameplate") or item.get("username") or "").strip()
+            if item.get("guild") and not raw_name.startswith("["):
+                raw_name = f"[{item['guild']}] {raw_name}"
+        else:
+            continue
+        match = re.match(r"^\[([^\]\r\n]{1,12})\]\s*(.+)$", raw_name)
+        guild = match.group(1).strip() if match else None
+        username = match.group(2).strip() if match else raw_name
+        if not valid_scanned_username(username) or username.casefold().startswith("commander2"):
+            continue
+        identity = (guild or "", username.casefold())
+        if identity in seen_names:
+            continue
+        seen_names.add(identity)
+        normalized.append({"username": username, "guild": guild, "level": None, "box": None})
+    players = normalized
     print("Ollama raw player candidates:", len(players))
     for player in players:
         if not isinstance(player, dict):
@@ -1440,7 +1653,7 @@ def process_capture_ai(cfg, path, unique_players, save_players):
             unique_players[key] = {
                 "username": name.strip(), "guild": str(player.get("guild") or ""),
                 "level": player.get("level") if player.get("level") is not None else "",
-                "row": meta["row"], "col": meta["column"], "view": meta["view"],
+                "row": min(int(meta["row"]), 60), "col": min(int(meta["column"]), 150), "view": meta["view"],
                 "direction": meta["direction"], "observed_at": meta["captured_at"],
                 "coordinate_type": "approximate swipe grid"}
             added += 1
@@ -1460,6 +1673,161 @@ def process_capture_ai(cfg, path, unique_players, save_players):
         return "failed"
 
 
+def retry_failed_after_scan(cfg, folder, unique_players, save_players):
+    """Retry each failed capture once after the initial AI queue has drained."""
+    failures = sorted(p for p in folder.glob("capture_col_*_view_*.png")
+                      if p.with_suffix(".failed.json").exists()
+                      and not p.with_suffix(".players.json").exists()
+                      and not p.with_suffix(".final-retried.json").exists())
+    print(f"Final AI retry: {len(failures)} failed screenshots eligible for one retry.")
+    recovered = 0
+    for index, path in enumerate(failures, 1):
+        # Write marker first so interrupted sessions cannot retry indefinitely.
+        marker = path.with_suffix(".final-retried.json")
+        marker.write_text(json.dumps({
+            "attempted_at": datetime.now(timezone.utc).isoformat(),
+            "reason": "one automatic retry after all captures were processed",
+        }, indent=2), encoding="utf-8")
+        outcome = process_capture_ai(cfg, path, unique_players, save_players)
+        if outcome == "completed":
+            recovered += 1
+        print(f"Final retry {index}/{len(failures)}: {outcome} ({path.name})")
+    print(f"Final AI retry finished: {recovered}/{len(failures)} recovered.")
+    capture_ai_report(folder)
+
+
+def publish_scan_csv(folder, threshold=90.0, branch="main"):
+    """Publish a sufficiently analyzed session without merging scanner code."""
+    import shutil
+    import tempfile
+
+    captures = list(folder.glob("capture_col_*_view_*.png"))
+    completed = sum(p.with_suffix(".players.json").exists() for p in captures)
+    failed = sum(p.with_suffix(".failed.json").exists() and
+                 not p.with_suffix(".players.json").exists() for p in captures)
+    pending = len(captures) - completed - failed
+    rate = 100 * completed / len(captures) if captures else 0.0
+    checkpoint = ROOT / "exports" / "players" / "serpentine_checkpoint.json"
+    if not checkpoint.exists():
+        print("GitHub publish skipped: scan completion checkpoint missing.")
+        return False
+    try:
+        state = json.loads(checkpoint.read_text(encoding="utf-8"))
+    except (ValueError, OSError) as exc:
+        print(f"GitHub publish skipped: unreadable scan checkpoint: {exc}")
+        return False
+    if state.get("phase") != "done" or (ROOT / state.get("session_relative", "")).resolve() != folder.resolve():
+        print("GitHub publish skipped: this map capture session has not finished.")
+        return False
+    if len(captures) < 100:
+        print(f"GitHub publish skipped: {len(captures)} captures; minimum 100 required to protect the full map.")
+        return False
+    if not captures or pending:
+        print(f"GitHub publish skipped: {pending} screenshots have not been processed yet.")
+        return False
+    if rate < threshold:
+        print(f"GitHub publish skipped: {failed}/{len(captures)} failed "
+              f"({100-rate:.1f}%); maximum allowed failure rate is {100-threshold:.1f}%.")
+        return False
+    stamp = folder.name.removeprefix("session_")
+    source = ROOT / "exports" / "players" / f"serpentine_players_{stamp}.csv"
+    if not source.is_file():
+        print(f"GitHub publish skipped: missing {source}")
+        return False
+    with source.open(newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle)
+        if not reader.fieldnames or "username" not in reader.fieldnames:
+            print("GitHub publish skipped: invalid player CSV.")
+            return False
+        rows = list(reader)
+    if not rows:
+        print("GitHub publish skipped: no players in CSV.")
+        return False
+    metadata = {
+        "session": folder.name,
+        "completed": completed,
+        "total": len(captures),
+        "completion_percent": round(rate, 2),
+        "player_count": len(rows),
+        "published_at": datetime.now(timezone.utc).isoformat(),
+    }
+    # Use a temporary worktree so the scanner's dev branch is never merged.
+    # Git uses the user's existing credentials; no token is stored in code.
+    temp = Path(tempfile.mkdtemp(prefix="zroute-publish-"))
+    worktree = temp / "checkout"
+    attached = False
+    try:
+        subprocess.run(["git", "-C", str(ROOT), "fetch", "origin", branch], check=True)
+        subprocess.run(["git", "-C", str(ROOT), "worktree", "add", "--detach",
+                        str(worktree), f"origin/{branch}"], check=True)
+        attached = True
+        destination = worktree / "data" / "players.csv"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+        (destination.parent / "map-players-meta.json").write_text(
+            json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+
+        # Preserve each published scan as an immutable historical snapshot.
+        history = destination.parent / "player_history"
+        history.mkdir(parents=True, exist_ok=True)
+        snapshot = history / f"{folder.name}.csv"
+        if snapshot.exists():
+            with snapshot.open("rb") as old, source.open("rb") as new:
+                if old.read() != new.read():
+                    print("GitHub publish skipped: historical snapshot already exists "
+                          "with different content; refusing to overwrite history.")
+                    return False
+        else:
+            shutil.copyfile(source, snapshot)
+
+        # Guild counts are observations, not proof of membership departure.
+        guild_counts = {}
+        for row in rows:
+            guild = (row.get("guild") or "").strip() or "(unknown)"
+            guild_counts[guild] = guild_counts.get(guild, 0) + 1
+        guild_summary = history / f"{folder.name}.guilds.json"
+        summary = {"session": folder.name, "published_at": metadata["published_at"],
+                   "guilds": [{"guild": tag, "observed_players": count}
+                              for tag, count in sorted(guild_counts.items())]}
+        if not guild_summary.exists():
+            guild_summary.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+        manifest_path = history / "index.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else []
+            if not isinstance(manifest, list):
+                raise ValueError("history index is not an array")
+        except (OSError, ValueError) as exc:
+            print(f"GitHub publish skipped: invalid historical index: {exc}")
+            return False
+        if not any(item.get("session") == folder.name for item in manifest):
+            manifest.append({**metadata, "csv": f"data/player_history/{folder.name}.csv",
+                             "guild_summary": f"data/player_history/{folder.name}.guilds.json"})
+            manifest.sort(key=lambda item: item["session"])
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(worktree), "add",
+                        "data/players.csv", "data/map-players-meta.json",
+                        "data/player_history"], check=True)
+        changed = subprocess.run(["git", "-C", str(worktree), "diff", "--cached",
+                                  "--quiet"]).returncode
+        if changed == 0:
+            print("GitHub publish: data unchanged.")
+            return True
+        subprocess.run(["git", "-C", str(worktree), "commit", "-m",
+                        f"Update map player scan ({rate:.1f}% analyzed)"], check=True)
+        subprocess.run(["git", "-C", str(worktree), "push", "origin",
+                        f"HEAD:refs/heads/{branch}"], check=True)
+        print(f"GitHub publish successful: {len(rows)} players, {rate:.1f}% analyzed on {branch}.")
+        return True
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(f"GitHub publish failed; local CSV preserved: {exc}")
+        return False
+    finally:
+        if attached:
+            subprocess.run(["git", "-C", str(ROOT), "worktree", "remove",
+                            "--force", str(worktree)], check=False)
+        shutil.rmtree(temp, ignore_errors=True)
+
+
 def capture_ai_report(folder):
     captures = list(folder.glob("capture_col_*_view_*.png"))
     complete = sum(p.with_suffix(".players.json").exists() for p in captures)
@@ -1471,16 +1839,16 @@ def capture_ai_report(folder):
           f"{failed} failed, {pending} pending; success rate {rate:.1f}%.")
 
 
-def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizontal_after=110, resume=False, swipe_ms=100, settle=0.2, vertical_scale=1.0, horizontal_scale=1.0, profile=False):
+def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizontal_after=160, resume=False, swipe_ms=100, settle=0.2, vertical_scale=1.0, horizontal_scale=1.0, profile=False, raw_capture=False):
     """Read-only bounded serpentine scan with one terminal horizontal edge."""
-    if not 2 <= columns <= 500:
-        raise ValueError("columns must be between 2 and 500")
+    if not 2 <= columns <= 150:
+        raise ValueError("columns must be between 2 and 150")
     if not 1 <= max_swipes <= 500:
         raise ValueError("max_swipes must be between 1 and 500")
     if not 1 <= boundary_after <= max_swipes:
         raise ValueError("boundary_after must be between 1 and max_swipes")
-    if not 0 <= horizontal_after < columns:
-        raise ValueError("horizontal_after must be between 0 and columns - 1")
+    if not 0 <= horizontal_after <= 500:
+        raise ValueError("horizontal_after must be between 0 and 500")
     if not 100 <= swipe_ms <= 1000 or not 0 <= settle <= 3:
         raise ValueError("Invalid swipe timing")
     if not 1.0 <= vertical_scale <= 1.2 or not 1.0 <= horizontal_scale <= 1.2:
@@ -1505,8 +1873,15 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
         # identical swipe geometry, so old runs remain resumable.
         previous_settings.setdefault("vertical_scale", 1.0)
         previous_settings.setdefault("horizontal_scale", 1.0)
-        if previous_settings != settings:
-            raise RuntimeError("Scan settings differ from checkpoint; use the original settings.")
+        # Verification timing can be raised without changing swipe geometry.
+        geometry_keys = ("max_swipes", "columns", "swipe_ms", "settle",
+                         "vertical_scale", "horizontal_scale")
+        if any(previous_settings.get(key) != settings.get(key) for key in geometry_keys):
+            raise RuntimeError("Scan geometry differs from checkpoint; use the original settings.")
+        boundary_after = max(boundary_after, previous_settings.get("boundary_after", 0))
+        horizontal_after = max(horizontal_after, previous_settings.get("horizontal_after", 0))
+        print(f"Movement verification: vertical after {boundary_after} swipes per column; "
+              f"horizontal after {horizontal_after} shifts.")
         if state.get("phase") == "connection_lost":
             raise RuntimeError("Game connection was lost. Reconnecting changes the map position; "
                                "automatic --continue is unsafe until repositioning is implemented. "
@@ -1572,21 +1947,69 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
     if not resume:
         save_players()
         save_state()
-    capture_queue = queue.Queue()
+    # RAW capture is opt-in until its threaded scan path is validated.
+    cfg["_raw_capture_enabled"] = raw_capture
+    capture_queue = queue.Queue(maxsize=4) if raw_capture else queue.Queue()
+    ai_queue = queue.Queue()
+    encoding_errors = []
+    def encode_captures():
+        while True:
+            item = capture_queue.get()
+            try:
+                if item is None:
+                    return
+                path, image, meta = item
+                temporary = path.with_suffix(".png.tmp")
+                try:
+                    ok, encoded = cv2.imencode(".png", image)
+                    if not ok:
+                        raise RuntimeError("PNG encoding failed")
+                    temporary.write_bytes(encoded.tobytes())
+                    temporary.replace(path)
+                    path.with_suffix(".meta.json").write_text(json.dumps(meta), encoding="utf-8")
+                    ai_queue.put(path)
+                except Exception as exc:
+                    encoding_errors.append(str(exc))
+                    print(f"Encoding FAILED for {path.name}: {exc}", flush=True)
+                    temporary.unlink(missing_ok=True)
+            finally:
+                capture_queue.task_done()
+    encoder = None
+    if raw_capture:
+        encoder = threading.Thread(target=encode_captures, daemon=True, name="png-encoder")
+        encoder.start()
     def analyze_captures():
         while True:
-            path = capture_queue.get()
+            path = ai_queue.get()
             try:
                 if path is None:
                     return
                 process_capture_ai(cfg, path, unique_players, save_players)
             finally:
-                capture_queue.task_done()
+                ai_queue.task_done()
     worker = threading.Thread(target=analyze_captures, daemon=True, name="ollama-worker")
     worker.start()
+    # On resume, retry a previously failed screenshot at most once across
+    # all subsequent resumes. New/pending screenshots still get their first pass.
+    queued_retries = 0
+    skipped_retries = 0
     for path in sorted(session_folder.glob("capture_col_*_view_*.png")):
-        if not path.with_suffix(".players.json").exists():
-            capture_queue.put(path)
+        if path.with_suffix(".players.json").exists():
+            continue
+        failed_path = path.with_suffix(".failed.json")
+        retry_marker = path.with_suffix(".resume-retried.json")
+        if failed_path.exists():
+            if retry_marker.exists():
+                skipped_retries += 1
+                continue
+            retry_marker.write_text(json.dumps({
+                "retried_at": datetime.now(timezone.utc).isoformat(),
+                "reason": "one allowed resume retry after initial failure",
+            }), encoding="utf-8")
+            queued_retries += 1
+        ai_queue.put(path)
+    print(f"Resume AI queue: {queued_retries} failed screenshots queued for their one retry; "
+          f"{skipped_retries} previously retried screenshots skipped.")
     successful_horizontal_shifts = 0
     termination = "column limit reached"
     try:
@@ -1617,7 +2040,13 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
                 save_players()
                 print(f"CSV checkpoint: {len(unique_players)} unique usernames -> {export_path}")
 
-            reason, vertical_swipes = scan_column(cfg, max_swipes=max_swipes, direction=direction,
+            # Fixed 60-swipe column height for serpentine navigation.
+            column_swipe_limit = min(max_swipes, 60)
+            if initial_step > column_swipe_limit:
+                raise RuntimeError(
+                    f"Checkpoint step {initial_step} exceeds fixed column limit "
+                    f"{column_swipe_limit}. Inspect BlueStacks before resuming.")
+            reason, vertical_swipes = scan_column(cfg, max_swipes=column_swipe_limit, direction=direction,
                                                   verify_after=boundary_after,
                                                   on_player=record_player,
                                                   start_step=initial_step, swipe_ms=swipe_ms,
@@ -1625,6 +2054,10 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
                                                   vertical_scale=vertical_scale,
                                                   on_progress=lambda step, phase: save_state(
                                                       column=column, step=step, phase=phase))
+            if reason == "swipe limit reached" and vertical_swipes == column_swipe_limit:
+                print(f"Column {column + 1}: reached {column_swipe_limit} vertical swipes; "
+                      "turning horizontally without vertical movement verification.")
+                reason = "fixed column limit reached"
             # A short column may be real, but never turn early in a large-map run.
             # This prevents an isolated stationary/low-texture frame from triggering
             # a horizontal transition before the configured search horizon.
@@ -1636,7 +2069,7 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
                 print(f"Stopped after {vertical_swipes} swipes; horizontal transitions "
                       f"require at least {boundary_after}. No turn attempted.")
                 break
-            if reason != "stationary map / possible boundary":
+            if reason not in ("stationary map / possible boundary", "fixed column limit reached"):
                 termination = "vertical endpoint not verified"
                 print("No verified stationary endpoint; horizontal transition cancelled.")
                 break
@@ -1650,9 +2083,10 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
             ex = int(x1 + (x2 - x1) * .24)
             sx, ex = scaled_swipe(sx, ex, horizontal_scale, x1, x2)
             print(f"Attempting horizontal shift {column + 1}...")
+            # Faster horizontal transitions: 250 ms gesture and 0.5 s settle.
             adb(cfg, "shell", "input", "swipe", str(sx), str(cy),
-                str(ex), str(cy), "650")
-            time.sleep(1.5)
+                str(ex), str(cy), "250")
+            time.sleep(0.5)
             if column + 1 <= horizontal_after:
                 print(f"Horizontal verification deferred until shift {horizontal_after + 1}. "
                       "Reversing vertical direction.")
@@ -1728,9 +2162,16 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
         if profile:
             print_capture_metrics(cfg)
         print("Navigation stopped; waiting for queued AI analysis to finish...")
-        capture_queue.put(None)
-        capture_queue.join()
+        if raw_capture:
+            capture_queue.put(None)
+            capture_queue.join()
+            encoder.join()
+        ai_queue.put(None)
+        ai_queue.join()
         worker.join()
+        cfg["_raw_capture_enabled"] = False
+        if encoding_errors:
+            print(f"WARNING: {len(encoding_errors)} screenshot encoding failures; review session before resuming.")
         capture_ai_report(session_folder)
         print(f"Navigation checkpoint: {checkpoint_path} (column {state['column'] + 1}, "
               f"step {state['step']}, {state['direction']}, phase={state['phase']})")
@@ -1797,14 +2238,22 @@ def scan_serpentine(cfg, max_swipes=150, columns=2, boundary_after=62, horizonta
             cfg.pop("_scan_session_folder", None)
     if termination == "column limit reached" and column == columns - 1:
         save_state(phase="done")
+        retry_failed_after_scan(cfg, session_folder, unique_players, save_players)
+        print("Publishing disabled for automatic scans; use publish-scan explicitly after reviewing results.")
     print(f"Serpentine diagnostic finished: {successful_horizontal_shifts} verified "
           f"horizontal shifts; reason: {termination}.")
     print("No database writes or base clicks.")
 
 
-def reprocess_failed(cfg, limit=None):
-    """Offline retry of unprocessed background captures; no ADB or map movement."""
-    folders = sorted((ROOT / "screenshots").glob("session_*"))
+def reprocess_failed(cfg, limit=None, all_sessions=False):
+    """Offline retry of latest session by default; no ADB or map movement."""
+    folders = sorted((p for p in (ROOT / "screenshots").glob("session_*") if p.is_dir()), reverse=True)
+    if not all_sessions:
+        folders = folders[:1]
+    if not folders:
+        print("No screenshot session folders found.")
+        return
+    print("Offline AI session(s): " + ", ".join(p.name for p in folders))
     pending = [p for folder in folders
                for p in sorted(folder.glob("capture_col_*_view_*.png"))
                if not p.with_suffix(".players.json").exists()]
@@ -1830,17 +2279,25 @@ def reprocess_failed(cfg, limit=None):
                 writer.writeheader()
                 writer.writerows(unique.values())
             tmp.replace(csv_path)
-        process_capture_ai(cfg, path, unique, save)
+        cfg["_scan_session_folder"] = str(path.parent)
+        try:
+            process_capture_ai(cfg, path, unique, save)
+        finally:
+            cfg.pop("_scan_session_folder", None)
     for folder in folders:
         capture_ai_report(folder)
+    if not all_sessions and folders:
+        print("Automatic publishing disabled; review results and use publish-scan explicitly.")
     print("Offline retry finished; no map movement or database writes.")
 
 
 def main():
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama", "calibrate-movement", "benchmark-capture", "scan-column", "scan-serpentine", "reprocess-failed"):
+    for name in ("test", "probe", "scan", "guilds", "export", "debug-nameplates", "debug-ollama", "calibrate-movement", "benchmark-capture", "benchmark-screenshot", "calibrate-capture-ai", "scan-column", "scan-serpentine", "reprocess-failed", "publish-scan"):
         commands.add_parser(name)
+    commands.choices["benchmark-screenshot"].add_argument("--samples", type=int, default=10)
+    commands.choices["calibrate-capture-ai"].add_argument("--samples", type=int, default=3)
     commands.choices["benchmark-capture"].add_argument("--swipes", type=int, default=110)
     commands.choices["benchmark-capture"].add_argument("--settle", type=float, default=0.2)
     commands.choices["benchmark-capture"].add_argument("--swipe-ms", type=int, default=250)
@@ -1850,6 +2307,7 @@ def main():
     commands.choices["scan-serpentine"].add_argument("--vertical-scale", type=float, default=1.0)
     commands.choices["scan-serpentine"].add_argument("--horizontal-scale", type=float, default=1.0)
     commands.choices["scan-serpentine"].add_argument("--profile", action="store_true")
+    commands.choices["scan-serpentine"].add_argument("--raw-capture", action="store_true", help="Capture RAW framebuffer and encode PNG on a background thread.")
     commands.choices["scan-serpentine"].add_argument("--swipe-ms", type=int, default=100)
     commands.choices["scan-serpentine"].add_argument("--settle", type=float, default=0.2)
     commands.choices["scan-serpentine"].add_argument(
@@ -1863,23 +2321,34 @@ def main():
         help="Skip vertical movement checks for this many swipes per column (default 62).")
     commands.choices["scan-serpentine"].add_argument(
         "--columns", type=int, default=150,
-        help="Maximum columns to scan (2-500; default 150)."
+        help="Maximum columns to scan (2-150; default and hard maximum 150; automatically stops after column 150)."
     )
     commands.choices["scan-serpentine"].add_argument(
-        "--horizontal-after", type=int, default=110,
-        help="Skip verification of the first N horizontal shifts (default 110).")
+        "--horizontal-after", type=int, default=160,
+        help="Skip verification of the first N horizontal shifts (default 160).")
     commands.choices["reprocess-failed"].add_argument(
         "--limit", type=int, default=None,
-        help="Maximum number of pending screenshots to retry.")
+        help="Maximum number of pending/failed screenshots to retry.")
+    commands.choices["reprocess-failed"].add_argument(
+        "--all-sessions", action="store_true",
+        help="Retry all saved sessions instead of only the latest session.")
+    commands.choices["publish-scan"].add_argument("--threshold", type=float, default=90.0)
     query = commands.add_parser("search")
     query.add_argument("username")
     args = parser.parse_args()
-    if args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama", "calibrate-movement", "benchmark-capture", "scan-column", "scan-serpentine", "reprocess-failed"):
+    if args.command == "publish-scan":
+        folders = sorted((p for p in (ROOT / "screenshots").glob("session_*") if p.is_dir()), reverse=True)
+        if not folders:
+            parser.error("No saved screenshot sessions.")
+        if not 0 < args.threshold <= 100:
+            parser.error("--threshold must be between 0 and 100")
+        publish_scan_csv(folders[0], threshold=args.threshold)
+    elif args.command in ("test", "probe", "scan", "debug-nameplates", "debug-ollama", "calibrate-movement", "benchmark-capture", "benchmark-screenshot", "calibrate-capture-ai", "scan-column", "scan-serpentine", "reprocess-failed"):
         cfg = load_config()
         if args.command == "reprocess-failed":
             if args.limit is not None and args.limit < 1:
                 parser.error("--limit must be at least 1")
-            reprocess_failed(cfg, limit=args.limit)
+            reprocess_failed(cfg, limit=args.limit, all_sessions=args.all_sessions)
         elif args.command == "scan-serpentine":
             connect(cfg)
             scan_serpentine(cfg, max_swipes=args.max_swipes, columns=args.columns,
@@ -1887,10 +2356,16 @@ def main():
                             horizontal_after=args.horizontal_after,
                             vertical_scale=args.vertical_scale,
                             horizontal_scale=args.horizontal_scale, profile=args.profile, resume=args.resume,
-                            swipe_ms=args.swipe_ms, settle=args.settle)
+                            swipe_ms=args.swipe_ms, settle=args.settle, raw_capture=args.raw_capture)
         elif args.command == "scan-column":
             connect(cfg)
             scan_column(cfg, max_swipes=args.max_swipes)
+        elif args.command == "calibrate-capture-ai":
+            connect(cfg)
+            calibrate_capture_ai(cfg, samples=args.samples)
+        elif args.command == "benchmark-screenshot":
+            connect(cfg)
+            benchmark_screenshot(cfg, samples=args.samples)
         elif args.command == "benchmark-capture":
             connect(cfg)
             benchmark_capture(cfg, swipes=args.swipes, settle=args.settle, swipe_ms=args.swipe_ms)

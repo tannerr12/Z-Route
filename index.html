@@ -99,7 +99,7 @@ function scanLabel(item){
  const stamp=item.published_at||item.session?.replace(/^session_/,'').replace(/_(\d{6})_.*/, 'T$1')||'';
  const date=new Date(stamp);
  const dateLabel=Number.isNaN(date.getTime())?item.session:date.toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'});
- return dateLabel+' · '+Number(item.player_count||0).toLocaleString()+' players · '+item.completion_percent+'%';
+ return dateLabel+' · '+Number(item.player_count||0).toLocaleString()+' players'+(item.completion_percent==null?' · recovered': ' · '+item.completion_percent+'%');
 }
 async function loadScan(item){
  const seq=++loadSequence;

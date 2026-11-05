@@ -60,7 +60,7 @@ def open_log(cfg):
     h, w = image.shape[:2]
     # Screenshot-calibrated Alliance menu: Log is the first bottom navigation
     # item after Back. Require its visible label before a fixed-position tap.
-    roi = image[int(h*.89):int(h*.99), int(w*.29):int(w*.43)]
+    roi = image[int(h*.89):int(h*.99), int(w*.23):int(w*.36)]
     import pytesseract
     enlarged = cv2.resize(roi, None, fx=2, fy=2,
                            interpolation=cv2.INTER_CUBIC)
@@ -69,7 +69,7 @@ def open_log(cfg):
         raise RuntimeError(
             f"Alliance Log label not verified in bottom menu (OCR={label!r}); no tap performed"
         )
-    x, y = round(w*.345), round(h*.952)
+    x, y = round(w*.295), round(h*.952)
     print(f"Alliance Log verified locally; tapping ({x}, {y})", flush=True)
     adb(cfg, "shell", "input", "tap", str(x), str(y))
     time.sleep(.8)

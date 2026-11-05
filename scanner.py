@@ -1740,8 +1740,9 @@ def publish_scan_csv(folder, threshold=90.0, branch="main"):
             print("GitHub publish skipped: invalid player CSV.")
             return False
         rows = list(reader)
-    if not rows:
-        print("GitHub publish skipped: no players in CSV.")
+    if len(rows) < 7000:
+        print(f"GitHub publish skipped: {len(rows)} player records; minimum 7000 required "
+              "for a historical snapshot or live update.")
         return False
     metadata = {
         "session": folder.name,

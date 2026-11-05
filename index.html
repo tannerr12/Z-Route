@@ -4,7 +4,7 @@
 :root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#091321;color:#e9f1fc}*{box-sizing:border-box}body{margin:0;padding:22px}main{max-width:1450px;margin:auto}h1{margin:0;font-size:25px}p{color:#9eb1c8;margin:5px 0 18px}.top,.controls,.status{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.controls{margin:16px 0}.controls input,.controls select,.controls button{background:#15263a;color:#f1f5fa;border:1px solid #40556d;border-radius:9px;padding:11px;font:inherit}.controls input{flex:1;min-width:190px}.controls button,.guild{cursor:pointer}.controls button:hover,.guild:hover{background:#233e57}.layout{display:grid;grid-template-columns:minmax(0,1fr) 245px;gap:14px}.panel{border:1px solid #30465e;background:#102035;border-radius:12px;padding:12px;min-width:0}.map-wrap{position:relative;overflow:hidden;background:#112339;border-radius:8px;cursor:crosshair;touch-action:none}canvas{display:block;width:100%;height:610px}.tooltip{display:none;position:absolute;pointer-events:none;background:#263e55;border:1px solid #8fb4d8;border-radius:8px;padding:9px 12px;white-space:nowrap;box-shadow:0 5px 20px #0009;font-size:13px;z-index:3}.tooltip strong{display:block;margin-bottom:3px}.muted{color:#9eb1c8;font-size:13px}.legend{max-height:480px;overflow:auto}.guild{display:flex;align-items:center;gap:9px;width:100%;padding:9px;border:0;border-radius:7px;background:transparent;color:#e9f1fc;text-align:left;font:inherit}.guild.active{background:#28465d}.swatch{width:11px;height:11px;border-radius:50%;flex:none}.guild-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.guild-count{color:#a9bdd1;font-variant-numeric:tabular-nums}.detail{margin-top:12px;padding:11px;border-radius:8px;background:#1b334b;line-height:1.8}.status{margin-top:10px}.error{color:#ffb4a9}.map-actions{display:flex;gap:7px;margin-bottom:9px}.map-actions button{background:#203a53;color:white;border:1px solid #49627b;border-radius:7px;padding:7px 11px;cursor:pointer}@media(max-width:800px){body{padding:12px}.layout{grid-template-columns:1fr}canvas{height:450px}.legend{max-height:210px}}
 </style></head><body><main><nav style="margin-bottom:14px"><a href="./donations.html" style="color:#8cc9ff">Donation Analytics →</a> · <a href="./vs.html" style="color:#8cc9ff">VS Comparison →</a> · <a href="./activity.html" style="color:#8cc9ff">Player Activity →</a></nav>
 <div class="top"><div><h1>Z-Route Player Locator</h1><p>Search players and explore guild positions on an approximate swipe grid.</p></div><span id="source" class="muted">Loading CSV…</span></div>
-<div class="controls"><input id="search" type="search" placeholder="Search username…" aria-label="Search username"><select id="guildFilter" aria-label="Filter guild"><option value="">All guilds</option></select><button id="clear">Clear filters</button></div>
+<div class="controls"><label for="scanSelect">Scan date</label><select id="scanSelect" aria-label="Select historical scan"><option value="">Loading scans…</option></select><input id="search" type="search" placeholder="Search username…" aria-label="Search username"><select id="guildFilter" aria-label="Filter guild"><option value="">All guilds</option></select><button id="clear">Clear filters</button></div>
 <div class="layout"><section class="panel"><div class="map-actions"><button id="zoomIn" title="Zoom in">＋</button><button id="zoomOut" title="Zoom out">－</button><button id="resetView">Reset view</button><span class="muted" style="margin:auto 0 auto auto">Wheel to zoom · Drag to pan</span></div><div id="mapWrap" class="map-wrap"><canvas id="map" aria-label="Player location map"></canvas><div id="tip" class="tooltip"></div></div><div class="status"><span id="count" class="muted">Loading players…</span><span class="muted">150 columns × 60 rows · approximate positions</span></div><div id="detail" class="detail" hidden></div></section>
 <aside class="panel"><strong>Guilds</strong><p class="muted">Click a guild to filter; click again to show all.</p><div id="legend" class="legend"></div></aside></div>
 <p id="message" class="muted" role="status"></p>
@@ -44,9 +44,10 @@ function normalize(rows){
  return [...byName.values()];
 }
 function populate(){
+ colors=new Map();
  guildCounts=new Map();for(const p of players)guildCounts.set(p.guild,(guildCounts.get(p.guild)||0)+1);
  [...guildCounts.keys()].sort((a,b)=>a.localeCompare(b)).forEach(guildColor);
- const options=$('guildFilter');for(const g of [...guildCounts.keys()].sort((a,b)=>a.localeCompare(b))){const o=document.createElement('option');o.value=g;o.textContent=g;options.append(o)}
+ const options=$('guildFilter');options.replaceChildren(new Option('All guilds',''));for(const g of [...guildCounts.keys()].sort((a,b)=>a.localeCompare(b))){const o=document.createElement('option');o.value=g;o.textContent=g;options.append(o)}
  renderLegend();filter();
 }
 function renderLegend(){
@@ -93,6 +94,44 @@ canvas.addEventListener('wheel',e=>{e.preventDefault();const p=pointer(e);zoom(e
 $('zoomIn').onclick=()=>zoom(1.4);$('zoomOut').onclick=()=>zoom(1/1.4);$('resetView').onclick=()=>{scale=1;offsetX=offsetY=0;draw()};
 $('search').addEventListener('input',filter);$('guildFilter').addEventListener('change',filter);$('clear').onclick=()=>{$('search').value='';$('guildFilter').value='';filter()};
 window.addEventListener('resize',draw);
-async function load(){try{const response=await fetch('./data/players.csv',{cache:'no-store'});if(!response.ok)throw Error('HTTP '+response.status);players=normalize(parseCSV(await response.text()));$('source').textContent='CSV data · '+players.length.toLocaleString()+' players';$('message').textContent='Locations are estimated from scanner swipes, not exact in-game coordinates.';populate()}catch(e){$('source').textContent='CSV unavailable';$('message').className='error';$('message').textContent='Unable to load data/players.csv: '+e.message;draw()}}
+let scanEntries=[],loadSequence=0;
+function scanLabel(item){
+ const stamp=item.published_at||item.session?.replace(/^session_/,'').replace(/_(\d{6})_.*/, 'T$1')||'';
+ const date=new Date(stamp);
+ const dateLabel=Number.isNaN(date.getTime())?item.session:date.toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'});
+ return dateLabel+' · '+Number(item.player_count||0).toLocaleString()+' players · '+item.completion_percent+'%';
+}
+async function loadScan(item){
+ const seq=++loadSequence;
+ $('source').textContent='Loading scan…';$('message').className='muted';
+ try{
+  const path=item?.csv||'data/players.csv';
+  if(!/^data\/(?:player_history\/session_[a-zA-Z0-9_]+\.csv|players\.csv)$/.test(path))throw Error('Invalid scan path');
+  const response=await fetch('./'+path,{cache:'no-store'});
+  if(!response.ok)throw Error('HTTP '+response.status);
+  const nextPlayers=normalize(parseCSV(await response.text()));
+  if(seq!==loadSequence)return;
+  players=nextPlayers;selected=null;$('detail').hidden=true;
+  $('guildFilter').value='';$('source').textContent=players.length.toLocaleString()+' players';
+  $('message').textContent='Locations are estimated from scanner swipes, not exact in-game coordinates.';
+  populate();
+ }catch(e){if(seq!==loadSequence)return;$('source').textContent='CSV unavailable';$('message').className='error';$('message').textContent='Unable to load selected scan: '+e.message}
+}
+async function load(){
+ const select=$('scanSelect');
+ try{
+  const response=await fetch('./data/player_history/index.json',{cache:'no-store'});
+  if(!response.ok)throw Error('HTTP '+response.status);
+  const entries=await response.json();
+  if(!Array.isArray(entries))throw Error('Invalid scan index');
+  scanEntries=entries.filter(x=>x&&typeof x.session==='string'&&typeof x.csv==='string').sort((a,b)=>String(b.published_at||b.session).localeCompare(String(a.published_at||a.session)));
+  select.replaceChildren();
+  for(const entry of scanEntries)select.add(new Option(scanLabel(entry),entry.session));
+  if(!scanEntries.length){select.add(new Option('Latest scan','latest'));await loadScan(null);return}
+  select.value=scanEntries[0].session;
+  await loadScan(scanEntries[0]);
+ }catch(e){select.replaceChildren(new Option('Latest scan','latest'));$('message').textContent='Scan history unavailable; showing latest data.';await loadScan(null)}
+}
+$('scanSelect').addEventListener('change',()=>loadScan(scanEntries.find(x=>x.session===$('scanSelect').value)||null));
 load();
 </script></body></html>

@@ -137,23 +137,25 @@ def wait_for_next_overlay(cfg, timeout=3.0, interval=0.3):
 
 
 def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75):
-    """Close verified overlays and transition to Alliance navigation at city."""
+    """Handle sequential promotions, tolerating short transition/loading states."""
     from data_miner.vision import classify_screen
 
     actions = 0
     promotions_closed = 0
     last_tap_image = None
+    loading_deadline = time.monotonic() + 12
     while actions < max_actions:
         image = screenshot(cfg)
         if popup_visible(image):
             print("Login warning detected locally; tapping Confirm", flush=True)
             tap_scaled(cfg, image, CONFIRM_CENTER, REFERENCE_SIZE)
             actions += 1
-            time.sleep(1)
+            loading_deadline = time.monotonic() + 12
+            time.sleep(0.8)
             continue
 
-        # A gold X alone does not prove a promotional overlay exists.
-        # After several ads, explicitly verify city before any further taps.
+        # Once ads have been closed, check whether we are back in the city
+        # before interpreting decorative X-shaped graphics as close buttons.
         if promotions_closed >= 3:
             print("Checking for city after promotions...", flush=True)
             screen, confidence = classify_screen(cfg, image)
@@ -161,6 +163,10 @@ def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75):
             if screen == "city" and confidence >= confidence_threshold:
                 print("City ready; handing off to Alliance navigation", flush=True)
                 return actions
+            if screen == "unknown" and time.monotonic() < loading_deadline:
+                print("Screen still loading; waiting for next overlay...", flush=True)
+                time.sleep(0.8)
+                continue
             if screen != "promotion" or confidence < confidence_threshold:
                 raise RuntimeError("Unable to verify city or promotion; no tap performed")
 
@@ -179,11 +185,17 @@ def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75):
             close_verified_promo(cfg, image)
             promotions_closed += 1
             actions += 1
+            loading_deadline = time.monotonic() + 12
             print("Waiting up to 3s for next overlay...", flush=True)
             wait_for_next_overlay(cfg)
             continue
 
-        print("Checking screen with Ollama...", flush=True)
+        if time.monotonic() < loading_deadline:
+            print("No overlay yet; allowing transition to finish...", flush=True)
+            time.sleep(0.8)
+            continue
+
+        print("Checking stable screen with Ollama...", flush=True)
         screen, confidence = classify_screen(cfg, image)
         print(f"Screen: {screen}, confidence: {confidence:.2f}", flush=True)
         if screen == "city" and confidence >= confidence_threshold:

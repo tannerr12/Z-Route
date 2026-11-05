@@ -54,8 +54,25 @@ def click_label(cfg, label, context, region="any"):
 
 
 def open_log(cfg):
-    verified_screen(cfg, "home/menu")
-    click_label(cfg, "Log button", "Alliance home/menu, lower navigation area", "bottom")
+    """Open the fixed-position Log control after verifying the Alliance menu."""
+    image = screenshot(cfg)
+    ensure_game_connected(cfg, image)
+    h, w = image.shape[:2]
+    # Screenshot-calibrated Alliance menu: Log is the first bottom navigation
+    # item after Back. Require its visible label before a fixed-position tap.
+    roi = image[int(h*.89):int(h*.99), int(w*.29):int(w*.43)]
+    import pytesseract
+    enlarged = cv2.resize(roi, None, fx=2, fy=2,
+                           interpolation=cv2.INTER_CUBIC)
+    label = pytesseract.image_to_string(enlarged, config="--psm 11").casefold()
+    if "log" not in label:
+        raise RuntimeError(
+            f"Alliance Log label not verified in bottom menu (OCR={label!r}); no tap performed"
+        )
+    x, y = round(w*.345), round(h*.952)
+    print(f"Alliance Log verified locally; tapping ({x}, {y})", flush=True)
+    adb(cfg, "shell", "input", "tap", str(x), str(y))
+    time.sleep(.8)
     verified_screen(cfg, "Log with War and Join/Leave tabs")
 
 

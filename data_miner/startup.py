@@ -137,54 +137,61 @@ def wait_for_next_overlay(cfg, timeout=3.0, interval=0.3):
 
 
 def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75):
-    """Dismiss known overlays locally; wait for sequential ads to appear."""
+    """Close verified overlays and transition to Alliance navigation at city."""
     from data_miner.vision import classify_screen
 
     actions = 0
-    pending_image = None
+    promotions_closed = 0
+    last_tap_image = None
     while actions < max_actions:
-        image = pending_image if pending_image is not None else screenshot(cfg)
-        pending_image = None
+        image = screenshot(cfg)
         if popup_visible(image):
             print("Login warning detected locally; tapping Confirm", flush=True)
             tap_scaled(cfg, image, CONFIRM_CENTER, REFERENCE_SIZE)
             actions += 1
-            print("Waiting up to 3s for next overlay...", flush=True)
-            pending_image = wait_for_next_overlay(cfg)
-            continue
-        if promo_close_visible(image):
-            print("Promotion close icon detected locally; closing", flush=True)
-            tap_scaled(cfg, image, PROMO_CLOSE_CENTER, PROMO_REFERENCE_SIZE)
-            actions += 1
-            print("Waiting up to 3s for next overlay...", flush=True)
-            pending_image = wait_for_next_overlay(cfg)
+            time.sleep(1)
             continue
 
-        # The absence of an overlay is not proof that the city is ready.
-        print("Checking stabilized screen with Ollama...", flush=True)
-        try:
+        # A gold X alone does not prove a promotional overlay exists.
+        # After several ads, explicitly verify city before any further taps.
+        if promotions_closed >= 3:
+            print("Checking for city after promotions...", flush=True)
             screen, confidence = classify_screen(cfg, image)
-        except TimeoutError as exc:
-            raise RuntimeError(
-                "Ollama screen classification timed out; stopped without tapping."
-            ) from exc
+            print(f"Screen: {screen}, confidence: {confidence:.2f}", flush=True)
+            if screen == "city" and confidence >= confidence_threshold:
+                print("City ready; handing off to Alliance navigation", flush=True)
+                return actions
+            if screen != "promotion" or confidence < confidence_threshold:
+                raise RuntimeError("Unable to verify city or promotion; no tap performed")
+
+        point = promo_close_point(image)
+        if point is not None:
+            if last_tap_image is not None:
+                before = cv2.resize(last_tap_image, (128, 128))
+                after = cv2.resize(image, (128, 128))
+                change = float(np.mean(cv2.absdiff(before, after)))
+                if change < 3.0:
+                    raise RuntimeError(
+                        "Screen did not change after closing promotion; stopped repeated taps"
+                    )
+            print(f"Promotion X detected at {point}; closing", flush=True)
+            last_tap_image = image.copy()
+            close_verified_promo(cfg, image)
+            promotions_closed += 1
+            actions += 1
+            print("Waiting up to 3s for next overlay...", flush=True)
+            wait_for_next_overlay(cfg)
+            continue
+
+        print("Checking screen with Ollama...", flush=True)
+        screen, confidence = classify_screen(cfg, image)
         print(f"Screen: {screen}, confidence: {confidence:.2f}", flush=True)
-        if confidence < confidence_threshold or screen == "unknown":
-            raise RuntimeError("Uncertain screen: no tap performed")
-        if screen == "city":
+        if screen == "city" and confidence >= confidence_threshold:
+            print("City ready; handing off to Alliance navigation", flush=True)
             return actions
-        if screen == "other":
-            raise RuntimeError("Unexpected game screen; no tap performed")
-        if screen == "login_warning":
-            if not popup_visible(image):
-                raise RuntimeError("AI login classification not confirmed by OCR")
-            tap_scaled(cfg, image, CONFIRM_CENTER, REFERENCE_SIZE)
-        elif screen == "promotion":
-            if not promo_close_visible(image):
-                raise RuntimeError("AI promotion classification not confirmed by X detector")
-            tap_scaled(cfg, image, PROMO_CLOSE_CENTER, PROMO_REFERENCE_SIZE)
-        actions += 1
-        pending_image = wait_for_next_overlay(cfg)
+        if screen == "promotion" and confidence >= confidence_threshold:
+            raise RuntimeError("Promotion detected but X not verified; no tap performed")
+        raise RuntimeError("Startup screen not recognized safely; no tap performed")
     raise TimeoutError("Startup exceeded max_actions; stopped safely")
 
 

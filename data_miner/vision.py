@@ -4,6 +4,7 @@ import json
 import urllib.request
 
 import cv2
+import time
 
 
 def classify_screen(cfg, image):
@@ -13,7 +14,9 @@ def classify_screen(cfg, image):
     request = {
         "model": cfg.get("ollama", {}).get("model", "qwen3-vl:4b-instruct"),
         "stream": False,
+        "think": False,
         "format": "json",
+        "keep_alive": cfg.get("ollama", {}).get("keep_alive", "30m"),
         "messages": [{
             "role": "user",
             "content": (
@@ -29,14 +32,17 @@ def classify_screen(cfg, image):
             ),
             "images": [base64.b64encode(encoded.tobytes()).decode("ascii")]
         }],
-        "options": {"temperature": 0}
+        "options": {"temperature": 0, "num_predict": cfg.get("ollama", {}).get("num_predict", 512)}
     }
     req = urllib.request.Request(
         "http://127.0.0.1:11434/api/chat",
         data=json.dumps(request).encode("utf-8"),
         headers={"Content-Type": "application/json"})
+    started = time.perf_counter()
     with urllib.request.urlopen(req, timeout=180) as response:
         result = json.load(response)
+    if cfg.get("_vision_verbose"):
+        print(f"Ollama classification: {time.perf_counter()-started:.1f}s", flush=True)
     if not result.get("done"):
         raise RuntimeError("Incomplete Ollama response")
     payload = json.loads(result["message"]["content"])

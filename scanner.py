@@ -1340,7 +1340,7 @@ def debug_ollama(cfg, image=None, crop_override=None):
         },
         "keep_alive": cfg.get("ollama", {}).get("keep_alive", "30m"),
         "messages": [
-            {"role": "user", "content": 'Identify player names visible in the image. Respond only with a JSON object containing the key "players", whose value is an array of unique player-name strings (maximum 20). Preserve guild tags exactly as visible. If no player names are visible, return {"players":[]}. Do not include levels, explanations, or additional keys.',
+            {"role": "user", "content": 'Find usernames belonging to stationary PLAYER BASES/CITIES on the world map, not every nameplate. IMPORTANT: Ignore transport trucks, cargo trucks, supply vehicles, moving convoys, marching troops, resource transports, and any name floating above those vehicles, EVEN IF it looks like a normal [guild]Username tag. A truck with a dark rectangular nameplate is NOT a player base; exclude its name. Only include a name when it is visibly associated with a stationary player base/city, not a truck or other map object. If uncertain whether a name belongs to a base versus a vehicle, omit it. Return ONLY a JSON object {"players":[...]} with unique player-name strings (maximum 20), preserving visible guild tags. If only transport trucks or no identifiable player bases are visible, return {"players":[]}. Do not include levels, explanations, or additional keys.',
              "images": [base64.b64encode(png.tobytes()).decode("ascii")]}
         ],
         "options": {"temperature": 0, "num_predict": cfg.get("ollama", {}).get("num_predict", 512)}

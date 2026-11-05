@@ -86,9 +86,13 @@ def select_tab(cfg, tab):
     text = pytesseract.image_to_string(
         cv2.resize(header, None, fx=2, fy=2), config="--psm 11"
     ).casefold()
-    if "war" not in text or "join" not in text:
-        raise RuntimeError(f"Alliance Log tabs not verified (OCR={text!r}); no tap")
+    # OCR may miss the highlighted/selected War label, even when the
+    # Join/Leave and other Log tabs are clearly visible.
+    if "log" not in text or "join" not in text:
+        raise RuntimeError(f"Alliance Log header not verified (OCR={text!r}); no tap")
     positions = {"War": .115, "Join/Leave": .36}
+    if tab not in positions:
+        raise ValueError(f"Unsupported Alliance Log tab: {tab}")
     x, y = round(w*positions[tab]), round(h*.063)
     print(f"Log tabs verified; selecting {tab} at ({x}, {y})", flush=True)
     adb(cfg, "shell", "input", "tap", str(x), str(y))

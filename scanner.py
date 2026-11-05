@@ -1949,7 +1949,7 @@ def scan_serpentine(cfg, max_swipes=150, columns=150, boundary_after=62, horizon
         save_state()
     # RAW capture is opt-in until its threaded scan path is validated.
     cfg["_raw_capture_enabled"] = raw_capture
-    capture_queue = queue.Queue(maxsize=4) if raw_capture else queue.Queue()
+    capture_queue = queue.Queue(maxsize=64) if raw_capture else queue.Queue()
     ai_queue = queue.Queue()
     encoding_errors = []
     def encode_captures():

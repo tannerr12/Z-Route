@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Z-Route • Private coverage evidence report</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:#0b1424;color:#eaf2fb}
+*{box-sizing:border-box}body{margin:0;padding:24px;max-width:1530px;margin-inline:auto}
+h1{margin:0;font-size:1.65rem;letter-spacing:-.035em}h2{font-size:1.08rem;margin:0 0 12px}
+p{color:#aebed2;line-height:1.5}header{display:flex;justify-content:space-between;gap:22px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+.eyebrow{color:#7ee7d1;text-transform:uppercase;font-weight:700;font-size:.72rem;letter-spacing:.12em;margin:0 0 8px}.tag{border:1px solid #244767;color:#9dc7e2;border-radius:99px;padding:8px 14px;font-size:.8rem}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px}
+.card,.panel{background:#111f33;border:1px solid #24354e;border-radius:14px;padding:16px}
+.stat-num{display:block;font-size:1.75rem;font-weight:760;letter-spacing:-.04em}.stat-label{font-size:.79rem;color:#9cafc9}
+.layout{display:grid;grid-template-columns:minmax(440px,1.35fr) minmax(320px,.8fr);gap:16px}.stack{display:flex;flex-direction:column;gap:14px}
+.toolbar{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+label{color:#b6c9df;font-size:.82rem;display:flex;gap:8px;align-items:center}select,input,button{font:inherit}select{background:#172943;border:1px solid #315170;color:#f0f6ff;border-radius:8px;padding:8px}
+input[type=checkbox]{accent-color:#45d9b4}.mapwrap{position:relative;max-width:900px;margin:auto}
+svg{width:100%;height:auto;display:block;border-radius:10px;background:#101c31;touch-action:manipulation}
+.cell{stroke:#344860;stroke-width:.8;cursor:pointer;transition:stroke .12s}.cell:hover{stroke:#fff;stroke-width:3}.cell.selected{stroke:#fff;stroke-width:5}
+.marker{pointer-events:none;fill:#ffbf70;stroke:#643c11;stroke-width:1;opacity:.76}
+.axis-label{fill:#92aac8;font-size:17px}.axis-stroke{stroke:#728da8;stroke-width:1.2}
+.legend{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:.78rem;color:#aebed2}.scale{flex:1;height:9px;max-width:270px;background:linear-gradient(90deg,#1e2c48,#116d8a,#24c7a6);border-radius:6px}
+.tiny{font-size:.78rem;color:#94a9c5}.detail{min-height:140px}.detail strong{color:#e9f6ff}.detail p{margin:6px 0}
+.notice{border-left:3px solid #ffbc78;background:#1b2939;padding:12px 14px;border-radius:8px;margin:12px 0;font-size:.83rem;color:#e6d8c7}
+ol{padding-left:23px;margin:0}li{padding:9px 0;border-bottom:1px solid #23354a;color:#b7c7d8;line-height:1.35}li:last-child{border:0}.selectrow{display:flex;justify-content:space-between;gap:12px;width:100%;background:transparent;border:0;color:inherit;text-align:left;cursor:pointer;padding:0}.selectrow:hover{color:#5eecc7}.muted{color:#8fa4bd;font-size:.78rem}
+button.copy{background:#193d51;border:1px solid #2a7d79;color:#c0fff0;padding:7px 12px;border-radius:8px;cursor:pointer;margin-top:8px}.copy:hover{background:#205e69}
+footer{color:#8ba0b9;font-size:.8rem;margin:20px 0;line-height:1.55}
+@media(max-width:980px){body{padding:14px}.layout{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.mapwrap{max-width:760px}}
+</style>
+</head>
+<body>
+<header><div><div class="eyebrow">Z-Route / local analysis</div><h1>Player density & sampling evidence</h1><p style="margin:5px 0 0">Server <span id="server"></span> · World coordinates · Generated from your saved captures</p></div><div class="tag">PRIVATE · Standalone HTML · No network requests</div></header>
+<div class="stats">
+ <div class="card"><span class="stat-num" id="baseCount">—</span><span class="stat-label">Distinct player IDs on roster</span></div>
+ <div class="card"><span class="stat-num" id="centerCount">—</span><span class="stat-label">Distinct recorded map centers</span></div>
+ <div class="card"><span class="stat-num" id="denseCount">—</span><span class="stat-label">Grid cells containing ≥1 base</span></div>
+ <div class="card"><span class="stat-num" id="failedCount">—</span><span class="stat-label">Minimap targets needing review</span></div>
+</div>
+<div class="layout">
+ <div class="panel">
+  <div class="toolbar">
+   <label>Heatmap <select id="layer"><option value="player_count">All observed bases</option><option value="prior_only">Previous scan only</option><option value="shared">In both scans</option><option value="new_only">Full-map scan only</option></select></label>
+   <label><input id="showCenters" type="checkbox" checked> Map-view centers</label>
+  </div>
+  <div class="mapwrap"><svg id="map" viewBox="-75 -55 1165 1130" role="img" aria-label="Interactive world coordinate heatmap: choose a cell to see its observed base count. Y coordinates increase upward."></svg></div>
+  <div class="legend"><span>Few</span><div class="scale"></div><span>Many</span><span id="maxCell" style="margin-left:8px"></span></div>
+  <div class="notice"><strong>Sampling evidence ≠ proven coverage.</strong> Markers show where a map response was recorded, <em>not</em> its complete visible area. An empty cell or one far from a marker is a candidate for checking, not evidence that bases are missing.</div>
+  <p class="tiny" id="boundsText"></p>
+ </div>
+ <div class="stack">
+  <div class="panel"><h2>Selected coordinate cell</h2><div id="details" class="detail">Select a map cell to inspect its world coordinates and discovery evidence.</div></div>
+  <div class="panel"><h2>Candidate locations to verify</h2><p class="tiny" style="margin-top:0">Ranked by distance to the nearest recorded map center. This is a <strong>sampling-priority heuristic</strong>, not a list of confirmed unscanned sectors.</p><ol id="review"></ol></div>
+  <div class="panel"><h2>Source comparison</h2><div id="provenance" class="tiny"></div></div>
+  <div class="panel"><h2>Failed automated targets</h2><div id="failures" class="tiny"></div></div>
+ </div>
+</div>
+<footer>This report contains aggregate counts and recorded sample centers, not player names or IDs. It opens entirely offline. The world-map analysis window is data-derived unless explicit bounds were supplied. This does not establish the total player population or all map regions.</footer>
+<script id="data" type="application/json">__REPORT_DATA__</script>
+<script>
+(()=>{
+'use strict';
+const data=JSON.parse(document.getElementById('data').textContent), s=data.summary;
+const $=id=>document.getElementById(id), svgNS='http://www.w3.org/2000/svg', fmt=x=>Number(x).toLocaleString('en-CA');
+$('server').textContent='S'+s.server;
+$('baseCount').textContent=fmt(s.unique_ids);
+$('centerCount').textContent=fmt(s.distinct_view_centers);
+$('denseCount').textContent=fmt(s.cells_with_players)+' / '+fmt(s.grid*s.grid);
+$('failedCount').textContent=fmt(s.failed_targets);
+$('boundsText').textContent='Analysis bounds (XMIN,YMIN,XMAX,YMAX): '+s.bounds.join(', ')+' — '+s.bounds_type+'. '+(s.outside_bounds?'Excluded outside explicit bounds: '+fmt(s.outside_bounds)+' bases. ':'')+'World Y increases upward.';
+if(!s.source_comparison_available){
+  for(const option of [...$('layer').options])if(option.value!=='player_count')option.disabled=true;
+  $('provenance').textContent='A previous live roster and a full-map roster were not both found. Showing merged counts only.';
+}else{
+  $('provenance').innerHTML='<p>Previous scan only: <strong>'+fmt(s.prior_only)+'</strong></p><p>In both scans: <strong>'+fmt(s.shared)+'</strong></p><p>Automated scan only: <strong>'+fmt(s.new_only)+'</strong></p><p>Other/unclassified: <strong>'+fmt(s.unclassified)+'</strong></p>';
+}
+let selected=null;
+function node(name,props,contents){const el=document.createElementNS(svgNS,name);Object.entries(props||{}).forEach(([k,v])=>el.setAttribute(k,String(v)));if(contents!=null)el.textContent=contents;return el;}
+function pointX(worldX){return 1000*(worldX-s.bounds[0])/(s.bounds[2]-s.bounds[0]);}
+function pointY(worldY){return 1000-1000*(worldY-s.bounds[1])/(s.bounds[3]-s.bounds[1]);}
+function shade(value,max){if(value<=0)return '#1e2c48';const t=Math.log(1+value)/Math.log(1+Math.max(1,max));const a=[30,44,72],b=[36,199,166];return 'rgb('+a.map((v,i)=>Math.round(v+(b[i]-v)*t)).join(',')+')';}
+function render(){
+ const plot=$('map');plot.replaceChildren();const n=s.grid, size=1000/n, key=$('layer').value,max=Math.max(1,...data.cells.map(c=>c[key]));
+ for(let i=0;i<=5;i++){
+  const x=i*200,y=1000-i*200;
+  plot.append(node('line',{x1:x,y1:0,x2:x,y2:1000,class:'axis-stroke',opacity:.17}));
+  plot.append(node('line',{x1:0,y1:y,x2:1000,y2:y,class:'axis-stroke',opacity:.17}));
+  plot.append(node('text',{x:x,y:1030,'text-anchor':'middle',class:'axis-label'},Math.round(s.bounds[0]+(s.bounds[2]-s.bounds[0])*i/5)));
+  plot.append(node('text',{x:-12,y:y+5,'text-anchor':'end',class:'axis-label'},Math.round(s.bounds[1]+(s.bounds[3]-s.bounds[1])*i/5)));
+ }
+ for(const c of data.cells){
+  const r=node('rect',{x:c.col*size,y:(n-1-c.row)*size,width:size,height:size,
+    fill:shade(c[key],max),class:'cell'+(c===selected?' selected':''),tabindex:0,role:'button',
+    'aria-label':'X '+c.x_min+'–'+c.x_max+', Y '+c.y_min+'–'+c.y_max+', '+c[key]+' bases'});
+  r.addEventListener('click',()=>choose(c));r.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();choose(c);}});
+  plot.append(r);
+ }
+ if($('showCenters').checked){
+  for(const c of data.centers){if(c.x<s.bounds[0]||c.x>s.bounds[2]||c.y<s.bounds[1]||c.y>s.bounds[3])continue;
+   plot.append(node('circle',{cx:pointX(c.x),cy:pointY(c.y),r:4.3,class:'marker'}));
+  }
+ }
+ $('maxCell').textContent='Max: '+fmt(max)+' bases / cell';
+}
+function choose(c){selected=c;render();
+ const details=$('details');details.replaceChildren();
+ function line(label,value){const p=document.createElement('p');const st=document.createElement('strong');st.textContent=label+' ';p.append(st,document.createTextNode(String(value)));details.append(p);}
+ line('World X:',c.x_min+' – '+c.x_max);
+ line('World Y:',c.y_min+' – '+c.y_max);
+ line('Observed bases:',fmt(c.player_count));
+ if(s.source_comparison_available){line('Previous-only / shared / new-only:',[c.prior_only,c.shared,c.new_only].join(' / '));}
+ line('Recorded map centers inside this cell:',c.view_centers_in_cell);
+ line('Distance to nearest map center:',c.nearest_center_distance===''?'No center evidence':c.nearest_center_distance+' world units');
+ const copy=document.createElement('button');copy.className='copy';
+ const coord=Math.round((c.x_min+c.x_max)/2)+','+Math.round((c.y_min+c.y_max)/2);
+ copy.textContent='Copy center X,Y: '+coord;
+ copy.addEventListener('click',()=>{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(coord).then(()=>copy.textContent='Copied '+coord,()=>window.prompt('Copy X,Y',coord));}else{window.prompt('Copy X,Y',coord);}});
+ details.append(copy);
+}
+$('layer').addEventListener('change',render);$('showCenters').addEventListener('change',render);
+const review=$('review');for(const r of data.candidates){
+ const li=document.createElement('li'),button=document.createElement('button');button.className='selectrow';
+ const title=document.createElement('span');title.textContent='#'+r.rank+' · X:'+r.center_x+' Y:'+r.center_y;
+ const meta=document.createElement('span');meta.className='muted';meta.textContent='nearest center '+r.nearest_center_distance;
+ button.append(title,meta);button.addEventListener('click',()=>choose(data.cells[r.row*s.grid+r.col]));li.append(button);
+ const details=document.createElement('div');details.className='muted';details.textContent='Observed bases in cell: '+r.player_count;li.append(details);review.append(li);
+}
+if(!data.candidates.length)review.textContent='No view-center evidence available for ranking.';
+const fail=$('failures');
+if(!data.failed_targets.length){fail.textContent='No failed targets recorded (or checkpoint unavailable).';}
+else{const l=document.createElement('ul');for(const f of data.failed_targets){const li=document.createElement('li');li.textContent=f.target_id+' — '+f.status+' (minimap tap '+f.tap_x+','+f.tap_y+')';l.append(li);}fail.append(l);}
+render();
+})();
+</script>
+</body>
+</html>

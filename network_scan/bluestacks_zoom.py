@@ -61,8 +61,15 @@ def bluestacks_foreground_handle():
     return user32, hwnd, name
 
 
-def zoom_out_ctrl_minus():
-    """Send one BlueStacks Ctrl+- zoom-out command, never to another window."""
+def zoom_out_ctrl_minus(hold_seconds=0.16):
+    """Send one uninterrupted Ctrl+- zoom-out hold to focused BlueStacks.
+
+    BlueStacks Zoom controls can accelerate with key hold; a long hold
+    avoids the repeated synthetic release/re-press cycle between taps.
+    Key-up is unconditional even if a problem occurs during the hold.
+    """
+    if isinstance(hold_seconds,bool) or not isinstance(hold_seconds,(int,float)) or not 0.08<=hold_seconds<=2.0:
+        raise ValueError('Zoom hold must be between 0.08 and 2.0 seconds')
     user32, hwnd, title = bluestacks_foreground_handle()
     import ctypes
     from ctypes import wintypes
@@ -77,13 +84,13 @@ def zoom_out_ctrl_minus():
     keyup = 0x0002
     if user32.GetForegroundWindow() != hwnd:
         raise RuntimeError("BlueStacks lost focus; no zoom keys sent")
-    print(f"[zoom] Sending Ctrl+- to foreground window: {title}", flush=True)
+    print(f"[zoom] Holding Ctrl+- for {hold_seconds:.2f}s in foreground window: {title}", flush=True)
     user32.keybd_event(ctrl, 0, 0, None)
     try:
         time.sleep(.06)
         user32.keybd_event(minus, 0, 0, None)
         try:
-            time.sleep(.16)
+            time.sleep(hold_seconds)
         finally:
             user32.keybd_event(minus, 0, keyup, None)
     finally:

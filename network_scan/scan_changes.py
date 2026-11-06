@@ -8,7 +8,7 @@ Usage:
     python network_scan/scan_changes.py --before network_scans/full_map/players.csv \
       --after network_scans/map_refresh/20261106_140000/players.csv
 
-The inputs are already decoded CSVs, not PCAPs; no ADB or game interaction.
+The inputs are already decoded CSVs, not PCAPs; no ADB or game interaction.\nRenames are the primary output; saved aliases persist in one shared SQLite DB.
 """
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from scan import save_csv
+from player_history import connection, sync, export_renames
 
 FIELDS=('server','player_id','username_before','username_after',
         'classification','x_before','y_before','x_after','y_after',
@@ -104,6 +105,7 @@ def compare(before, after):
     summary['players_before']=len(before)
     summary['players_after']=len(after)
     summary['observed_in_both']=len(set(before)&set(after))
+    summary['names_changed']=sum('renamed' in r['classification'].split('+') for r in changes)
     summary['coordinates_changed']=sum(
         r['classification'].split('+')[0]=='moved' for r in changes)
     return changes,dict(summary)
@@ -121,10 +123,18 @@ def run(args):
         raise ValueError('Output cannot overwrite an input snapshot.')
     args.out.mkdir(parents=True,exist_ok=True)
     save_csv(args.out/'changes.csv',FIELDS,changes)
+    recent_renames=[r for r in changes if 'renamed' in r['classification'].split('+')]
+    save_csv(args.out/'renames.csv',FIELDS,recent_renames)
+    with connection(args.history_db) as history:
+        sync(history,args.network_root,(args.before,args.after))
+        lifetime_renames=export_renames(history,args.out/'all_name_changes.csv',args.server)
+    summary['lifetime_observed_name_changes']=len(lifetime_renames)
     summary.update(before_source=str(args.before),after_source=str(args.after),
                    compared_at_utc=datetime.now(timezone.utc).isoformat())
     (args.out/'summary.json').write_text(
         json.dumps(summary,indent=2,ensure_ascii=False),encoding='utf-8')
+    print(f'NAME CHANGES between snapshots: {len(recent_renames):,}')
+    print(f'All observed name transitions in persistent history: {len(lifetime_renames):,}')
     print(f'Prior snapshot: {len(before):,} players')
     print(f'New snapshot:   {len(after):,} players')
     print(f'Observed in both: {summary["observed_in_both"]:,}')
@@ -132,7 +142,8 @@ def run(args):
     print(f'Newly observed: {summary.get("newly_seen",0):,}')
     print(f'Not observed in new scan: {summary.get("not_seen_in_after",0):,} '
           '(NOT proof of departure)')
-    print('Saved:',args.out/'changes.csv',args.out/'summary.json')
+    print('Saved:',args.out/'renames.csv',args.out/'all_name_changes.csv',
+          args.out/'changes.csv',args.out/'summary.json')
 
 
 def main():
@@ -142,6 +153,8 @@ def main():
     p.add_argument('--after',type=Path,required=True)
     p.add_argument('--out',type=Path)
     p.add_argument('--server',type=int,default=125)
+    p.add_argument('--network-root',type=Path,default=Path('network_scans'))
+    p.add_argument('--history-db',type=Path,default=Path('network_scans/player_history.sqlite3'))
     args=p.parse_args()
     try:run(args)
     except (OSError,ValueError,csv.Error) as exc:p.error(str(exc))

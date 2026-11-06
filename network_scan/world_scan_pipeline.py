@@ -296,6 +296,8 @@ def zoom_probe(cfg,args,folder):
     save_screen(cfg,folder,'zoom_before',before)
     if popup_visible(before):
         raise RuntimeError('Login warning is visible; zoom not sent')
+    print(f'[zoom] Exactly {args.zoom_steps} hold(s) requested, '+
+          f'{args.zoom_hold:.1f}s each. No automatic extra holds.',flush=True)
     save_status(folder,'zoom_probe_started',zoom_steps=args.zoom_steps,
                 method='bluestacks_ctrl_minus',hold_seconds=args.zoom_hold)
     for step in range(1,args.zoom_steps+1):
@@ -403,19 +405,19 @@ def cli():
         a.add_argument('--zoom-method',choices=('bluestacks','tap','keyevent'),
                        default='bluestacks',
                        help='When radar template is configured: zoom via BlueStacks Ctrl+-, tapped control, or Android keycode')
-        a.add_argument('--max-zoom-actions',type=int,default=1,
-                       help='Maximum radar zoom actions; default 1 to avoid repeated-press reset')
+        a.add_argument('--max-zoom-actions',type=int,default=2,
+                       help='Maximum radar zoom actions; default 2 (calibrated)')
         a.add_argument('--zoom-delay',type=float,default=.6)
-        a.add_argument('--zoom-hold',type=float,default=4.0,
-                       help='Continuous BlueStacks Ctrl+- key hold, 3–5 seconds (default 4)')
+        a.add_argument('--zoom-hold',type=float,default=3.0,
+                       help='Continuous BlueStacks Ctrl+- key hold, 3–5 seconds (default 3)')
         a.add_argument('--max-startup-actions',type=int,default=12)
         a.add_argument('--execute',action='store_true')
         a.add_argument('--map-only',action='store_true',
                        help='Stop after fixed Leave City tap; no zoom or network scan')
         a.add_argument('--zoom-only',action='store_true',
                        help='Assume world map is already open; test BlueStacks zoom out and save screenshots, no scan')
-        a.add_argument('--zoom-steps',type=int,default=1,
-                       help='Zoom attempts in zoom-only probe (1..4, default 1)')
+        a.add_argument('--zoom-steps',type=int,default=2,
+                       help='Zoom attempts in zoom-only probe (1..4, default 2)')
         a.add_argument('--radar-template',type=Path,
                        help='Local cropped radar UI reference PNG for OpenCV matching')
         a.add_argument('--radar-threshold',type=float,default=.86)

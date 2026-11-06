@@ -123,7 +123,66 @@ shared candidate ID can refer to multiple simultaneous objects. If the
 same group has >1 position in a view, the tool explicitly warns that it
 cannot be considered an individual Walker's movement path.
 
-## 5. What gets saved and how to stop
+## 5. Calibrate the Watcher level field
+
+**User-supplied game rule:** only creatures of level 100 or higher can be
+Watchers. That is a strong classification rule **once we identify an actual
+creature-level field in the network data**. A random numeric field, subtype,
+or object ID >=100 does NOT qualify.
+
+Use the stationary level-120 example at S125 X:160 Y:687 and its saved
+live session to compare known UI level against raw scalar fields:
+
+~~~powershell
+python network_scan/live_entity_watch.py level-probe --session network_scans/entity_live/20261106_122600 --server 125 --x 160 --y 687 --visible-level 120 --radius 12 --save
+~~~
+
+The output ranks nearby candidates with nested scalar fields equal to
+120, if any. It saves **candidate evidence only** to level_probes.csv.
+This does NOT automatically identify or label a Watcher: proximity does
+not prove which object field belongs to the visible creature.
+
+Repeat with a verified stationary level-100 or level-130 Watcher at its
+actual in-game coordinates and compare the **same type code and field
+number** across examples. If none of the raw fields matches the visible
+level, the level may be encoded indirectly or not sent by map-view
+responses. Only after validation should the decoder apply the
+creature-level >=100 ⇒ Watcher rule.
+
+## 6. Controlled before/after kill experiment
+
+For the earlier level-100 kill test, no decoded map messages after the
+kill means we cannot infer the enemy's deletion from the missing records.
+The new event audit tool allows **user-observed** timestamps and checks
+whether positive nearby sightings occurred on both sides.
+
+1. Start the live watcher **before navigating to the target**.
+2. Once the level-100 Watcher is visible, open another terminal and
+   record a "visible" marker at its actual world X and Y:
+
+~~~powershell
+python network_scan/entity_event_audit.py mark --session network_scans/entity_live/SESSION --label visible --x X --y Y --visible-level 100
+~~~
+
+3. Defeat the Watcher while the watcher continues capturing, then mark it:
+
+~~~powershell
+python network_scan/entity_event_audit.py mark --session network_scans/entity_live/SESSION --label defeated --x X --y Y --visible-level 100
+~~~
+
+4. Navigate away and back to request fresh map responses (only normal
+   in-game navigation), then audit:
+
+~~~powershell
+python network_scan/entity_event_audit.py report --session network_scans/entity_live/SESSION --x X --y Y --radius 15
+~~~
+
+The report explicitly shows decoded before/after view and update counts.
+No messages after the kill = **inconclusive**, not proof of disappearance.
+Even with post-kill views, the exact view footprint and delete-event
+semantics are not verified, so absence is not a confirmed despawn.
+
+## 7. What gets saved and how to stop
 
 Ctrl+C in window 1 closes capture, processes the last segment and
 preserves all CSVs and PCAPNGs.

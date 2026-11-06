@@ -148,7 +148,7 @@ To see **cumulative unique player-base counts while manually jumping** around Z-
 git switch dev
 git pull origin dev
 & "C:\\Program Files\\Wireshark\\dumpcap.exe" -D
-python network_scan/live_watch.py --interface 1 --dumpcap "C:\\Program Files\\Wireshark\\dumpcap.exe" --segment-seconds 15
+python network_scan/live_watch.py --interface "Wi-Fi" --dumpcap "C:\\Program Files\\Wireshark\\dumpcap.exe" --segment-seconds 15
 ```
 
 Replace `1` with your active Wi-Fi/Ethernet interface number from `dumpcap -D`. **Start the watcher before entering the world map**, then navigate normally. It prints progress as `+N NEW | N UNIQUE TOTAL | N map centers`. Press **Ctrl+C** to stop and finalize the last capture.

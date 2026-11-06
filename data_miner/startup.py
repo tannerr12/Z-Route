@@ -218,7 +218,8 @@ def leave_city_button_point(image):
     return x,y
 
 
-def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75):
+def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75,
+                   allow_ai_fallback=True):
     """Reuse Player Activity's local login + popup flow; only ask AI as fallback.
 
     Crucially, don't call Ollama after an arbitrary number of promotions
@@ -283,6 +284,10 @@ def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75):
             time.sleep(0.8)
             continue
 
+        if not allow_ai_fallback:
+            raise RuntimeError('Leave City label not verified after promotions. '
+                               'AI fallback is disabled for the map scanner; '
+                               'inspect saved screenshot before continuing')
         print("No verified promotion or Leave City label; using reduced-size "
               "Ollama classification fallback...", flush=True)
         height, width = image.shape[:2]

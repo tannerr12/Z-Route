@@ -20,6 +20,7 @@ import csv
 import hashlib
 import json
 import sqlite3
+from contextlib import contextmanager
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,11 +31,15 @@ FIELDS = ('server', 'player_id', 'username', 'alliance_tag', 'alliance_name',
           'base_level', 'x', 'y', 'capture', 'time_s')
 
 
+@contextmanager
 def connection(path):
+    """Open and reliably close the private history DB, including on Windows."""
+    path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(path)
+    db = sqlite3.connect(path, timeout=15)
     db.row_factory = sqlite3.Row
-    db.executescript("""
+    try:
+        db.executescript("""
     PRAGMA foreign_keys=ON;
     CREATE TABLE IF NOT EXISTS snapshots (
        id INTEGER PRIMARY KEY,
@@ -66,7 +71,13 @@ def connection(path):
     CREATE INDEX IF NOT EXISTS player_history_name
        ON observations(server,username);
     """)
-    return db
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def discovery(root):

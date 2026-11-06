@@ -91,8 +91,11 @@ def read_packets(path: Path):
         pos += size
 
 
-def application_messages(path: Path):
-    """Parse received map messages from contiguous TCP byte runs.
+def application_messages(path: Path, include_all=False):
+    """Parse received messages from contiguous TCP byte runs.
+
+    Default is map-only for existing callers; include_all=True exposes
+    server-to-client message names to the local metadata-only audit.
 
     Rolling dumpcap files often start or end in the middle of an application
     message. One missing packet must not discard every subsequent message:
@@ -152,7 +155,7 @@ def application_messages(path: Path):
                 if size > 16_000_000 or finish > len(stream):
                     i = at + 1
                     continue
-                if name in ('WorldMapViewS2C', 'WorldMapViewUpdateS2C'):
+                if include_all or name in ('WorldMapViewS2C', 'WorldMapViewUpdateS2C'):
                     seq = start + at
                     timestamp = next((t for pkt_seq, t in reversed(times)
                                       if pkt_seq <= seq), None)

@@ -302,6 +302,32 @@ The local results are:
 - `shield_probe/sampled_observations.json`: raw detail fields for matching packet sightings after the user marks.
 - `shield_probe/field_differences.csv`: field values that differed between observed shielded and unshielded samples.
 
+### Troubleshooting 0 samples after marking shield states
+
+A `mark` command records your visual observation and timestamp,
+but **does not start a packet capture**. If `cohort` reports 0 samples,
+check whether new map responses were decoded after the marker. As of
+the sample discussed on Nov 6, Appsie213 (marked at 18:36:22 and
+18:36:52 UTC) and DrDs (18:37:43 and 18:38:03 UTC) had **no
+post-mark decoded sightings** in session `20261106_132830`.
+
+After pulling latest `dev`, `cohort` prints the last
+completed capture time, last decoded base sighting, and the last observation
+of each visually marked player. If the last capture occurred BEFORE
+the markers, the watcher probably stopped; restarting it creates a
+NEW timestamped session. **Record NEW marks in that new session**
+instead of expecting new observations in an old closed one.
+
+Use two PowerShell windows. In one, run the `watch` command
+and leave it running, making sure map views continue to decode. In
+the other, `inspect` the base, `mark` the visual shield
+state, navigate the map away and back while the state is unchanged,
+and run `cohort` after the watcher has decoded a completed capture
+window. Repeat for a visually confirmed unshielded base.
+
+Do not repeatedly mark the same state hoping to make data appear.
+The comparison can only use **new network observations** after marks.
+
 ### Cross-player control when the same shield cannot be toggled yet
 
 A strong initial observation from session `20261106_132830`:

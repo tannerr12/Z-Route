@@ -140,6 +140,16 @@ Membership CSV columns: `timestamp,player,guild,event,scanned_at`, with event va
 
 The separate [network_scan/](network_scan/) prototype analyzes Z-Route's naturally observed WorldMapViewS2C network responses to recover game coordinates, player IDs, names, alliances, and levels without OCR. Its read-only decoder was validated on five captures; the guided/ADB navigation runner still needs in-game calibration. It provides a 3×3 coverage pilot, serpentine coordinate plans, local PCAPNG capture and resumable checkpoint CSVs. It does not send/replay game-server requests or automatically publish captured player data. See [network_scan/README.md](network_scan/README.md) before using it.
 
+## Progressive wide-zoom full-map scanner
+
+The experimental [progressive minimap scanner](network_scan/FULL_MAP_SCAN.md) reuses the verified 1080x1920 minimap ROI and the passive packet decoder to search for roughly **9,500 unique bases**. It tests four-second captures first, retries missed responses with seven seconds, and visits 4x4, 7x7, then 10x10 center-first grids. A saved checkpoint prevents repeating completed targets after an interruption. If needed, append a 13x13 stage without clearing previous records.
+
+From the repository root, preview with: python network_scan/full_map_scan.py run
+
+Then test the first four clicks: python network_scan/full_map_scan.py run --execute --max-clicks 4 --interface "Wi-Fi" --dumpcap "C:\Program Files\Wireshark\dumpcap.exe"
+
+This is separate from the original screenshot scanner and benchmark. Reaching a count of 9,500 is not proof of complete server coverage; check map-center coverage and review failed responses. Keep PCAPNGs private.
+
 ## Minimap click-pattern benchmark
 
 The experimental [minimap benchmark](network_scan/PATTERN_BENCHMARK.md) uses a native BlueStacks screenshot to calibrate the clickable minimap region, generates snake/checkerboard/spiral/spread-out routes, and optionally taps a bounded grid through ADB while passively capturing map responses. It records unique player IDs for each clicked location, then replays the same observed sets in multiple orders so caching does not unfairly penalize later trials. An offline greedy-oracle result gives a hindsight upper bound on early discovery.

@@ -154,6 +154,24 @@ This offline tool produces a private `raw_object_probe.json` report;
 numeric matches remain unverified until correlated with another known
 creature level.
 
+## Player-name history is a primary scan output
+
+Every decoded map base is keyed by **(server, player_id)**, never
+username. The shared private SQLite file at
+`network_scans/player_history.sqlite3` retains old aliases
+and observed name transitions across recurring scan folders.
+The scan's per-click name observations are saved **before** a
+checkpoint can advance, so a history write failure stops the run.
+
+After comparing a repeat scan, inspect
+`changes_from_previous/renames.csv` first, then
+`changes_from_previous/all_name_changes.csv` for the
+lifetime history of names. Run
+`python network_scan/player_history.py renames` for a standalone
+private CSV. The published World Map can search old usernames and filter
+**Renamed only** after you export fresh world-player data from dev.
+Observation timestamps are not exact in-game rename moments.
+
 ## Exact world-coordinate player map
 
 The GitHub Pages Player Locator at index.html now reads data/world-players.csv

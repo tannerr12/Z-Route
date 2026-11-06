@@ -10,7 +10,7 @@ Experimental Z-Route tools for scanning the game through BlueStacks, publishing 
 
 | Component | What it does | Entry point |
 | --- | --- | --- |
-| Player Locator | Search a swipe-grid map of players; hover for names and distinguish guilds by color | `index.html` |
+| Player Locator | Map last recorded exact world X/Y for network-scanned bases, filter by level, guild, username and shield | `index.html` |
 | Map scanner | Capture BlueStacks screenshots and collect player observations using ADB and OCR | `scanner.py` |
 | Data Miner | Navigate game ranking screens and extract VS rankings and alliance donation rows with a local vision model | `data_miner/mine_rankings.py` |
 | VS Comparison | Analyze one guild’s individual member VS contributions, daily scores, weekly totals, low-score flags and trends | `vs.html` |\n| Donation Analytics | Load guild-specific CSV histories automatically; compare weeks, search players, inspect donation trends and contribution shares | `donations.html` |
@@ -154,29 +154,40 @@ This offline tool produces a private `raw_object_probe.json` report;
 numeric matches remain unverified until correlated with another known
 creature level.
 
-## Visually calibrated base shield detection (experimental)
+## Exact world-coordinate player map
 
-Shield status is **not yet decoded**. A [local shield probe](network_scan/shield_probe.py)
-allows a controlled comparison of the same player base while visibly
-shielded versus unshielded, using stable (server, player_id) identity.
-It compares **all** raw player-detail fields in passive map captures,
-but never assumes unknown status bits indicate shield state.
-
-Start the [live map watcher](network_scan/LIVE_ENTITY_WATCH.md) and use:
+The GitHub Pages Player Locator at index.html now reads data/world-players.csv
+generated from the **passive network scanner's real world X/Y**, not the
+legacy OCR swipe-grid coordinates. The committed sample contains 25
+verified S125 positions; to publish the full locally scanned roster:
 
 ~~~powershell
-python network_scan/shield_probe.py inspect --session network_scans/entity_live/SESSION --server 125 --x 500 --y 450
-python network_scan/shield_probe.py mark --session network_scans/entity_live/SESSION --server 125 --x 500 --y 450 --state shielded
-# Trigger fresh map responses while the shield stays ON.
-python network_scan/shield_probe.py mark --session network_scans/entity_live/SESSION --server 125 --player-id YOUR_STABLE_ID --state unshielded
-# Trigger fresh map responses while the shield stays OFF, then stop capture.
-python network_scan/shield_probe.py compare --session network_scans/entity_live/SESSION --server 125 --player-id YOUR_STABLE_ID
+python network_scan/compare_player_sessions.py --write-merged network_scans/combined_players.csv
+python network_scan/export_world_map.py
+git add data/world-players.csv
+git commit -m "Refresh exact S125 player positions"
+git push origin dev
 ~~~
 
-Results are saved privately under network_scans/entity_live/SESSION/shield_probe/.
-Read [full A/B workflow and caveats](network_scan/LIVE_ENTITY_WATCH.md).
-Differences are hypotheses, not automatic unshielded labels, until
-replicated across several state changes.
+The export includes base level, alliance, stable player ID, exact X/Y
+and the latest shield state (or unknown when stale). The map offers
+two-handle base-level filtering, shield and guild filters, named-player
+search, and real X/Y coordinates in tooltips. It shows the **observed
+coordinate extent**, not claimed complete server coverage. Read
+[Player Map instructions](PLAYER_MAP.md) for data freshness, publication
+privacy and GitHub Pages branch details.
+
+## Base shield decoding
+
+The Z-Route project's accepted S125 player-base interpretation is:
+protobuf detail field 9 equal to 1 = shielded; field absent in a complete
+decoded player record = unshielded; other values or no recent base
+observation = unknown. This rule was calibrated with visually observed
+Appsie213, BigDaddyKane, Crazy72 and DrDs. The recorded raw value and
+observation timestamps remain available; old shield states age to unknown
+instead of being shown as live. The [shield probe](network_scan/shield_probe.py)
+remains available for further verification.
+
 
 ## Live Walker and moving-world-object investigation
 
@@ -210,8 +221,7 @@ After checking a specific in-game location and screenshot, use the
 match command to save that one **visually confirmed** type/subtype. The
 candidate object ID is not always unique: a single ID can appear at
 multiple coordinates in one map response, so these sightings are
-**not** guaranteed paths for moving Walkers. Shield interpretation
-remains unverified. Data stays under Git-ignored network_scans/.
+**not** guaranteed paths for moving Walkers. Shield status is tracked separately in decoded player-base records. Data stays under Git-ignored network_scans/.
 
 ## Passive world-map entity inventory
 

@@ -6,68 +6,70 @@ The 16-click pilot produced 1,109 unique player IDs. A retrospective comparison 
 
 The scanner uses progressive center-out grids of **4x4, 7x7, then 10x10** points, with duplicate/nearby click coordinates omitted. Its goal is roughly 9,500 unique bases. Reaching that number is **not proof of geographic completeness**; the program keeps scanning by default rather than stopping at the threshold.
 
-## End-to-end pipeline from login to radar
+## No-Ollama startup → Leave City → radar → network scanner
 
-The world-scan pipeline reuses the same `data_miner.startup.run_ai_startup(cfg)`
-function that the proven player-activity script uses for login confirmation
-and promotional popups. There is no duplicate ad handler.
+The world-scanning pipeline **does not run Ollama**. It uses the
+Player Activity login warning and promotional-offer routines (local
+OpenCV and OCR), then taps the **fixed bottom-right Leave City button**
+at 90.7% of the emulator screenshot width, 96.8% of its height.
+The position was calibrated from the user's home-city screenshot.
+Override with `--map-tap X Y` (emulator pixels) if the UI changes.
+A remaining warning or verified promotion blocks that tap.
 
-**Startup performance:** the pipeline now prioritizes the existing
-Player Activity login/ads handler, checking for additional visible promo Xs
-*before* invoking any AI. Once the bottom-right **Leave City** label is
-visible, it is detected via local Tesseract OCR; no extra Ollama city
-classification is needed. The map pipeline sets
-`allow_ai_fallback=False` for startup: if OCR cannot verify the city it
-stops with a diagnostic rather than loading a large vision model. Player
-Activity retains its optional AI fallback. If local screen recognition
-fails, review the screenshot rather than running a blind tap.
-
-**The city-to-world button is labeled "Leave City"** (not "View Map").
-We locate that exact labeled control from a verified city screenshot,
-tap it once, and check that the actual world map is visible before any
-zoom-out action. Then we zoom out until the top-right radar is verified
-and begin the existing passive network scan.
-
-Run from the repository root:
+**Test just this step first:**
 
 ~~~powershell
 git switch dev
 git pull origin dev
 
-# First: verify ONLY login confirmation and ads, no map clicks
-python network_scan/world_scan_pipeline.py run --execute --startup-only
-
-# Optional: inspect the present screen, no taps
-python network_scan/world_scan_pipeline.py inspect
-
-# Next: test login + ads + Leave City + zoom-to-radar only
-python network_scan/world_scan_pipeline.py run --execute --prepare-only
-
-# Once that passes: collect four minimap captures
-python network_scan/world_scan_pipeline.py run --execute --max-clicks 4
-
-# Full scan, each invocation in its own timestamped folder
-python network_scan/world_scan_pipeline.py run --execute
+python network_scan/world_scan_pipeline.py run --execute --map-only
 ~~~
 
-The initial login modal is handled by Player Activity **before the slow Ollama world-map classifier**. If `initial.png` shows the login warning, the pipeline logs `login_warning_detected` and delegates immediately to the existing Confirm/promotion handler. Use `--startup-only` to debug this stage without clicking Leave City or beginning a scan.
+This closes the known login dialog and ads, taps **Leave City** once,
+checks that the screen changed, and saves
+`network_scans/map_refresh/TIMESTAMP/after_leave_city.png`.
+It will not zoom or scan. Inspect the screenshot to confirm that the
+world map opened correctly. It also supports
+`--startup-only` for a login/ad-only trial.
 
-The pipeline stores screenshot evidence and state in
-`network_scans/map_refresh/TIMESTAMP/`, writes captures and players.csv,
-and uses the permanent `network_scans/player_history.sqlite3` for all
-observed usernames. It writes rename comparisons when an older scan
-is available.
+**Radar is a separate calibration.** We have an existing calibrated
+minimap click ROI `800,25,1060,270` on the 1080x1920
+emulator screenshot, but no stable visual reference for detecting the
+radar's appearance. To avoid another expensive model, the pipeline uses
+OpenCV template matching against a **user-cropped PNG of a stationary
+radar UI feature**, such as a distinctive border/icon that does not
+change with the terrain or player dots. Store that crop locally, outside
+git, e.g. `network_scans/radar_icon.png`, and pass it with
+`--radar-template`. The zoom-out control also needs one
+verified calibration via `--zoom-tap X Y` or
+`--zoom-keyevent CODE`. No scan begins unless the radar
+template matches twice.
 
-**Not fully calibrated yet:** the exact position of "Leave City" is
-obtained with the existing vision-based label locator, not a guessed
-hardcoded coordinate. The world-map zoom-out control and top-right radar
-must be visually verified on this BlueStacks instance. If the locator
-cannot verify the control or the radar, the pipeline stops and saves
-screenshots, rather than tapping unknown UI. Once their emulator-pixel
-centers are visually calibrated, `--map-tap X Y` and
-`--zoom-tap X Y` can be used as explicit overrides.
+After those calibrations, try radar navigation without scanning:
 
-The following command executes offline safety tests:
+~~~powershell
+python network_scan/world_scan_pipeline.py run --execute --prepare-only --radar-template network_scans/radar_icon.png --zoom-tap X Y
+~~~
+
+Then perform the small first capture:
+
+~~~powershell
+python network_scan/world_scan_pipeline.py run --execute --max-clicks 4 --radar-template network_scans/radar_icon.png --zoom-tap X Y
+~~~
+
+The scanner preserves player IDs and name observations in the shared,
+private `network_scans/player_history.sqlite3` before
+checkpointing each minimap click. Each session's screenshots and
+network captures stay under its own timestamped folder. The network
+decoder and scan route do not require Ollama.
+
+**Safety:** if the map does not visibly change, the radar match is
+unavailable/unstable, a promo remains, the zoom control is uncalibrated,
+or ADB fails, the runner stops and preserves its diagnostics. A
+calibrated radar crop is not the entire changing minimap; do not use
+a full radar image with moving markers as the reference.
+
+Offline tests:
 
 ~~~powershell
 python -m unittest discover -s network_scan -p test_world_scan_pipeline.py

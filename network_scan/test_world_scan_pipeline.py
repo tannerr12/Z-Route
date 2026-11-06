@@ -43,6 +43,8 @@ class WorldPipelineTests(unittest.TestCase):
         args=SimpleNamespace(roi=self.roi,max_startup_actions=12,max_zoom_actions=5)
         with tempfile.TemporaryDirectory() as td:
             with (patch('data_miner.startup.popup_visible',return_value=False),
+                  patch('data_miner.startup.promo_close_visible',return_value=False),
+                  patch('data_miner.startup.city_label_visible',return_value=False),
                   patch.object(p,'read_screen',return_value=self.image),
                   patch.object(p,'save_screen'),
                   patch.object(p,'save_status') as status,
@@ -66,7 +68,8 @@ class WorldPipelineTests(unittest.TestCase):
             with (patch('data_miner.startup.popup_visible',return_value=True),
                   patch('data_miner.startup.run_ai_startup',
                         side_effect=lambda *a,**kw:events.append('startup') or 4) as startup,
-                  patch('data_miner.vision.classify_screen',return_value=('city',.99)),
+                  patch('data_miner.startup.city_label_visible',return_value=True),
+                  patch('data_miner.vision.classify_screen',return_value=('city',.99)) as ai,
                   patch.object(p,'read_screen',return_value=self.image),
                   patch.object(p,'save_screen'),
                   patch.object(p,'save_status') as status,
@@ -79,6 +82,7 @@ class WorldPipelineTests(unittest.TestCase):
                 self.assertEqual(events,['startup','vision'],
                                  'Login handler must run before any world-map AI')
                 startup.assert_called_once_with(cfg,max_actions=12)
+                ai.assert_not_called()
                 self.assertEqual(vision.call_count,1)
                 self.assertTrue(any(c.args[1]=='login_warning_detected'
                                     for c in status.call_args_list))
@@ -89,6 +93,8 @@ class WorldPipelineTests(unittest.TestCase):
                              zoom_tap=None,zoom_keyevent=None)
         with tempfile.TemporaryDirectory() as td:
             with (patch('data_miner.startup.popup_visible',return_value=False),
+                  patch('data_miner.startup.promo_close_visible',return_value=False),
+                  patch('data_miner.startup.city_label_visible',return_value=False),
                   patch.object(p,'read_screen',return_value=self.image),
                   patch.object(p,'save_screen'),
                   patch.object(p,'save_status'),

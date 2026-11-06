@@ -261,6 +261,8 @@ Start the live capture in PowerShell window 1:
 python network_scan/live_entity_watch.py watch --interface "Wi-Fi" --dumpcap "C:\Program Files\Wireshark\dumpcap.exe" --segment-seconds 5 --server 125
 ~~~
 
+**Do not type `SESSION` literally.** Replace it with the timestamped directory (for example `20261106_132600`) printed by the watcher. You can also omit `--session` to use the newest completed session, but an explicit path is safer when multiple scans are running.
+
 Copy the session path printed as `Private session:`. For example,
 `network_scans/entity_live/20261106_180000`.
 

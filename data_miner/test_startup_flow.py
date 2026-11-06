@@ -20,7 +20,7 @@ class StartupFlowTests(unittest.TestCase):
               patch.object(startup,'popup_visible',
                            side_effect=[True,False,False,False,False,False]),
               patch.object(startup,'city_label_visible',
-                           side_effect=[False,False,True]),
+                           side_effect=[False,True]),
               patch.object(startup,'promo_close_point',
                            side_effect=[(70,12)]*4),
               patch.object(startup,'close_verified_promo') as close,

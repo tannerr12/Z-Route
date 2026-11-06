@@ -47,13 +47,23 @@ python network_scan/world_scan_pipeline.py run --execute --zoom-only --zoom-step
 ~~~
 
 The **zoom-only** mode focuses the single visible BlueStacks App Player
-window and sends **Ctrl + -** once through the Windows keyboard API,
-then saves `zoom_before.png` and `zoom_after_1.png`, reports visual
-change and stops. It makes no network captures and never starts Ollama.
-To try multiple attempts after verifying the first, use
-`--zoom-steps 3` (maximum 4 per probe). It pauses if no visible change
-occurs. This only works if the BlueStacks Zoom game control accepts
-Ctrl+-; check its controls editor/Override setting if there is no zoom.
+window and sends **one continuous Ctrl + - hold for 4 seconds** through
+the Windows keyboard API, then releases both keys and saves
+`zoom_before.png` and `zoom_after_1.png`. The hold is adjustable to
+3–5 seconds with `--zoom-hold 3` or `--zoom-hold 5`. The user confirmed
+that repeating three individual zoom presses can reset the zoom, so
+**prefer a single uninterrupted hold with `--zoom-steps 1`**:
+
+~~~powershell
+python network_scan/world_scan_pipeline.py run --execute --zoom-only --zoom-steps 1 --zoom-hold 4
+~~~
+
+It reports visual change and stops. It makes no network captures and
+never starts Ollama.
+Avoid repeating the zoom action unless necessary: separate presses
+may reset the user's game zoom state. The BlueStacks Zoom game control
+must accept Ctrl+-; check its controls editor/Override setting if the
+held action produces no change.
 Zoom-only does **not** prove that the radar is visible, so the full
 network scanner still requires local radar verification.
 
@@ -75,8 +85,8 @@ git, e.g. `network_scans/radar_icon.png`, and pass it with
 `--radar-template`. The zoom-out control also needs one
 verified calibration via `--zoom-tap X Y` or
 `--zoom-keyevent CODE`. By default, the full pipeline now supports
-`--zoom-method bluestacks`, using the same Ctrl+- action as the
-zoom-only probe. If the shortcut fails or is remapped, select
+`--zoom-method bluestacks`, using the same held Ctrl+- action as
+the zoom-only probe (default 4 seconds, adjustable by `--zoom-hold`). If the shortcut fails or is remapped, select
 `--zoom-method tap` or `--zoom-method keyevent` instead.
 No scan begins unless the radar template matches twice.
 

@@ -403,7 +403,8 @@ def cli():
         a.add_argument('--zoom-method',choices=('bluestacks','tap','keyevent'),
                        default='bluestacks',
                        help='When radar template is configured: zoom via BlueStacks Ctrl+-, tapped control, or Android keycode')
-        a.add_argument('--max-zoom-actions',type=int,default=12)
+        a.add_argument('--max-zoom-actions',type=int,default=1,
+                       help='Maximum radar zoom actions; default 1 to avoid repeated-press reset')
         a.add_argument('--zoom-delay',type=float,default=.6)
         a.add_argument('--zoom-hold',type=float,default=4.0,
                        help='Continuous BlueStacks Ctrl+- key hold, 3–5 seconds (default 4)')

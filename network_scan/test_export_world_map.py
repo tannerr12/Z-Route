@@ -5,6 +5,7 @@ python -m unittest discover -s network_scan -p test_export_world_map.py
 from __future__ import annotations
 
 import csv
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -44,6 +45,24 @@ class ExactWorldMapExportTests(unittest.TestCase):
         self.assertEqual(skipped,1)
         self.assertEqual({p['player_id']:p['x'] for p in people},
                          {'11':517,'12':514})
+
+    def test_world_export_retains_current_name_and_every_previous_alias(self):
+        raw=[dict(server=125,player_id=111,username='OldNick',
+                  x=502,y=423,base_level=25)]
+        events=[
+            dict(old_name='OldNick',new_name='NewNick',
+                 last_old_observed_at_utc='2026-11-06T18:00:00+00:00',
+                 first_new_observed_at_utc='2026-11-06T19:00:00+00:00')]
+        history={'111':dict(username='NewNick',aliases=['OldNick','NewNick'],
+                           rename_history=events,last_seen='2026-11-06T19:00:00+00:00')}
+        people,_=build_world_roster(raw,125,'2026-11-06T19:10:00+00:00',
+                                    {},history)
+        result=people[0]
+        self.assertEqual(result['username'],'NewNick')
+        self.assertEqual(result['observed_name_changes'],1)
+        self.assertEqual(json.loads(result['known_aliases_json']),['OldNick','NewNick'])
+        self.assertEqual(json.loads(result['name_history_json']),events)
+        self.assertEqual((result['x'],result['y']),(502,423))
 
     def test_shield_metadata_joined_only_from_matching_player_id(self):
         raw=[dict(server=125,player_id='111',username='Blue',

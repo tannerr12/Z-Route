@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verified Z-Route startup -> world map -> radar -> passive network scan.
+"""Verified Z-Route startup -> Leave City -> radar -> passive network scan.
 
 From the repository root:
   python network_scan/world_scan_pipeline.py inspect
@@ -159,8 +159,8 @@ def vision_world(cfg,image,roi=MINIMAP_ROI):
 def locate_city_map(cfg,image):
     from data_miner.target_locator import locate_text_button
     return locate_text_button(cfg,image,
-        target='View Map / World Map button (the control opening the game world map)',
-        context='Z-Route HOME CITY screen after all promotions and login dialogs are closed.')
+        target='Leave City (the city-screen button that opens the world map)',
+        context='Z-Route HOME CITY screen after login and promotions. Locate the actual button labeled Leave City; do not click Alliance, Explore, or a base.')
 
 
 def locate_zoom_out(cfg,image):
@@ -207,9 +207,9 @@ def prepare_radar(cfg,args,folder):
         if target is None:
             try:target=locate_city_map(cfg,image)
             except (RuntimeError,ValueError) as exc:
-                raise RuntimeError('Cannot confidently locate View Map. Calibrate --map-tap X,Y '
+                raise RuntimeError('Cannot confidently locate Leave City. Calibrate --map-tap X,Y '
                                    'using city_after_popups.png (emulator pixels).') from exc
-        one_tap(cfg,image,target,'Open world map')
+        one_tap(cfg,image,target,'Leave City / open world map')
         save_status(folder,'map_tapped',map_tap=list(target))
         time.sleep(.9)
         image,radar=verify_world_after_map(cfg,folder,args.roi)
@@ -387,7 +387,7 @@ def cli():
     cfg.setdefault('adb_serial','127.0.0.1:5555')
     if args.command=='run' and not args.execute:
         print('PREVIEW ONLY: no input to game. To navigate, add --execute.')
-        print('Start: confirm login -> dismiss promotions -> View Map -> zoom to radar')
+        print('Start: confirm login -> dismiss promotions -> Leave City -> zoom to radar')
         print('Then: passive scan '+str(args.stages)+' '+args.pattern+
               ' ; player names stored in '+str(ROOT/'player_history.sqlite3'))
         return

@@ -39,46 +39,25 @@ It will not zoom or scan. Inspect the screenshot to confirm that the
 world map opened correctly. It also supports
 `--startup-only` for a login/ad-only trial.
 
-**Current calibrated zoom: two continuous Ctrl + - holds of 3 seconds each.**
-Separate holds are intentional; they reproduce the player's working BlueStacks
-sequence. The number of calls is controlled by `--zoom-steps`; e.g.,
-`--zoom-steps 4` causes four calls, not two. The default is now **2**.
-Each held key may itself cause multiple zoom increments inside BlueStacks.
+**BlueStacks zoom: exactly one continuous 3-second Ctrl + - hold.**
+Do not repeat it automatically: BlueStacks may itself create multiple
+zoom increments from the one held key, and repeated calls can reset the view.
+The earlier two-hold default was a mistake and has been removed.
+The program now refuses `--zoom-steps` other than `1` and refuses
+`--max-zoom-actions` other than `1` for BlueStacks. Default is one.
 
-**Already on the world map? Test zoom without repeating login/ads:**
-
-~~~powershell
-git pull origin dev
-python network_scan/world_scan_pipeline.py run --execute --zoom-only --zoom-steps 2 --zoom-hold 3
-~~~
-
-The **zoom-only** mode focuses the single visible BlueStacks App Player
-window and sends **two continuous Ctrl + - holds of 3 seconds each** through
-the Windows keyboard API, releasing both keys between holds, then saves
-`zoom_before.png` and `zoom_after_1.png`. Each hold is adjustable to
-3–5 seconds with `--zoom-hold 3` or `--zoom-hold 5`. The user confirmed
-that repeating three individual zoom presses can reset the zoom, so
-**prefer the two verified holds with `--zoom-steps 2`**:
+**Already on the world map? Run this zoom-only test:**
 
 ~~~powershell
-python network_scan/world_scan_pipeline.py run --execute --zoom-only --zoom-steps 1 --zoom-hold 4
+git pull --ff-only origin dev
+python network_scan/world_scan_pipeline.py run --execute --zoom-only --zoom-hold 3
 ~~~
 
-It reports visual change and stops. It makes no network captures and
-never starts Ollama.
-Avoid repeating the zoom action unless necessary: separate presses
-may reset the user's game zoom state. The BlueStacks Zoom game control
-must accept Ctrl+-; check its controls editor/Override setting if the
-held action produces no change.
-Zoom-only does **not** prove that the radar is visible, so the full
-network scanner still requires local radar verification.
-
-**Bug fix:** the world map can contain a gold decorative X or screen
-text that resembles the city. The old code could falsely reject a
-successful Leave City transition with "city/popup still visible".
-Map-only no longer runs the CITY promotion/label checks on a world-map
-screenshot; it checks the login dialog and verifies a meaningful scene
-transition instead. Only a calibrated radar matcher authorizes a scan.
+The script sends only one held Ctrl+- action, releases both keys, and
+saves `zoom_before.png` and `zoom_after_1.png`. No login/ad handler,
+radar clicks, map clicks, network scanning, or Ollama are involved.
+The duration is customizable between 3 and 5 seconds, but the count
+remains exactly one.
 
 **Radar is a separate calibration.** We have an existing calibrated
 minimap click ROI `800,25,1060,270` on the 1080x1920

@@ -9,7 +9,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from player_history import connection, directory, import_csv, ingest_records, sync
+from player_history import (all_renames, connection, directory, discovery,
+                            export_renames, import_csv, ingest_records, sync)
 from coverage_report import bin_data, build, read_roster
 from types import SimpleNamespace
 
@@ -47,6 +48,39 @@ class IdentityHistoryTests(unittest.TestCase):
                 self.assertEqual(p['aliases'],['OldNick','NewNick'])
                 self.assertEqual(p['observed_name_changes'],1)
                 self.assertEqual(p['snapshot_count'],2)
+
+    def test_recurring_scan_sessions_join_one_history_with_repeated_name(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)/'network_scans'
+            name1=root/'map_refresh'/'scan_01'/'players.csv'
+            name2=root/'map_refresh'/'scan_02'/'players.csv'
+            name3=root/'map_refresh'/'scan_03'/'players.csv'
+            base=dict(server=125,player_id=991,username='Alpha',x=400,y=500,
+                      alliance_tag='D3AD',alliance_name='',base_level=27,
+                      capture='one.pcapng',time_s=1)
+            write_roster(name1,[base],1700000000)
+            write_roster(name2,[dict(base,username='Beta')],1700003600)
+            write_roster(name3,[dict(base,username='Alpha')],1700007200)
+            discovered=discovery(root)
+            self.assertEqual(len(discovered),3)
+            with connection(root/'player_history.sqlite3') as db:
+                self.assertEqual(sync(db,root),(3,3))
+                self.assertEqual(sync(db,root),(0,0))
+                person=directory(db,'125')[0]
+                self.assertEqual(person['aliases'],['Alpha','Beta'])
+                self.assertEqual(person['username'],'Alpha')
+                self.assertEqual(person['observed_name_changes'],2)
+                renames=all_renames(db,'125')
+                self.assertEqual([(p['old_name'],p['new_name']) for p in renames],
+                                 [('Alpha','Beta'),('Beta','Alpha')])
+                report=root/'name_changes.csv'
+                self.assertEqual(len(export_renames(db,report,'125')),2)
+                with report.open(encoding='utf-8-sig',newline='') as handle:
+                    saved=list(csv.DictReader(handle))
+                self.assertEqual(saved[0]['player_id'],'991')
+                self.assertTrue(saved[0]['last_old_observed_at_utc'])
+                self.assertTrue(saved[0]['first_new_observed_at_utc'])
+                self.assertEqual(saved[1]['new_name'],'Alpha')
 
     def test_new_capture_preserves_alias_between_csv_exports(self):
         with tempfile.TemporaryDirectory() as td:

@@ -13,10 +13,21 @@ from datetime import datetime,timezone
 
 from live_entity_watch import append_csv,STATUS_FIELDS
 from shield_probe import (MARK_FIELDS, assign_marks, compare_fields,
-                          detail_map, mark, read_csv, resolve_player)
+                          detail_map, mark, read_csv, require_session,
+                          resolve_player)
 
 
 class ShieldCalibrationTests(unittest.TestCase):
+    def test_placeholder_session_is_rejected_with_actionable_error(self):
+        with tempfile.TemporaryDirectory() as td:
+            fake=Path(td)/'SESSION'
+            with self.assertRaisesRegex(ValueError,'SESSION is a placeholder'):
+                require_session(fake)
+
+    def test_real_existing_session_is_accepted(self):
+        with tempfile.TemporaryDirectory() as td:
+            self.assertEqual(require_session(Path(td)),Path(td))
+
     def test_all_detail_fields_preserved_without_guessing_flag_names(self):
         detail=[(1,0,1234),(2,0,27),(4,2,b'TestPlayer'),
                 (9,0,1),(18,0,1793932531824),(30,2,b'\xff\xfe')]

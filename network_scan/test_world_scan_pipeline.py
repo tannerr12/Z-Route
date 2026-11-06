@@ -109,6 +109,59 @@ class WorldPipelineTests(unittest.TestCase):
                     p.prepare_radar({},args,Path(td))
                 tap.assert_not_called()
 
+    def test_map_only_ignores_world_map_gold_x_false_positive(self):
+        args=SimpleNamespace(
+            roi=self.roi,max_startup_actions=12,map_tap=None,
+            map_only=True,radar_template=None)
+        with tempfile.TemporaryDirectory() as td:
+            with (patch('data_miner.startup.run_ai_startup',return_value=4),
+                  patch('data_miner.startup.popup_visible',return_value=False),
+                  patch('data_miner.startup.promo_close_visible',
+                        return_value=True) as promo,
+                  patch('data_miner.startup.city_label_visible',return_value=True),
+                  patch.object(p,'read_screen',
+                               side_effect=[self.image,self.image,self.map_image]),
+                  patch.object(p,'save_screen'),
+                  patch.object(p,'save_status') as status,
+                  patch.object(p,'one_tap') as tap,
+                  patch('time.sleep')):
+                p.prepare_radar({},args,Path(td))
+                tap.assert_called_once()
+                self.assertTrue(any(c.args[1]=='map_only_complete'
+                                    for c in status.call_args_list))
+                # After Leave City, the startup promo detector must never
+                # be trusted to classify the world map.
+                self.assertEqual(promo.call_count,1)
+
+    def test_zoom_only_skips_startup_and_stops_on_no_change(self):
+        cfg={}
+        args=SimpleNamespace(zoom_steps=3,zoom_delay=.6)
+        with tempfile.TemporaryDirectory() as td:
+            with (patch('data_miner.startup.popup_visible',return_value=False),
+                  patch('bluestacks_zoom.zoom_out_ctrl_minus') as zoom,
+                  patch.object(p,'read_screen',side_effect=[
+                      self.image,self.image]),
+                  patch.object(p,'save_screen'),
+                  patch.object(p,'save_status') as status,
+                  patch('time.sleep')):
+                p.zoom_probe(cfg,args,Path(td))
+                zoom.assert_called_once()
+                self.assertTrue(any(c.args[1]=='zoom_probe_complete'
+                                    for c in status.call_args_list))
+
+    def test_zoom_only_does_not_send_key_on_login_popup(self):
+        cfg={}
+        args=SimpleNamespace(zoom_steps=1,zoom_delay=.6)
+        with tempfile.TemporaryDirectory() as td:
+            with (patch('data_miner.startup.popup_visible',return_value=True),
+                  patch('bluestacks_zoom.zoom_out_ctrl_minus') as zoom,
+                  patch.object(p,'read_screen',return_value=self.image),
+                  patch.object(p,'save_screen'),
+                  patch.object(p,'save_status')):
+                with self.assertRaisesRegex(RuntimeError,'Login warning'):
+                    p.zoom_probe(cfg,args,Path(td))
+                zoom.assert_not_called()
+
     def test_popup_after_startup_never_taps_map(self):
         args=SimpleNamespace(
             roi=self.roi,max_startup_actions=12,

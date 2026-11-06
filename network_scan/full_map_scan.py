@@ -312,7 +312,7 @@ def scan(args):
         state['entries'].append(entry)
         write_outputs(args.out, state, players)
         try:
-            with connection(args.out.parent / 'player_history.sqlite3') as history:
+            with connection(getattr(args, 'history_db', Path('network_scans/player_history.sqlite3'))) as history:
                 ingest_records(history, result['players'].values(), result['capture'])
         except Exception as exc:
             print('WARNING: player name history could not be saved:', exc, flush=True)
@@ -360,6 +360,9 @@ def main():
     run.add_argument('--min-separation', type=float, default=8,
                      help='Skip minimap clicks within this many pixels of past targets')
     run.add_argument('--out', type=Path, default=Path('network_scans/full_map'))
+    run.add_argument('--history-db', type=Path,
+                     default=Path('network_scans/player_history.sqlite3'),
+                     help='Shared append-only player identity/name history across every scan session')
     run.add_argument('--interface', default='Wi-Fi')
     run.add_argument('--dumpcap', default='dumpcap')
     run.add_argument('--adb', help='Override config.json adb_path')

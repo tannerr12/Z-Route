@@ -12,6 +12,16 @@ The world-scan pipeline reuses the same `data_miner.startup.run_ai_startup(cfg)`
 function that the proven player-activity script uses for login confirmation
 and promotional popups. There is no duplicate ad handler.
 
+**Startup performance:** the pipeline now prioritizes the existing
+Player Activity login/ads handler, checking for additional visible promo Xs
+*before* invoking any AI. Once the bottom-right **Leave City** label is
+visible, it is detected via local Tesseract OCR; no extra Ollama city
+classification is needed. The map pipeline sets
+`allow_ai_fallback=False` for startup: if OCR cannot verify the city it
+stops with a diagnostic rather than loading a large vision model. Player
+Activity retains its optional AI fallback. If local screen recognition
+fails, review the screenshot rather than running a blind tap.
+
 **The city-to-world button is labeled "Leave City"** (not "View Map").
 We locate that exact labeled control from a verified city screenshot,
 tap it once, and check that the actual world map is visible before any
@@ -61,6 +71,7 @@ The following command executes offline safety tests:
 
 ~~~powershell
 python -m unittest discover -s network_scan -p test_world_scan_pipeline.py
+python -m unittest discover -s data_miner -p test_startup_flow.py
 ~~~
 
 ## Setup and four-click speed pilot

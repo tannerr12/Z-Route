@@ -54,7 +54,7 @@ def route(roi, stages, inset, min_separation):
     points = []
     for size in stages:
         for p in ordered(targets(size, size, roi, inset), 'spiral'):
-            if any((p['x']-q['x'])**2 + (p['y']-q['y'])**2 <
+            if any((p['x']-q['tap_x'])**2 + (p['y']-q['tap_y'])**2 <
                    min_separation**2 for q in points):
                 continue
             points.append(dict(number=len(points)+1, stage=size,

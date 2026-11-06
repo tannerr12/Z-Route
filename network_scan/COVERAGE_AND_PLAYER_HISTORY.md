@@ -68,6 +68,9 @@ current roster alone. We do not use names as unique identifiers.
 Current and future scan inputs:
 
 - The coverage report imports source CSV snapshots automatically when run.
+- Recurring scan folders under `network_scans/map_refresh/*/players.csv` are now included in automatic history discovery.
+- All repeated full-map runs write to the **same** `network_scans/player_history.sqlite3`, no matter the session output folder. Each click saves its player names **before** the checkpoint is advanced; a history write failure stops the scan instead of proceeding silently.
+- The `scan_changes.py` utility treats renames as the **priority result**, producing `renames.csv` for the two compared snapshots and `all_name_changes.csv` for every recorded alias transition.
 - live_watch.py records identity observations from each new decoded capture.
 - full_map_scan.py records identity observations after each map-jump capture.
 - Repeating sync/import of an unchanged capture is idempotent.
@@ -91,6 +94,7 @@ Export machine-readable histories:
 
 ~~~powershell
 python network_scan/player_history.py export
+python network_scan/player_history.py renames
 ~~~
 
 You can back up network_scans/player_history.sqlite3 to keep older aliases

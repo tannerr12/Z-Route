@@ -241,6 +241,81 @@ python network_scan/live_entity_watch.py replay --captures "C:\path\to\capture1.
 For a separate session, use --out when starting watch and --session
 with near/match/trail.
 
+## Shielded vs unshielded bases: controlled A/B test
+
+The existing player-base (`type=1`) decoder provides stable
+`(server, player_id)` identities, coordinates and some raw status
+fields (`9,13,15,18,23`). **None of those fields is yet proven
+to mean shield enabled or disabled.** The new `shield_probe.py`
+records visually observed shield status and compares *all* direct player
+detail protobuf fields, including missing/present values.
+
+**Best experiment:** use your own base or a willing ally's base, and
+observe the **same player ID** in both shielded and unshielded states.
+Using two different players is weak evidence because their levels,
+skins, movement/activity, titles and other attributes differ.
+
+Start the live capture in PowerShell window 1:
+
+~~~powershell
+python network_scan/live_entity_watch.py watch --interface "Wi-Fi" --dumpcap "C:\Program Files\Wireshark\dumpcap.exe" --segment-seconds 5 --server 125
+~~~
+
+Copy the session path printed as `Private session:`. For example,
+`network_scans/entity_live/20261106_180000`.
+
+In window 2, navigate to a visible shielded base at its real coordinates
+and identify its **stable player ID**:
+
+~~~powershell
+python network_scan/shield_probe.py inspect --session network_scans/entity_live/SESSION --server 125 --x 500 --y 450
+~~~
+
+When that base is **visibly shielded**, record a visual state marker:
+
+~~~powershell
+python network_scan/shield_probe.py mark --session network_scans/entity_live/SESSION --server 125 --x 500 --y 450 --state shielded
+~~~
+
+**Keep the shield on and navigate away/back** to trigger fresh
+WorldMapViewS2C or WorldMapViewUpdateS2C messages. Ideally capture more
+than one response. Do not change the shield until this is complete.
+
+After the same base is visibly **unshielded**, mark it using the **same
+player ID** from the first inspect, then navigate away/back again while
+that state remains unchanged:
+
+~~~powershell
+python network_scan/shield_probe.py mark --session network_scans/entity_live/SESSION --server 125 --player-id YOUR_STABLE_ID --state unshielded
+~~~
+
+Finally, stop the watcher with Ctrl+C and compare:
+
+~~~powershell
+python network_scan/shield_probe.py compare --session network_scans/entity_live/SESSION --server 125 --player-id YOUR_STABLE_ID
+~~~
+
+The local results are:
+- `shield_marks.csv`: user-observed state, time, stable player ID, and optional screenshot evidence path.
+- `shield_probe/sampled_observations.json`: raw detail fields for matching packet sightings after the user marks.
+- `shield_probe/field_differences.csv`: field values that differed between observed shielded and unshielded samples.
+
+**Important constraints:** packet timestamps are approximated using
+capture-file modification times (Windows UTC). A snapshot immediately
+around a marker can mix before/after state; only capture after the
+mark while the state remains unchanged, and consider repeated trials.
+A missing field in an update is not proof of shield absence.
+Differences are **unverified candidates** until reproduced across
+multiple transitions and preferably multiple player bases. Do NOT
+automatically mark other bases as unshielded because a candidate bit
+or timer is absent.
+
+Run offline tests:
+
+~~~powershell
+python -m unittest discover -s network_scan -p test_shield_probe.py
+~~~
+
 ## Limits and safety
 
 - WorldMapViewUpdateS2C contains delta messages; not every form is

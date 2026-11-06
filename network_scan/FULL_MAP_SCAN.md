@@ -39,25 +39,24 @@ It will not zoom or scan. Inspect the screenshot to confirm that the
 world map opened correctly. It also supports
 `--startup-only` for a login/ad-only trial.
 
-**BlueStacks zoom: exactly one continuous 3-second Ctrl + - hold.**
-Do not repeat it automatically: BlueStacks may itself create multiple
-zoom increments from the one held key, and repeated calls can reset the view.
-The earlier two-hold default was a mistake and has been removed.
-The program now refuses `--zoom-steps` other than `1` and refuses
-`--max-zoom-actions` other than `1` for BlueStacks. Default is one.
+**BlueStacks zoom: exactly two continuous 3-second Ctrl + - holds.**
+The user confirmed that two holds work. The script uses two separate
+3-second holds, with a key release between them, and never a third
+automatic hold. The zoom-only `--zoom-steps` option and BlueStacks
+`--max-zoom-actions` are locked to exactly 2 to prevent regressions.
+The hold duration remains configurable from 3–5 seconds.
 
 **Already on the world map? Run this zoom-only test:**
 
 ~~~powershell
 git pull --ff-only origin dev
-python network_scan/world_scan_pipeline.py run --execute --zoom-only --zoom-hold 3
+python network_scan/world_scan_pipeline.py run --execute --zoom-only --zoom-steps 2 --zoom-hold 3
 ~~~
 
-The script sends only one held Ctrl+- action, releases both keys, and
-saves `zoom_before.png` and `zoom_after_1.png`. No login/ad handler,
-radar clicks, map clicks, network scanning, or Ollama are involved.
-The duration is customizable between 3 and 5 seconds, but the count
-remains exactly one.
+The script sends exactly two held Ctrl+- actions, releases both keys
+after each, saves `zoom_before.png`, `zoom_after_1.png`, and
+`zoom_after_2.png`. No login/ad handler, radar clicks, map clicks,
+network scanning, or Ollama are involved.
 
 **Radar is a separate calibration.** We have an existing calibrated
 minimap click ROI `800,25,1060,270` on the 1080x1920

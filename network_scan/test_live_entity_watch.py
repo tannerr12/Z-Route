@@ -12,8 +12,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from live_entity_watch import (candidate_key, decode_for_server, entity_key,
-                               inspect_candidates, iter_entities, match, nearby,
-                               process, read_csv, trail)
+                               inspect_candidates, iter_entities, level_probe, match,
+                               nearby, process, read_csv, trail)
 
 
 def entity(x,y,group=1793928700943,code=3):
@@ -92,6 +92,33 @@ class EntityWatchTests(unittest.TestCase):
             self.assertIn('type 5; subtype 49',output)
             self.assertIn('raw candidate ID: 1234',output)
             self.assertIn('{"1":[49]}',output)
+
+    def test_level_probe_does_not_auto_label_walker(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        with tempfile.TemporaryDirectory() as td:
+            session=Path(td)
+            cols=('entity_key','server','x','y','type_code','subtype',
+                  'candidate_group_id','last_seen_utc','last_detail_scalars',
+                  'last_detail_text')
+            with (session/'latest_entities.csv').open('w',newline='',encoding='utf-8') as out:
+                w=csv.DictWriter(out,fieldnames=cols)
+                w.writeheader()
+                w.writerow(dict(entity_key='object1',server=125,
+                    x=161,y=688,type_code=3,subtype=205,
+                    candidate_group_id='unknown',last_seen_utc='2026-11-06T12:00:00+00:00',
+                    last_detail_scalars='{"1":[205],"8":[120],"9":[3000]}',
+                    last_detail_text='{}'))
+            args=SimpleNamespace(session=session,server=125,x=160,y=687,
+                    visible_level=120,radius=5,limit=10,save=True)
+            buf=StringIO()
+            with redirect_stdout(buf):result=level_probe(args)
+            self.assertEqual(len(result),1)
+            self.assertEqual(result[0]['exact_scalar_fields'],'8')
+            self.assertEqual(result[0]['interpretation'],'candidate_not_confirmed')
+            self.assertTrue((session/'level_probes.csv').exists())
+            self.assertIn('candidate',buf.getvalue().lower())
+            self.assertFalse((session/'visual_matches.csv').exists())
 
     def test_shared_candidate_id_is_not_a_unique_entity_id(self):
         a,b=entity(492,409),entity(493,401)

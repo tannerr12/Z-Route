@@ -407,8 +407,15 @@ def cli():
     ensure_adb_device(SimpleNamespace(adb=cfg['adb_path'],serial=cfg['adb_serial']))
     try:
         if args.command=='inspect':
+            from data_miner.startup import popup_visible
             image=read_screen(cfg)
             save_screen(cfg,folder,'startup_inspect',image)
+            if popup_visible(image):
+                save_status(folder,'inspection_complete',screen='login_warning',
+                            world_map=False,radar_verified=False)
+                print('READ ONLY: login warning detected; use run --execute '
+                      '--startup-only for existing Confirm/ad workflow',flush=True)
+                return
             world,radar,result=vision_world(cfg,image,args.roi)
             save_status(folder,'inspection_complete',world_map=world,
                         radar_verified=radar,raw_radar_detection=result)

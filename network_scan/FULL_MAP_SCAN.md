@@ -11,9 +11,16 @@ The scanner uses progressive center-out grids of **4x4, 7x7, then 10x10** points
 The world-scanning pipeline **does not run Ollama**. It uses the
 Player Activity login warning and promotional-offer routines (local
 OpenCV and OCR), then taps the **fixed bottom-right Leave City button**
-at 90.7% of the emulator screenshot width, 96.8% of its height.
+at 90.7% of the emulator screenshot width, 95.4% of its height.
 The position was calibrated from the user's home-city screenshot.
-Override with `--map-tap X Y` (emulator pixels) if the UI changes.
+The runner refuses to tap if a proposed Leave City coordinate is not
+in the **bottom-right** of the emulator image (X ≥72%, Y ≥85%).
+It **ignores any stale** `config.json ui.world_map.map_button_tap`
+setting that could instead point to a top-right promotion X.
+Only an explicit `--map-tap X Y` (emulator pixels) may override the
+fixed button, and even that must be bottom-right.
+The console prints the exact target and emulator image dimensions,
+then records them in `pipeline_status.json`.
 A remaining warning or verified promotion blocks that tap.
 
 **Test just this step first:**

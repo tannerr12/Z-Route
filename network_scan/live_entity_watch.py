@@ -239,7 +239,8 @@ def process(file,previous,out,latest,segments,labels,cache,
                     type_code=code,type_label=name,classification=classification,
                     subtype='' if obj['subtype'] is None else obj['subtype'],
                     candidate_group_id='' if group is None else group[-1],
-                    candidate_group_ambiguous=str(bool(is_ambiguous)).lower(),
+                    candidate_group_ambiguous=str(bool(is_ambiguous or (current and
+                        current.get('candidate_group_ambiguous')=='true'))).lower(),
                     first_seen_utc=current['first_seen_utc'] if current else when,
                     last_seen_utc=when,last_capture=file.name,
                     sightings=int(current.get('sightings') or 0)+1 if current else 1,
@@ -426,6 +427,7 @@ def nearby(args):
         print(f'  X:{p["x"]} Y:{p["y"]} '
               f'type:{p["type_code"]} subtype:{p["subtype"]} '
               f'group:{p["candidate_group_id"] or "none"} '
+              f'shared-ID-observed:{p["candidate_group_ambiguous"]} '
               f'last seen {age:.1f} min ago; '
               f'{p["sightings"]} sightings; distance {dist:.1f}')
     if not matches:print('No recent matching entities. Jump near the target while watch is running.')

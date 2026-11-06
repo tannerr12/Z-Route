@@ -149,6 +149,39 @@ level, the level may be encoded indirectly or not sent by map-view
 responses. Only after validation should the decoder apply the
 creature-level >=100 ⇒ Watcher rule.
 
+### Deeper offline inspection when flat level-probe finds nothing
+
+The current level-120 sample at **S125 X:160 Y:687** had 20 nearby
+object anchors but no **flat** decoded scalar equal to 120. That does not
+prove the Watcher has no level field. The parser deliberately ignored
+unknown object fields and deeper nested byte strings.
+
+Use the new **read-only, recursive raw protobuf inspector** to inspect
+saved full-map and update messages from the known session:
+
+~~~powershell
+git switch dev
+git pull origin dev
+python network_scan/raw_object_inspect.py --session network_scans/entity_live/20261106_122600 --server 125 --x 160 --y 687 --radius 20 --visible-level 120
+~~~
+
+This does NOT need an active Walker or BlueStacks. It reads the saved
+PCAPNG captures (including messages completed across two rotating
+capture files), and prints every raw field for each nearby map object,
+including unknown negative-type objects and parseable nested fields.
+
+The private output is written to:
+
+`network_scans/entity_live/20261106_122600/raw_object_probe.json`
+
+If it finds field paths with literal numeric value 120, that is a
+**candidate** only. The correct field must correlate with another known
+Watcher level in a separate capture before it can be trusted. If the
+inspector finds no `120` anywhere, investigate a different game
+message or a derived game level rather than inventing a type mapping.
+
+The PCAPNG and JSON can include game-session data. Keep both private.
+
 ## 6. Controlled before/after kill experiment
 
 For the earlier level-100 kill test, no decoded map messages after the

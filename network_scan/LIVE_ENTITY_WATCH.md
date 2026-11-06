@@ -302,6 +302,29 @@ The local results are:
 - `shield_probe/sampled_observations.json`: raw detail fields for matching packet sightings after the user marks.
 - `shield_probe/field_differences.csv`: field values that differed between observed shielded and unshielded samples.
 
+### Fast named-player lookup for additional shielded examples
+
+For a new visually confirmed shielded base such as `BigDaddyKane`,
+you can use the exact in-game username (case-insensitive) instead of
+finding the coordinates or copying its player ID:
+
+~~~powershell
+python network_scan/shield_probe.py inspect --username BigDaddyKane --server 125
+python network_scan/shield_probe.py mark --username BigDaddyKane --state shielded --server 125
+~~~
+
+Run while `live_entity_watch.py watch` is capturing a real session.
+Omitting `--session` uses the most recently recorded session.
+If that base is not present in decoded observations, navigate near it,
+move away/back, and inspect again after a new completed capture window.
+The `mark` command rejects ambiguous usernames shared by several
+stable player IDs, rather than marking the wrong player.
+
+The first visual shield observation is a ground-truth candidate only;
+new decoded map sightings **after** the mark are required for `cohort`.
+Repeat for visually confirmed unshielded controls, without treating an
+absent protobuf field as proof a base has no shield.
+
 ### Troubleshooting 0 samples after marking shield states
 
 A `mark` command records your visual observation and timestamp,

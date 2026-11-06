@@ -61,15 +61,15 @@ def bluestacks_foreground_handle():
     return user32, hwnd, name
 
 
-def zoom_out_ctrl_minus(hold_seconds=3.0):
+def zoom_out_ctrl_minus(hold_seconds=2.0):
     """Send one uninterrupted Ctrl+- zoom-out hold to focused BlueStacks.
 
-    Hold continuously for the calibrated 3-5s, rather than repeating
+    Hold continuously for the calibrated 2-5s, rather than repeating
     discrete presses (which can reset zoom in the user's BlueStacks).
     Key-up is unconditional even if a problem occurs during the hold.
     """
-    if isinstance(hold_seconds,bool) or not isinstance(hold_seconds,(int,float)) or not 3.0<=hold_seconds<=5.0:
-        raise ValueError('Zoom hold must be between 3.0 and 5.0 seconds')
+    if isinstance(hold_seconds,bool) or not isinstance(hold_seconds,(int,float)) or not 2.0<=hold_seconds<=5.0:
+        raise ValueError('Zoom hold must be between 2.0 and 5.0 seconds')
     user32, hwnd, title = bluestacks_foreground_handle()
     import ctypes
     from ctypes import wintypes

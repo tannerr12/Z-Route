@@ -321,10 +321,10 @@ def zoom_probe(cfg,args,folder):
         save_status(folder,'zoom_probe_step',zoom_step=step,
                     visual_change=round(diff,2))
         if diff<3:
-            print('[zoom] Little visible change; stopping zoom attempts. '
-                  'Check BlueStacks Game controls > Zoom mapping/Override.',
+            print('[zoom] Little visible change after this hold. '
+                  'Check BlueStacks Game controls > Zoom mapping/Override. '
+                  'Proceeding with the second explicitly calibrated hold.',
                   flush=True)
-            break
         before=after
     save_status(folder,'zoom_probe_complete')
     print('ZOOM PROBE COMPLETE: check zoom_before.png and zoom_after_*.png. '

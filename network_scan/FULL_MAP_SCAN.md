@@ -6,6 +6,58 @@ The 16-click pilot produced 1,109 unique player IDs. A retrospective comparison 
 
 The scanner uses progressive center-out grids of **4x4, 7x7, then 10x10** points, with duplicate/nearby click coordinates omitted. Its goal is roughly 9,500 unique bases. Reaching that number is **not proof of geographic completeness**; the program keeps scanning by default rather than stopping at the threshold.
 
+## End-to-end pipeline from login to radar
+
+The world-scan pipeline reuses the same `data_miner.startup.run_ai_startup(cfg)`
+function that the proven player-activity script uses for login confirmation
+and promotional popups. There is no duplicate ad handler.
+
+**The city-to-world button is labeled "Leave City"** (not "View Map").
+We locate that exact labeled control from a verified city screenshot,
+tap it once, and check that the actual world map is visible before any
+zoom-out action. Then we zoom out until the top-right radar is verified
+and begin the existing passive network scan.
+
+Run from the repository root:
+
+~~~powershell
+git switch dev
+git pull origin dev
+
+# First: inspect the present screen, no taps
+python network_scan/world_scan_pipeline.py inspect
+
+# Next: test login + ads + Leave City + zoom-to-radar only
+python network_scan/world_scan_pipeline.py run --execute --prepare-only
+
+# Once that passes: collect four minimap captures
+python network_scan/world_scan_pipeline.py run --execute --max-clicks 4
+
+# Full scan, each invocation in its own timestamped folder
+python network_scan/world_scan_pipeline.py run --execute
+~~~
+
+The pipeline stores screenshot evidence and state in
+`network_scans/map_refresh/TIMESTAMP/`, writes captures and players.csv,
+and uses the permanent `network_scans/player_history.sqlite3` for all
+observed usernames. It writes rename comparisons when an older scan
+is available.
+
+**Not fully calibrated yet:** the exact position of "Leave City" is
+obtained with the existing vision-based label locator, not a guessed
+hardcoded coordinate. The world-map zoom-out control and top-right radar
+must be visually verified on this BlueStacks instance. If the locator
+cannot verify the control or the radar, the pipeline stops and saves
+screenshots, rather than tapping unknown UI. Once their emulator-pixel
+centers are visually calibrated, `--map-tap X Y` and
+`--zoom-tap X Y` can be used as explicit overrides.
+
+The following command executes offline safety tests:
+
+~~~powershell
+python -m unittest discover -s network_scan -p test_world_scan_pipeline.py
+~~~
+
 ## Setup and four-click speed pilot
 
 Make sure BlueStacks is on the minimap at the same zoom as the earlier successful test. config.json must contain the configured ADB executable and emulator serial. The current calibrated minimap ROI is **800,25,1060,270** for the 1080x1920 emulator screenshot.

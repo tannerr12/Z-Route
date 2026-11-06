@@ -13,8 +13,10 @@ Outputs under network_scans/map_entities:
   type_inventory.csv, world_objects.csv, player_status.csv,
   type_samples.json, entity_summary.json, object_observations.csv
 
-Player shield state and Walker classifications remain UNKNOWN until visually
-validated. Raw status bits and timestamp-like values are exported for study.
+Player-base field 9 is the accepted shield flag: 1=shielded, absent=unshielded
+in a decoded player record. Other values are unknown. Original raw status bits
+and approximate network-observation timestamps are retained.
+Non-player type identities remain unknown until visually validated.
 Captures and outputs may contain private game data; never publish by default.
 """
 from __future__ import annotations
@@ -30,6 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from scan import save_csv
+from shield_state import decode_shield_status
 from zroute_map_decoder import (application_messages, decode_payload, map_root,
                                 protobuf_fields, value)
 
@@ -146,7 +149,7 @@ def status_record(p, capture, observed_at):
                 status_18=extra(18),status_18_utc=timestamp_utc(extra(18)),
                 status_23=extra(23),
                 raw_extra_scalars_json=json.dumps(raw_flags,separators=(',',':')),
-                shield_status='unverified',capture=capture,
+                shield_status=decode_shield_status(extra(9)),capture=capture,
                 observed_at_utc=observed_at)
 
 

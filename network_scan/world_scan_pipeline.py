@@ -212,14 +212,18 @@ def prepare_radar(cfg,args,folder):
         world,radar,_=vision_world(cfg,image,args.roi)
     if not world:
         save_status(folder,'reusing_player_activity_startup')
-        actions=run_ai_startup(cfg,max_actions=args.max_startup_actions)
+        actions=run_ai_startup(cfg,max_actions=args.max_startup_actions,
+                               allow_ai_fallback=False)
         save_status(folder,'city_verified',startup_actions=actions)
         image=read_screen(cfg)
         save_screen(cfg,folder,'city_after_popups',image)
         if not city_label_visible(image):
-            raise RuntimeError('Startup finished, but local OCR could not '
-                               'confirm Leave City on the city screen. '
-                               'Stopped before any map tap; inspect city_after_popups.png')
+            if configured_tap(cfg,args.map_tap,'map_button_tap') is None:
+                raise RuntimeError('Startup finished, but local OCR could not '
+                                   'confirm Leave City on the city screen. '
+                                   'Stopped before any map tap; inspect city_after_popups.png')
+            print('City label not found, but manually calibrated map tap '
+                  'was supplied; using user-verified coordinate.',flush=True)
         target=configured_tap(cfg,args.map_tap,'map_button_tap')
         if target is None:
             try:target=locate_city_map(cfg,image)
@@ -433,7 +437,8 @@ def cli():
         if args.startup_only:
             from data_miner.startup import run_ai_startup
             save_status(folder,'reusing_player_activity_startup')
-            actions=run_ai_startup(cfg,max_actions=args.max_startup_actions)
+            actions=run_ai_startup(cfg,max_actions=args.max_startup_actions,
+                               allow_ai_fallback=False)
             save_status(folder,'startup_complete',startup_actions=actions)
             save_screen(cfg,folder,'city_after_startup',read_screen(cfg))
             print('STARTUP COMPLETE: city verified by Player Activity handler. '

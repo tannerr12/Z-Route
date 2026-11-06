@@ -111,8 +111,9 @@ def export(args):
         max_age_minutes=args.max_shield_age_minutes))
     with connection(getattr(args, 'history_db', args.network_root/'player_history.sqlite3')) as db:
         sync(db, args.network_root)
-        histories = {str(person['player_id']):person
-                     for person in directory(db,str(args.server))}
+        histories = ({} if getattr(args,'no_name_history',False) else
+                     {str(person['player_id']):person
+                      for person in directory(db,str(args.server))})
     records, skipped = build_world_roster(
         rows, args.server, modified, shield, histories)
     if not records:
@@ -147,6 +148,8 @@ def main():
     parser.add_argument('--no-shields', action='store_true')
     parser.add_argument('--history-db',type=Path,
                         default=ROOT/'player_history.sqlite3')
+    parser.add_argument('--no-name-history',action='store_true',
+                        help='Keep historical aliases private; publish current names only')
     args = parser.parse_args()
     if args.max_shield_age_minutes < 0:
         parser.error('--max-shield-age-minutes must be nonnegative')

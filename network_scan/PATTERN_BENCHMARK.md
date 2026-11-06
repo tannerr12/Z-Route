@@ -16,6 +16,21 @@ All four real patterns visit the same set of grid positions and should ultimatel
 
 Instead of running one route, then unfairly benchmarking subsequent patterns against warm game caches, the tool collects each position ONCE and replays those identical results in all four orders.
 
+## ADB setup and reconnection
+
+The benchmark now reads `adb_path` and `adb_serial` from the repository's private `config.json`, just like `scanner.py`. For the configured local serial (such as `127.0.0.1:5555`), it checks `adb devices -l` and automatically runs `adb connect` if the device is missing. No ADB tap is issued until the device is confirmed connected.
+
+If the screen capture reports `device not found`, first ensure BlueStacks is running, with Android Debug Bridge enabled in Settings → Advanced. To diagnose:
+
+~~~powershell
+$adbPath = (Get-Content .\\config.json | ConvertFrom-Json).adb_path
+& $adbPath devices -l
+& $adbPath connect 127.0.0.1:5555
+& $adbPath devices -l
+~~~
+
+If another local port is shown, change `adb_serial` in `config.json` to that exact serial or pass `--serial`. ADB ports can change between emulator instances. Do not try random remote addresses or run clicks until the correct BlueStacks device is visible.
+
 ## Step 1: Save an emulator screenshot
 
 From your repository root, with BlueStacks and the game's minimap open:

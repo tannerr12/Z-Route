@@ -24,7 +24,10 @@ Run from the repository root:
 git switch dev
 git pull origin dev
 
-# First: inspect the present screen, no taps
+# First: verify ONLY login confirmation and ads, no map clicks
+python network_scan/world_scan_pipeline.py run --execute --startup-only
+
+# Optional: inspect the present screen, no taps
 python network_scan/world_scan_pipeline.py inspect
 
 # Next: test login + ads + Leave City + zoom-to-radar only
@@ -36,6 +39,8 @@ python network_scan/world_scan_pipeline.py run --execute --max-clicks 4
 # Full scan, each invocation in its own timestamped folder
 python network_scan/world_scan_pipeline.py run --execute
 ~~~
+
+The initial login modal is handled by Player Activity **before the slow Ollama world-map classifier**. If `initial.png` shows the login warning, the pipeline logs `login_warning_detected` and delegates immediately to the existing Confirm/promotion handler. Use `--startup-only` to debug this stage without clicking Leave City or beginning a scan.
 
 The pipeline stores screenshot evidence and state in
 `network_scans/map_refresh/TIMESTAMP/`, writes captures and players.csv,

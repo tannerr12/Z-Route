@@ -135,7 +135,7 @@ class WorldPipelineTests(unittest.TestCase):
 
     def test_zoom_only_skips_startup_and_stops_on_no_change(self):
         cfg={}
-        args=SimpleNamespace(zoom_steps=3,zoom_delay=.6,zoom_hold=4.0)
+        args=SimpleNamespace(zoom_steps=1,zoom_delay=.6,zoom_hold=4.0)
         with tempfile.TemporaryDirectory() as td:
             with (patch('data_miner.startup.popup_visible',return_value=False),
                   patch('bluestacks_zoom.zoom_out_ctrl_minus') as zoom,
@@ -169,20 +169,30 @@ class WorldPipelineTests(unittest.TestCase):
                 p.zoom_probe({},args,Path(td))
                 zoom.assert_called_once_with(5.0)
 
-    def test_two_three_second_holds_and_no_extra_calls(self):
+    def test_repeated_zoom_holds_are_rejected_without_keys(self):
         args=SimpleNamespace(zoom_steps=2,zoom_delay=.6,zoom_hold=3.0)
         with tempfile.TemporaryDirectory() as td:
             with (patch('data_miner.startup.popup_visible',return_value=False),
                   patch('bluestacks_zoom.zoom_out_ctrl_minus') as zoom,
+                  patch.object(p,'read_screen',return_value=self.image),
+                  patch.object(p,'save_screen'),
+                  patch.object(p,'save_status')):
+                with self.assertRaisesRegex(ValueError,'exactly one held'):
+                    p.zoom_probe({},args,Path(td))
+                zoom.assert_not_called()
+
+    def test_one_three_second_hold_exactly_once(self):
+        args=SimpleNamespace(zoom_steps=1,zoom_delay=.6,zoom_hold=3.0)
+        with tempfile.TemporaryDirectory() as td:
+            with (patch('data_miner.startup.popup_visible',return_value=False),
+                  patch('bluestacks_zoom.zoom_out_ctrl_minus') as zoom,
                   patch.object(p,'read_screen',side_effect=[
-                      self.image,self.map_image,self.image]),
+                      self.image,self.map_image]),
                   patch.object(p,'save_screen'),
                   patch.object(p,'save_status') as status,
                   patch('time.sleep')):
                 p.zoom_probe({},args,Path(td))
-                self.assertEqual(zoom.call_count,2)
-                self.assertEqual([c.args for c in zoom.call_args_list],
-                                 [(3.0,),(3.0,)])
+                zoom.assert_called_once_with(3.0)
                 self.assertTrue(any(c.args[1]=='zoom_probe_complete'
                                     for c in status.call_args_list))
 

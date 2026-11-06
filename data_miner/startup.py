@@ -163,6 +163,61 @@ def city_label_visible(image):
     return "leave city" in words
 
 
+def leave_city_button_point(image):
+    """Find the labeled Leave City button using local OCR, not Ollama.
+
+    Return an emulator-screenshot pixel coordinate within the label if both
+    words are spatially adjacent in the bottom-right city-navigation area.
+    No blind tapping based on a fixed screen size or unsupported label.
+    """
+    height,width=image.shape[:2]
+    x0,y0=int(width*.70),int(height*.82)
+    region=image[y0:,x0:]
+    if region.size==0:
+        return None
+    gray=cv2.cvtColor(region,cv2.COLOR_BGR2GRAY)
+    gray=cv2.resize(gray,None,fx=2,fy=2,interpolation=cv2.INTER_LINEAR)
+    try:
+        info=pytesseract.image_to_data(
+            gray,config="--psm 11",
+            output_type=pytesseract.Output.DICT,timeout=5)
+    except (RuntimeError,OSError) as exc:
+        print(f"Leave City locator OCR unavailable: {exc}",flush=True)
+        return None
+    entries=[]
+    for i,text in enumerate(info.get('text',[])):
+        word=''.join(c for c in text.casefold() if c.isalpha())
+        if not word:
+            continue
+        left=x0+float(info['left'][i])/2
+        top=y0+float(info['top'][i])/2
+        right=left+float(info['width'][i])/2
+        bottom=top+float(info['height'][i])/2
+        entries.append((word,left,top,right,bottom))
+    candidates=[]
+    for word,l,t,r,b in entries:
+        if word=='leavecity':
+            candidates.append((l,t,r,b))
+        elif word=='leave':
+            for other,l2,t2,r2,b2 in entries:
+                if other!='city' or l2<l:
+                    continue
+                if abs((t+b)/2-(t2+b2)/2)>height*.032:
+                    continue
+                if l2-r>width*.08:
+                    continue
+                candidates.append((min(l,l2),min(t,t2),
+                                   max(r,r2),max(b,b2)))
+    if not candidates:
+        return None
+    # Prefer the lowest Leave City label if there is more than one.
+    l,t,r,b=max(candidates,key=lambda bb:(bb[3],bb[2]))
+    x,y=round((l+r)/2),round((t+b)/2)
+    if not (width*.70<=x<width and height*.82<=y<height):
+        return None
+    return x,y
+
+
 def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75):
     """Reuse Player Activity's local login + popup flow; only ask AI as fallback.
 

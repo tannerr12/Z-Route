@@ -140,6 +140,20 @@ Membership CSV columns: `timestamp,player,guild,event,scanned_at`, with event va
 
 The separate [network_scan/](network_scan/) prototype analyzes Z-Route's naturally observed WorldMapViewS2C network responses to recover game coordinates, player IDs, names, alliances, and levels without OCR. Its read-only decoder was validated on five captures; the guided/ADB navigation runner still needs in-game calibration. It provides a 3×3 coverage pilot, serpentine coordinate plans, local PCAPNG capture and resumable checkpoint CSVs. It does not send/replay game-server requests or automatically publish captured player data. See [network_scan/README.md](network_scan/README.md) before using it.
 
+For the saved level-120 Watcher reference at S125 X:160 Y:687, the
+flat candidate-field probe found no numeric field equal to 120. Use
+[recursive raw-object inspection](network_scan/raw_object_inspect.py) to
+inspect ALL nearby object fields, including unknown nested protobuf
+fields, in the saved PCAPNG capture session:
+
+~~~powershell
+python network_scan/raw_object_inspect.py --session network_scans/entity_live/20261106_122600 --server 125 --x 160 --y 687 --radius 20 --visible-level 120
+~~~
+
+This offline tool produces a private `raw_object_probe.json` report;
+numeric matches remain unverified until correlated with another known
+creature level.
+
 ## Live Walker and moving-world-object investigation
 
 For creature identification, the **game-provided rule is: verified

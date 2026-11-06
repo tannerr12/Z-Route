@@ -517,6 +517,91 @@ def inspect_candidates(args):
 
 
 
+
+LEVEL_PROBE_FIELDS = ('probe_at_utc','server','selected_x','selected_y',
+                      'visible_level','candidate_x','candidate_y','distance',
+                      'type_code','subtype','candidate_group_id',
+                      'exact_scalar_fields','last_seen_utc','entity_key',
+                      'interpretation')
+
+
+def level_probe(args):
+    """Compare a visually identified monster level against nearby map fields.
+
+    Never assume raw object subtype or arbitrary scalar is an actual level;
+    a matching value is only a candidate until creature schema is verified.
+    """
+    out=args.session or latest_session(ROOT)
+    records=read_csv(out/'latest_entities.csv')
+    ranked=[]
+    for obj in records:
+        if str(obj.get('server'))!=str(args.server):continue
+        try:
+            x,y=int(obj['x']),int(obj['y'])
+            dist=math.hypot(x-args.x,y-args.y)
+        except (ValueError,KeyError,TypeError):
+            continue
+        if dist>args.radius:continue
+        raw=obj.get('last_detail_scalars') or '{}'
+        try:
+            fields=json.loads(raw)
+            if not isinstance(fields,dict):fields={}
+        except json.JSONDecodeError:
+            fields={}
+        exact=[]
+        for key,values in fields.items():
+            if not isinstance(values,list):values=[values]
+            for value in values:
+                try:
+                    if int(value)==args.visible_level:
+                        exact.append(str(key))
+                except (TypeError,ValueError):continue
+        ranked.append((0 if exact else 1,dist,obj,sorted(set(exact)),fields))
+    ranked.sort(key=lambda r:(r[0],r[1],int(r[2]['type_code'])))
+    print(f'Visible monster level {args.visible_level} at '
+          f'S{args.server} X:{args.x} Y:{args.y}; '
+          f'{len(ranked)} network candidates within {args.radius} tiles.')
+    if args.visible_level>=100:
+        print('User game rule: creatures at level 100+ are Watchers. '
+              'We still need to identify a VERIFIED creature-level field.')
+    seen_exact=0
+    results=[]
+    for priority,dist,obj,exact,fields in ranked[:args.limit]:
+        if exact:seen_exact+=1
+        print(f'  X:{obj["x"]} Y:{obj["y"]} '
+              f'type:{obj["type_code"]} subtype:{obj["subtype"] or "none"} '
+              f'distance:{dist:.1f} '
+              f'EXACT level-valued scalar fields:{",".join(exact) if exact else "none"}')
+        print(f'    nested scalars:{json.dumps(fields,ensure_ascii=False,separators=(",",":"))}')
+        print(f'    last seen:{obj["last_seen_utc"]}, '
+              f'candidate group:{obj["candidate_group_id"] or "none"}')
+        results.append(dict(probe_at_utc=now(),server=args.server,
+            selected_x=args.x,selected_y=args.y,visible_level=args.visible_level,
+            candidate_x=obj['x'],candidate_y=obj['y'],distance=round(dist,2),
+            type_code=obj['type_code'],subtype=obj['subtype'],
+            candidate_group_id=obj['candidate_group_id'],
+            exact_scalar_fields=';'.join(exact),
+            last_seen_utc=obj['last_seen_utc'],entity_key=obj['entity_key'],
+            interpretation='candidate_not_confirmed'))
+    if args.save and results:
+        append_csv(out/'level_probes.csv',LEVEL_PROBE_FIELDS,results)
+        print('Saved calibration candidates:',out/'level_probes.csv')
+    if len(ranked)>args.limit:
+        print(f'  ... {len(ranked)-args.limit} additional candidates not printed.')
+    if not ranked:
+        print('No nearby objects in this session. Capture the same map region '
+              'while the creature is visible and try again.')
+    elif seen_exact==0:
+        print('No direct nested scalar equals the visible level in the '
+              'shown candidates. The level may be encoded indirectly, '
+              'elsewhere, or not sent in map-view records.')
+    else:
+        print('Numeric matches are only candidates. Verify with a DIFFERENT '
+              'known-level creature at the same type/field before classifying.')
+    return results
+
+
+
 def match(args):
     if not args.label.strip():
         raise SystemExit('Visual label cannot be blank.')
@@ -612,6 +697,18 @@ def main():
     inspector.add_argument('--limit',type=int,default=30)
     inspector.set_defaults(fn=inspect_candidates)
 
+    level_cmd=commands.add_parser('level-probe',help='Compare visible monster level to nearby raw object fields')
+    level_cmd.add_argument('--session',type=Path)
+    level_cmd.add_argument('--server',type=int,default=125)
+    level_cmd.add_argument('--x',type=int,required=True)
+    level_cmd.add_argument('--y',type=int,required=True)
+    level_cmd.add_argument('--visible-level',type=int,required=True)
+    level_cmd.add_argument('--radius',type=float,default=15)
+    level_cmd.add_argument('--limit',type=int,default=30)
+    level_cmd.add_argument('--save',action='store_true',
+                           help='Save candidate-field calibration rows, not confirmed labels')
+    level_cmd.set_defaults(fn=level_probe)
+
     trail_cmd=commands.add_parser('trail',help='Review recent positions for a candidate entity ID')
     trail_cmd.add_argument('--session',type=Path)
     trail_cmd.add_argument('--server',type=int,default=125)
@@ -624,6 +721,8 @@ def main():
         if not 3<=args.segment_seconds<=120 or args.print_limit<0:
             parser.error('--segment-seconds 3..120 and --print-limit >=0 required')
         args.labels=load_labels(args.labels)
+    if args.command=='level-probe' and (args.visible_level<1 or args.radius<0 or args.limit<1):
+        parser.error('visible-level >=1, radius >=0, limit >=1 required')
     if args.command=='inspect' and (args.radius<0 or args.limit<1):
         parser.error('--radius must be >=0 and --limit >=1')
     if args.command in ('near','match'):

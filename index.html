@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Z-Route | Player Locator</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Z-Route | Exact World Map</title>
 <style>
 :root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#091321;color:#e9f1fc}*{box-sizing:border-box}body{margin:0;padding:22px}main{max-width:1450px;margin:auto}h1{margin:0;font-size:25px}p{color:#9eb1c8;margin:5px 0 18px}.top,.controls,.status{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.controls{margin:16px 0}.controls input,.controls select,.controls button{background:#15263a;color:#f1f5fa;border:1px solid #40556d;border-radius:9px;padding:11px;font:inherit}.controls input{flex:1;min-width:190px}.controls button,.guild{cursor:pointer}.controls button:hover,.guild:hover{background:#233e57}.layout{display:grid;grid-template-columns:minmax(0,1fr) 245px;gap:14px}.panel{border:1px solid #30465e;background:#102035;border-radius:12px;padding:12px;min-width:0}.map-wrap{position:relative;overflow:hidden;background:#112339;border-radius:8px;cursor:crosshair;touch-action:none}canvas{display:block;width:100%;height:610px}.tooltip{display:none;position:absolute;pointer-events:none;background:#263e55;border:1px solid #8fb4d8;border-radius:8px;padding:9px 12px;white-space:nowrap;box-shadow:0 5px 20px #0009;font-size:13px;z-index:3}.tooltip strong{display:block;margin-bottom:3px}.muted{color:#9eb1c8;font-size:13px}.legend{max-height:480px;overflow:auto}.guild{display:flex;align-items:center;gap:9px;width:100%;padding:9px;border:0;border-radius:7px;background:transparent;color:#e9f1fc;text-align:left;font:inherit}.guild.active{background:#28465d}.swatch{width:11px;height:11px;border-radius:50%;flex:none}.guild-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.guild-count{color:#a9bdd1;font-variant-numeric:tabular-nums}.detail{margin-top:12px;padding:11px;border-radius:8px;background:#1b334b;line-height:1.8}.status{margin-top:10px}.error{color:#ffb4a9}.map-actions{display:flex;gap:7px;margin-bottom:9px}.map-actions button{background:#203a53;color:white;border:1px solid #49627b;border-radius:7px;padding:7px 11px;cursor:pointer}@media(max-width:800px){body{padding:12px}.layout{grid-template-columns:1fr}canvas{height:450px}.legend{max-height:210px}}
 
@@ -19,9 +19,9 @@
 .level-note{font-size:11px;color:#96acc5;margin:0;line-height:1.3}
 @media(max-width:800px){.level-filter{min-width:100%;max-width:none}}
 </style></head><body><main><nav style="margin-bottom:14px"><a href="./donations.html" style="color:#8cc9ff">Donation Analytics →</a> · <a href="./vs.html" style="color:#8cc9ff">VS Comparison →</a> · <a href="./activity.html" style="color:#8cc9ff">Player Activity →</a></nav>
-<div class="top"><div><h1>Z-Route Player Locator</h1><p>Search players and explore guild positions on an approximate swipe grid.</p></div><span id="source" class="muted">Loading CSV…</span></div>
-<div class="controls"><input id="search" type="search" placeholder="Search username…" aria-label="Search username"><select id="guildFilter" aria-label="Filter guild"><option value="">All guilds</option></select><fieldset class="level-filter"><legend>Base level <strong id="levelLabel">Lv 1–30</strong></legend><div class="range-track" id="rangeTrack"><input id="levelMin" type="range" min="1" max="30" value="1" step="1" aria-label="Minimum base level"><input id="levelMax" type="range" min="1" max="30" value="30" step="1" aria-label="Maximum base level"></div><p class="level-note" id="levelNote">All levels; players with unknown levels included.</p></fieldset><button id="clear">Clear filters</button></div>
-<div class="layout"><section class="panel"><div class="map-actions"><button id="zoomIn" title="Zoom in">＋</button><button id="zoomOut" title="Zoom out">－</button><button id="resetView">Reset view</button><span class="muted" style="margin:auto 0 auto auto">Wheel to zoom · Drag to pan</span></div><div id="mapWrap" class="map-wrap"><canvas id="map" aria-label="Player location map"></canvas><div id="tip" class="tooltip"></div></div><div class="status"><span id="count" class="muted">Loading players…</span><span class="muted">150 columns × 60 rows · approximate positions</span></div><div id="detail" class="detail" hidden></div></section>
+<div class="top"><div><h1>Z-Route Player Locator</h1><p>Search players and explore their last recorded exact game-world coordinates.</p></div><span id="source" class="muted">Loading CSV…</span></div>
+<div class="controls"><input id="search" type="search" placeholder="Search username…" aria-label="Search username"><select id="guildFilter" aria-label="Filter guild"><option value="">All guilds</option></select><select id="shieldFilter" aria-label="Filter shield status"><option value="">All shield states</option><option value="shielded">Shielded</option><option value="unshielded">Unshielded</option><option value="unknown">Unknown / stale</option></select><fieldset class="level-filter"><legend>Base level <strong id="levelLabel">Lv 1–30</strong></legend><div class="range-track" id="rangeTrack"><input id="levelMin" type="range" min="1" max="30" value="1" step="1" aria-label="Minimum base level"><input id="levelMax" type="range" min="1" max="30" value="30" step="1" aria-label="Maximum base level"></div><p class="level-note" id="levelNote">All levels; players with unknown levels included.</p></fieldset><button id="clear">Clear filters</button></div>
+<div class="layout"><section class="panel"><div class="map-actions"><button id="zoomIn" title="Zoom in">＋</button><button id="zoomOut" title="Zoom out">－</button><button id="resetView">Reset view</button><span class="muted" style="margin:auto 0 auto auto">Wheel to zoom · Drag to pan</span></div><div id="mapWrap" class="map-wrap"><canvas id="map" aria-label="Player location map"></canvas><div id="tip" class="tooltip"></div></div><div class="status"><span id="count" class="muted">Loading players…</span><span id="worldExtent" class="muted">Exact world X/Y · observed extent</span></div><div id="detail" class="detail" hidden></div></section>
 <aside class="panel"><strong>Guilds</strong><p class="muted">Click a guild to filter; click again to show all.</p><div id="legend" class="legend"></div></aside></div>
 <p id="message" class="muted" role="status"></p>
 </main><script>
@@ -29,6 +29,7 @@
 const $=id=>document.getElementById(id),canvas=$('map'),ctx=canvas.getContext('2d'),wrap=$('mapWrap'),tip=$('tip');
 let players=[],filtered=[],colors=new Map(),guildCounts=new Map(),hover=null,selected=null;
 let levelBounds={min:1,max:30};
+let worldBounds={minX:0,maxX:1000,minY:0,maxY:1000},worldServer='125';
 let scale=1,offsetX=0,offsetY=0,drag=null,viewW=1,viewH=1;
 const palette=['#59c8ff','#b0a2ff','#ff997f','#6fe0ac','#ffd26e','#fa83c0','#8bd4d6','#d3a36f','#c5ec85','#f18fff'];
 function parseCSV(text){
@@ -45,21 +46,64 @@ function parseCSV(text){
 function hash(s){let h=2166136261;for(const c of s.toLowerCase()){h=Math.imul(h^c.charCodeAt(0),16777619)}return h>>>0}
 function guildColor(g){if(!colors.has(g)){const used=new Set(colors.values());let color=palette[hash(g)%palette.length];if(used.has(color)){for(const c of palette)if(!used.has(c)){color=c;break}}if(used.has(color)){const hue=hash(g)%360;color='hsl('+hue+' 76% 69%)'}colors.set(g,color)}return colors.get(g)}
 function normalize(rows){
- // The scanner's row value for downward columns uses max_swipes (150) rather than the actual height.
- // For downward captures, derive row from the view index using a configurable 60-row grid.
- const byName=new Map();
- for(const r of rows){const name=(r.username||'').trim();if(!name)continue;
- const col=Number(r.col),rawRow=Number(r.row),view=Number(r.view),dir=(r.direction||'').toLowerCase();
- let row=rawRow;
- if(dir==='down'&&Number.isFinite(view)&&r.view!=='')row=60-view;
- if(!Number.isFinite(col)||!Number.isFinite(row)||col<0||row<0)continue;
- // Scanner columns are zero-based, whereas the map labels are one-based.
- const levelText=(r.level||'').trim(),numLevel=levelText!==''?Number(levelText):NaN;
- const p={name,guild:(r.guild||'Unknown').trim()||'Unknown',level:levelText,numericLevel:Number.isFinite(numLevel)&&Number.isInteger(numLevel)&&numLevel>=1?numLevel:null,col:col+1,row:Math.max(1,Math.min(60,row)),observed:r.observed_at||'',coordinateType:r.coordinate_type||'approximate swipe grid'};
- if(p.col>150)continue;
- const key=name.toLowerCase();if(!byName.has(key)||p.observed>byName.get(key).observed)byName.set(key,p);
+ // ONLY game-server world X/Y. The older swipe-grid cols/rows are deliberately ignored.
+ const byId=new Map();
+ const required=['server','player_id','x','y','username','coordinate_source'];
+ if(rows.length && !required.every(k=>Object.prototype.hasOwnProperty.call(rows[0],k)))throw Error('Not an exact-world player CSV');
+ for(const r of rows){
+  if((r.coordinate_source||'').trim()!=='passive_network_world_xy')continue;
+  const name=(r.username||'').trim(),pid=(r.player_id||'').trim(),server=(r.server||'').trim();
+  if(!name||!pid||!server||r.x===''||r.y==='')continue;
+  const x=Number(r.x),y=Number(r.y),levelText=(r.base_level||'').trim(),numLevel=levelText!==''?Number(levelText):NaN;
+  if(!Number.isInteger(x)||!Number.isInteger(y)||x<0||y<0||x>5000||y>5000)continue;
+  const observed=(r.roster_snapshot_at_utc||'').trim();
+  const p={name,id:pid,server,x,y,
+   guild:(r.alliance_tag||r.alliance_name||'Unknown').trim()||'Unknown',
+   level:levelText,numericLevel:Number.isInteger(numLevel)&&numLevel>=1?numLevel:null,
+   observed,shield:(r.shield_status||'unknown').trim().toLowerCase(),
+   lastShield:(r.recorded_shield_status||'unknown').trim().toLowerCase(),
+   shieldObserved:r.shield_observed_at_utc||'',coordinateType:'exact network world X/Y'};
+  const key=server+':'+pid;
+  if(!byId.has(key)||p.observed>=byId.get(key).observed)byId.set(key,p);
  }
- return [...byName.values()];
+ return [...byId.values()];
+}
+function configureWorld(){
+ if(!players.length)return;
+ worldServer=players[0].server;
+ const xs=players.map(p=>p.x),ys=players.map(p=>p.y);
+ // Round the observed extent to useful world-grid tick marks; no invented world boundary.
+ function extent(values){
+  const lo=Math.min(...values),hi=Math.max(...values),center=(lo+hi)/2;
+  const span=Math.max(100,hi-lo+40);
+  const left=Math.max(0,Math.floor((center-span/2)/50)*50);
+  const right=Math.ceil((center+span/2)/50)*50;
+  return [left,Math.max(left+100,right)];
+ }
+ const [minX,maxX]=extent(xs),[minY,maxY]=extent(ys);
+ worldBounds={minX,maxX,minY,maxY};
+ $('worldExtent').textContent='S'+worldServer+' · world X '+minX+'–'+maxX+' / Y '+minY+'–'+maxY+' · observed extent';
+}
+function worldGeometry(){
+ const pad=36;
+ const dx=worldBounds.maxX-worldBounds.minX,dy=worldBounds.maxY-worldBounds.minY;
+ const unit=Math.min(Math.max(1,viewW-2*pad)/dx,Math.max(1,viewH-2*pad)/dy);
+ return {unit,originX:(viewW-dx*unit)/2,originY:(viewH-dy*unit)/2};
+}
+function projectPoint(x,y){
+ const g=worldGeometry();
+ return {x:(g.originX+(x-worldBounds.minX)*g.unit)*scale+offsetX,
+         y:(g.originY+(worldBounds.maxY-y)*g.unit)*scale+offsetY};
+}
+function pointToWorld(px,py){
+ const g=worldGeometry();
+ return {x:worldBounds.minX+((px-offsetX)/scale-g.originX)/g.unit,
+         y:worldBounds.maxY-((py-offsetY)/scale-g.originY)/g.unit};
+}
+function worldTickStep(){
+ const span=Math.max(worldBounds.maxX-worldBounds.minX,worldBounds.maxY-worldBounds.minY);
+ for(const step of [10,20,25,50,100,200,250,500,1000,2000])if(span/step<=12)return step;
+ return 5000;
 }
 function configureLevels(){
  const known=players.map(p=>p.numericLevel).filter(n=>n!==null);
@@ -79,6 +123,7 @@ function updateLevelLabel(){
  $('rangeTrack').style.setProperty('--range-end',end+'%');
 }
 function populate(){
+ configureWorld();
  configureLevels();
  guildCounts=new Map();for(const p of players)guildCounts.set(p.guild,(guildCounts.get(p.guild)||0)+1);
  [...guildCounts.keys()].sort((a,b)=>a.localeCompare(b)).forEach(guildColor);
@@ -96,34 +141,44 @@ function renderLegend(){
  }
 }
 function filter(){
- const q=$('search').value.trim().toLowerCase(),g=$('guildFilter').value;
+ const q=$('search').value.trim().toLowerCase(),g=$('guildFilter').value,shield=$('shieldFilter').value;
  const low=Number($('levelMin').value),high=Number($('levelMax').value);
  const allLevels=low===levelBounds.min&&high===levelBounds.max;
  filtered=players.filter(p=>(!q||p.name.toLowerCase().includes(q))&&(!g||p.guild===g)&&
+   (!shield||p.shield===shield)&&
    (allLevels||p.numericLevel!==null&&p.numericLevel>=low&&p.numericLevel<=high));
  updateLevelLabel();
  $('count').textContent=filtered.length.toLocaleString()+' / '+players.length.toLocaleString()+' players displayed';
  if(selected&&!filtered.includes(selected)){selected=null;$('detail').hidden=true}
  hover=null;tip.style.display='none';renderLegend();draw();
 }
-function project(p){const margin=18,w=viewW-2*margin,h=viewH-2*margin;return {x:(margin+(p.col-.5)*w/150)*scale+offsetX,y:(margin+(p.row-.5)*h/60)*scale+offsetY}}
+function project(p){return projectPoint(p.x,p.y)}
 function draw(){
  const d=window.devicePixelRatio||1;viewW=canvas.clientWidth;viewH=canvas.clientHeight;
  if(!viewW||!viewH)return;
  const cw=Math.round(viewW*d),ch=Math.round(viewH*d);
  if(canvas.width!==cw||canvas.height!==ch){canvas.width=cw;canvas.height=ch}
  ctx.setTransform(d,0,0,d,0,0);ctx.clearRect(0,0,viewW,viewH);ctx.fillStyle='#112339';ctx.fillRect(0,0,viewW,viewH);
- const m=18,w=viewW-2*m,h=viewH-2*m;
- ctx.strokeStyle='#344c65';ctx.lineWidth=.7;ctx.beginPath();
- for(let i=0;i<=15;i++){const x=(m+w*i/15)*scale+offsetX;ctx.moveTo(x,(m)*scale+offsetY);ctx.lineTo(x,(m+h)*scale+offsetY)}
- for(let i=0;i<=6;i++){const y=(m+h*i/6)*scale+offsetY;ctx.moveTo(m*scale+offsetX,y);ctx.lineTo((m+w)*scale+offsetX,y)}
- ctx.stroke();
+ // Exact world-coordinate grid. Y increases upward, as in the game's world map.
+ const step=worldTickStep();
+ ctx.strokeStyle='#344c65';ctx.lineWidth=.7;ctx.font='11px system-ui';ctx.fillStyle='#9db3cd';
+ for(let x=Math.ceil(worldBounds.minX/step)*step;x<=worldBounds.maxX;x+=step){
+  const top=projectPoint(x,worldBounds.maxY),bottom=projectPoint(x,worldBounds.minY);
+  ctx.beginPath();ctx.moveTo(top.x,top.y);ctx.lineTo(bottom.x,bottom.y);ctx.stroke();
+  if(top.x>=18&&top.x<=viewW-18)ctx.fillText('X:'+x,top.x+2,Math.max(14,top.y-6));
+ }
+ for(let y=Math.ceil(worldBounds.minY/step)*step;y<=worldBounds.maxY;y+=step){
+  const left=projectPoint(worldBounds.minX,y),right=projectPoint(worldBounds.maxX,y);
+  ctx.beginPath();ctx.moveTo(left.x,left.y);ctx.lineTo(right.x,right.y);ctx.stroke();
+  if(left.y>=14&&left.y<=viewH-14)ctx.fillText('Y:'+y,Math.max(3,left.x-38),left.y-4);
+ }
  for(const p of filtered){const {x,y}=project(p);if(x< -8||x>viewW+8||y< -8||y>viewH+8)continue;ctx.beginPath();ctx.arc(x,y,p===hover?5.5:p===selected?6:Math.min(4,Math.max(2.8,2.8*Math.sqrt(scale))),0,Math.PI*2);ctx.fillStyle=p===hover?'#fff4b0':guildColor(p.guild);ctx.fill();if(p===selected){ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke()}}
 }
 function nearest(x,y){let best=null,dist=Infinity;for(const p of filtered){const q=project(p),dx=q.x-x,dy=q.y-y,z=dx*dx+dy*dy;if(z<dist){dist=z;best=p}}return dist<=144?best:null}
-function detail(p){selected=p;const el=$('detail');el.replaceChildren();const title=document.createElement('strong');title.textContent=p.name;const info=document.createElement('div');info.textContent=p.guild+' · Level '+(p.level||'unknown')+' · Column '+p.col+' · Row '+p.row;const date=document.createElement('div');date.className='muted';date.textContent=p.observed?'Last scanned: '+p.observed:'Sample data';el.append(title,info,date);el.hidden=false;draw()}
+function detail(p){selected=p;const el=$('detail');el.replaceChildren();const title=document.createElement('strong');title.textContent=p.name;const info=document.createElement('div');info.textContent=p.guild+' · Level '+(p.level||'unknown')+' · S'+p.server+' X:'+p.x+' Y:'+p.y;
+ const shield=document.createElement('div');shield.textContent='Shield: '+(p.shield==='unknown'?'Unknown / stale':p.shield)+' (last recorded: '+p.lastShield+')';const date=document.createElement('div');date.className='muted';date.textContent=p.observed?'Roster snapshot: '+p.observed+' (not an individual sighting timestamp)':'Snapshot time unavailable';el.append(title,info,shield,date);el.hidden=false;draw()}
 function pointer(e){const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top}}
-canvas.addEventListener('pointermove',e=>{const v=pointer(e);if(drag){if(Math.hypot(v.x-drag.startX,v.y-drag.startY)>3)drag.moved=true;offsetX=v.x-drag.x+drag.ox;offsetY=v.y-drag.y+drag.oy;draw();return}const p=nearest(v.x,v.y);if(hover!==p){hover=p;draw()}if(!p){tip.style.display='none';return}tip.replaceChildren();const a=document.createElement('strong');a.textContent=p.name;const b=document.createElement('span');b.textContent=p.guild+' · Col '+p.col+', Row '+p.row;tip.append(a,b);tip.style.display='block';tip.style.left=Math.max(4,Math.min(wrap.clientWidth-tip.offsetWidth-4,v.x+13))+'px';tip.style.top=Math.max(4,v.y-54)+'px'});
+canvas.addEventListener('pointermove',e=>{const v=pointer(e);if(drag){if(Math.hypot(v.x-drag.startX,v.y-drag.startY)>3)drag.moved=true;offsetX=v.x-drag.x+drag.ox;offsetY=v.y-drag.y+drag.oy;draw();return}const p=nearest(v.x,v.y);if(hover!==p){hover=p;draw()}if(!p){tip.style.display='none';return}tip.replaceChildren();const a=document.createElement('strong');a.textContent=p.name;const b=document.createElement('span');b.textContent=p.guild+' · S'+p.server+' X:'+p.x+' Y:'+p.y+' · Lv '+(p.level||'?');tip.append(a,b);tip.style.display='block';tip.style.left=Math.max(4,Math.min(wrap.clientWidth-tip.offsetWidth-4,v.x+13))+'px';tip.style.top=Math.max(4,v.y-54)+'px'});
 canvas.addEventListener('pointerleave',()=>{if(!drag){hover=null;tip.style.display='none';draw()}});
 canvas.addEventListener('pointerdown',e=>{const v=pointer(e);drag={x:v.x,y:v.y,startX:v.x,startY:v.y,ox:offsetX,oy:offsetY,moved:false};canvas.setPointerCapture(e.pointerId);tip.style.display='none'});
 canvas.addEventListener('pointerup',e=>{if(!drag)return;const moved=drag.moved;drag=null;if(!moved){const v=pointer(e),p=nearest(v.x,v.y);if(p)detail(p)}});
@@ -131,17 +186,32 @@ canvas.addEventListener('pointercancel',()=>{drag=null});
 function zoom(f,x=viewW/2,y=viewH/2){const next=Math.max(1,Math.min(12,scale*f)),ratio=next/scale;offsetX=x-(x-offsetX)*ratio;offsetY=y-(y-offsetY)*ratio;scale=next;draw()}
 canvas.addEventListener('wheel',e=>{e.preventDefault();const p=pointer(e);zoom(e.deltaY<0?1.18:1/1.18,p.x,p.y)},{passive:false});
 $('zoomIn').onclick=()=>zoom(1.4);$('zoomOut').onclick=()=>zoom(1/1.4);$('resetView').onclick=()=>{scale=1;offsetX=offsetY=0;draw()};
-$('search').addEventListener('input',filter);$('guildFilter').addEventListener('change',filter);
+$('search').addEventListener('input',filter);$('guildFilter').addEventListener('change',filter);$('shieldFilter').addEventListener('change',filter);
 for(const id of ['levelMin','levelMax'])$(id).addEventListener('input',()=>{
  const min=Number($('levelMin').value),max=Number($('levelMax').value);
  if(min>max){if(id==='levelMin')$('levelMax').value=min;else $('levelMin').value=max}
  filter();
 });
 $('clear').onclick=()=>{
- $('search').value='';$('guildFilter').value='';
+ $('search').value='';$('guildFilter').value='';$('shieldFilter').value='';
  $('levelMin').value=levelBounds.min;$('levelMax').value=levelBounds.max;filter()
 };
 window.addEventListener('resize',draw);
-async function load(){try{const response=await fetch('./data/players.csv',{cache:'no-store'});if(!response.ok)throw Error('HTTP '+response.status);players=normalize(parseCSV(await response.text()));$('source').textContent='CSV data · '+players.length.toLocaleString()+' players';$('message').textContent='Locations are estimated from scanner swipes, not exact in-game coordinates.';populate()}catch(e){$('source').textContent='CSV unavailable';$('message').className='error';$('message').textContent='Unable to load data/players.csv: '+e.message;draw()}}
+async function load(){try{
+ const response=await fetch('./data/world-players.csv',{cache:'no-store'});
+ if(!response.ok)throw Error('HTTP '+response.status);
+ players=normalize(parseCSV(await response.text()));
+ if(!players.length)throw Error('No valid network world X/Y records in data/world-players.csv');
+ const seed=players.length<=30;
+ $('source').textContent='S'+players[0].server+' · '+players.length.toLocaleString()+' exact X/Y bases';
+ $('message').textContent=(seed?'Partial coordinate sample. Export your complete network roster to populate the full map. ':'')+
+ 'Positions are last recorded exact game-world X/Y (not live); the map is scaled to observed coordinates, not proven world boundaries.';
+ populate()
+ }catch(e){
+ $('source').textContent='World-coordinate CSV unavailable';
+ $('message').className='error';
+ $('message').textContent='Exact world map needs data/world-players.csv from network_scan/export_world_map.py: '+e.message;
+ draw()
+ }}
 load();
 </script></body></html>

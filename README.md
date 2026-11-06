@@ -6,6 +6,24 @@ Experimental Z-Route tools for scanning the game through BlueStacks, publishing 
 
 > The website is publicly accessible through GitHub Pages. The BlueStacks scanner and AI Data Miner are experimental and have not been fully validated end-to-end. Donation records currently include **synthetic demo data** marked `DEMO`; do not interpret them as real guild results.
 
+## Player-name history is a primary scan output
+
+Every decoded map base is keyed by **(server, player_id)**, never
+username. The shared private SQLite file at
+`network_scans/player_history.sqlite3` retains old aliases
+and observed name transitions across recurring scan folders.
+The scan's per-click name observations are saved **before** a
+checkpoint can advance, so a history write failure stops the run.
+
+After comparing a repeat scan, inspect
+`changes_from_previous/renames.csv` first, then
+`changes_from_previous/all_name_changes.csv` for the
+lifetime history of names. Run
+`python network_scan/player_history.py renames` for a standalone
+private CSV. The published World Map can search old usernames and filter
+**Renamed only** after you export fresh world-player data from dev.
+Observation timestamps are not exact in-game rename moments.
+
 ## Exact world map
 
 The published Player Locator now uses data/world-players.csv, keyed by the

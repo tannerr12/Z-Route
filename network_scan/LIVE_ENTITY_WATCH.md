@@ -302,6 +302,42 @@ The local results are:
 - `shield_probe/sampled_observations.json`: raw detail fields for matching packet sightings after the user marks.
 - `shield_probe/field_differences.csv`: field values that differed between observed shielded and unshielded samples.
 
+### Cross-player control when the same shield cannot be toggled yet
+
+A strong initial observation from session `20261106_132830`:
+Appsie213 at S125 X:502 Y:423, stable ID `139194294397`,
+was visibly under a blue dome and was the **only base among 24 nearby**
+with raw protobuf player-detail field `9 = 1`. All other 23
+had field 9 absent. **This is a candidate shield flag, not yet verified**:
+other causes of a field being populated remain possible.
+
+While the same live watcher runs, mark Appsie213:
+
+~~~powershell
+python network_scan/shield_probe.py mark --session network_scans/entity_live/20261106_132830 --server 125 --player-id 139194294397 --state shielded
+~~~
+
+Choose a base you can **visually verify is unshielded** and mark its
+player ID with `--state unshielded`. Don't assume every
+other base is unshielded merely because field 9 is absent.
+
+After each mark, navigate the BlueStacks map away/back and wait for
+a new 5-second capture window. Then compare visual controls from
+multiple different bases:
+
+~~~powershell
+python network_scan/shield_probe.py cohort --session network_scans/entity_live/20261106_132830 --server 125
+~~~
+
+This prints the distribution of raw `status_9` in the visually
+verified shielded versus unshielded groups and saves
+`shield_probe/cohort_evidence.csv`. Only samples with an observed
+map response **after** the visual marker are included. With a single
+shielded sample and no unshielded controls, the command appropriately
+reports inconclusive. Cross-player correlation is weaker than
+same-player shield-on/shield-off comparisons. Repeat several examples,
+preferably including a state change on one base.
+
 **Important constraints:** packet timestamps are approximated using
 capture-file modification times (Windows UTC). A snapshot immediately
 around a marker can mix before/after state; only capture after the

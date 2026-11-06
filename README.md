@@ -154,6 +154,30 @@ This offline tool produces a private `raw_object_probe.json` report;
 numeric matches remain unverified until correlated with another known
 creature level.
 
+## Visually calibrated base shield detection (experimental)
+
+Shield status is **not yet decoded**. A [local shield probe](network_scan/shield_probe.py)
+allows a controlled comparison of the same player base while visibly
+shielded versus unshielded, using stable (server, player_id) identity.
+It compares **all** raw player-detail fields in passive map captures,
+but never assumes unknown status bits indicate shield state.
+
+Start the [live map watcher](network_scan/LIVE_ENTITY_WATCH.md) and use:
+
+~~~powershell
+python network_scan/shield_probe.py inspect --session network_scans/entity_live/SESSION --server 125 --x 500 --y 450
+python network_scan/shield_probe.py mark --session network_scans/entity_live/SESSION --server 125 --x 500 --y 450 --state shielded
+# Trigger fresh map responses while the shield stays ON.
+python network_scan/shield_probe.py mark --session network_scans/entity_live/SESSION --server 125 --player-id YOUR_STABLE_ID --state unshielded
+# Trigger fresh map responses while the shield stays OFF, then stop capture.
+python network_scan/shield_probe.py compare --session network_scans/entity_live/SESSION --server 125 --player-id YOUR_STABLE_ID
+~~~
+
+Results are saved privately under network_scans/entity_live/SESSION/shield_probe/.
+Read [full A/B workflow and caveats](network_scan/LIVE_ENTITY_WATCH.md).
+Differences are hypotheses, not automatic unshielded labels, until
+replicated across several state changes.
+
 ## Live Walker and moving-world-object investigation
 
 For creature identification, the **game-provided rule is: verified

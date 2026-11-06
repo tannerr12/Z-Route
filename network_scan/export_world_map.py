@@ -16,11 +16,13 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
 from scan import save_csv
 from shield_state import latest_shield_observations
+from player_history import connection, directory, sync
 
 ROOT = Path('network_scans')
 DEFAULT_ROSTER = ROOT / 'combined_players.csv'
@@ -30,6 +32,8 @@ WORLD_FIELDS = (
     'base_level', 'x', 'y', 'coordinate_source', 'roster_snapshot_at_utc',
     'shield_status', 'recorded_shield_status', 'shield_field_9',
     'shield_observed_at_utc',
+    'known_aliases_json', 'observed_name_changes',
+    'name_history_json', 'name_observed_at_utc',
 )
 
 
@@ -41,9 +45,10 @@ def safe_integer(raw, *, minimum=0, maximum=5000):
     return value if minimum <= value <= maximum else None
 
 
-def build_world_roster(rows, server, snapshot_at, shield_observations):
+def build_world_roster(rows, server, snapshot_at, shield_observations, identity_histories=None):
     """Return a last-recorded player map; reject missing or swipe-grid positions."""
     exported = {}
+    identity_histories = identity_histories or {}
     skipped = 0
     for raw in rows:
         if str(raw.get('server') or '').strip() != str(server):
@@ -57,8 +62,12 @@ def build_world_roster(rows, server, snapshot_at, shield_observations):
             skipped += 1
             continue
         observed = shield_observations.get((str(server), pid), {})
+        history = identity_histories.get(pid, {})
+        latest_name = history.get('username') or name
+        aliases = history.get('aliases') or [name]
+        rename_history = history.get('rename_history') or []
         exported[pid] = dict(
-            server=str(server), player_id=pid, username=name,
+            server=str(server), player_id=pid, username=latest_name,
             alliance_tag=str(raw.get('alliance_tag') or '').strip(),
             alliance_name=str(raw.get('alliance_name') or '').strip(),
             base_level=level if level is not None else '',
@@ -68,6 +77,10 @@ def build_world_roster(rows, server, snapshot_at, shield_observations):
             recorded_shield_status=observed.get('recorded_shield_status', 'unknown'),
             shield_field_9=observed.get('shield_field_9', ''),
             shield_observed_at_utc=observed.get('shield_observed_at_utc', ''),
+            known_aliases_json=json.dumps(aliases, ensure_ascii=False),
+            observed_name_changes=len(rename_history),
+            name_history_json=json.dumps(rename_history, ensure_ascii=False),
+            name_observed_at_utc=history.get('last_seen', ''),
         )
     return sorted(exported.values(),
                   key=lambda row: (row['username'].casefold(), row['player_id'])), skipped
@@ -96,7 +109,12 @@ def export(args):
     shield = ({} if args.no_shields else latest_shield_observations(
         args.network_root, server=args.server,
         max_age_minutes=args.max_shield_age_minutes))
-    records, skipped = build_world_roster(rows, args.server, modified, shield)
+    with connection(getattr(args, 'history_db', args.network_root/'player_history.sqlite3')) as db:
+        sync(db, args.network_root)
+        histories = {str(person['player_id']):person
+                     for person in directory(db,str(args.server))}
+    records, skipped = build_world_roster(
+        rows, args.server, modified, shield, histories)
     if not records:
         raise ValueError(
             f'No valid world coordinates for S{args.server}. '
@@ -109,6 +127,8 @@ def export(args):
     print(f'S{args.server}: exported {len(records):,} last-recorded exact X/Y '
           f'players ({with_level:,} known levels; {with_shield:,} '
           f'recent known shield states); {skipped} invalid same-server rows skipped.')
+    renamed_count=sum(int(row['observed_name_changes'])>0 for row in records)
+    print(f'Historical aliases available for {renamed_count:,} players.')
     print('World coordinate source: passive network scanner; not swipe-grid OCR.')
     print('Roster file modified at:', modified, '(snapshot, not individual sightings)')
     print('Saved:', args.out)
@@ -125,6 +145,8 @@ def main():
     parser.add_argument('--max-shield-age-minutes', type=int, default=60,
                         help='Current shield display becomes unknown after this many minutes')
     parser.add_argument('--no-shields', action='store_true')
+    parser.add_argument('--history-db',type=Path,
+                        default=ROOT/'player_history.sqlite3')
     args = parser.parse_args()
     if args.max_shield_age_minutes < 0:
         parser.error('--max-shield-age-minutes must be nonnegative')

@@ -142,6 +142,14 @@ The separate [network_scan/](network_scan/) prototype analyzes Z-Route's natural
 
 ## Live Walker and moving-world-object investigation
 
+For creature identification, the **game-provided rule is: verified
+creature level >=100 implies Watcher**. A new `level-probe` command
+compares a known on-screen Watcher level to raw map entity fields, without
+assuming numeric subtypes are actual levels. A separate
+[manual event audit](network_scan/entity_event_audit.py) records when you see
+and defeat a Watcher, then checks **positive map sightings before and after**
+the event; missing messages do not confirm despawns.
+
 The [passive live entity watcher](network_scan/LIVE_ENTITY_WATCH.md)
 captures normal BlueStacks network traffic in short 5-second PCAPNG windows
 while you **manually navigate the map**. It records latest-seen X/Y,

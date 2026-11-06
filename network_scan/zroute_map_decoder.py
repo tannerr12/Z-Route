@@ -92,52 +92,72 @@ def read_packets(path: Path):
 
 
 def application_messages(path: Path):
+    """Parse received map messages from contiguous TCP byte runs.
+
+    Rolling dumpcap files often start or end in the middle of an application
+    message. One missing packet must not discard every subsequent message:
+    skip the gap, then resynchronize on a validated message envelope.
+    """
     segments = defaultdict(list)
-    for key, sequence, when, payload in read_packets(path):
-        if key[1] == TCP_PORT:  # server-to-client only; don't process account requests
+    for key, sequence, when, payload in read_packets(Path(path)):
+        if key[1] == TCP_PORT:
             segments[key].append((sequence, when, payload))
+
     for key, parts in segments.items():
-        low = min(seq for seq, _, _ in parts)
-        high = max(seq + len(p) for seq, _, p in parts)
-        stream = bytearray(high - low)
-        present = bytearray(high - low)
+        parts.sort(key=lambda item: item[0])
+        runs = []
+        start = end = None
+        buf = bytearray()
+        timestamps = []
+
+        def finish_run():
+            if buf:
+                runs.append((start, bytes(buf), list(timestamps)))
+
         for seq, when, payload in parts:
-            i = seq - low
-            stream[i:i + len(payload)] = payload
-            present[i:i + len(payload)] = b'\x01' * len(payload)
-        if not all(present):
-            print('Warning: incomplete TCP stream skipped in %s' % path.name, file=sys.stderr)
-            continue
-        parts.sort(key=lambda p: p[0])
-        # A capture may start halfway through an existing TCP application message.
-        # Resynchronize on validated message envelopes, never on raw 'ASCII dumps'.
-        i = 0
-        while i + 10 <= len(stream):
-            at = stream.find(MAGIC, i)
-            if at < 0 or at + 10 > len(stream):
-                break
-            n = struct.unpack_from('>H', stream, at + 4)[0]
-            if not 1 <= n <= 100 or at + 10 + n > len(stream):
-                i = at + 1
-                continue
-            try:
-                name = stream[at + 6:at + 6 + n].decode('ascii')
-            except UnicodeDecodeError:
-                i = at + 1
-                continue
-            if not name or not all(ch.isalnum() or ch == '_' for ch in name):
-                i = at + 1
-                continue
-            size = struct.unpack_from('>I', stream, at + 6 + n)[0]
-            end = at + 10 + n + size
-            if size > 16_000_000 or end > len(stream):
-                i = at + 1
-                continue
-            if name in ('WorldMapViewS2C', 'WorldMapViewUpdateS2C'):
-                seq = low + at
-                when = next((t for s, t, p in parts if s <= seq < s + len(p)), None)
-                yield name, when, bytes(stream[at + 10 + n:end])
-            i = end
+            if start is None or seq > end:
+                finish_run()
+                start, end = seq, seq
+                buf = bytearray()
+                timestamps = []
+            overlap = end - seq
+            if overlap >= len(payload):
+                continue  # duplicate/retransmitted segment
+            piece = payload[max(0, overlap):]
+            timestamps.append((end, when))
+            buf.extend(piece)
+            end += len(piece)
+        finish_run()
+
+        for start, stream, times in runs:
+            i = 0
+            while i + 10 <= len(stream):
+                at = stream.find(MAGIC, i)
+                if at < 0 or at + 10 > len(stream):
+                    break
+                n = struct.unpack_from('>H', stream, at + 4)[0]
+                if not 1 <= n <= 100 or at + 10 + n > len(stream):
+                    i = at + 1
+                    continue
+                try:
+                    name = stream[at + 6:at + 6 + n].decode('ascii')
+                except UnicodeDecodeError:
+                    i = at + 1
+                    continue
+                if not name or not all(ch.isalnum() or ch == '_' for ch in name):
+                    i = at + 1
+                    continue
+                size = struct.unpack_from('>I', stream, at + 6 + n)[0]
+                finish = at + 10 + n + size
+                if size > 16_000_000 or finish > len(stream):
+                    i = at + 1
+                    continue
+                if name in ('WorldMapViewS2C', 'WorldMapViewUpdateS2C'):
+                    seq = start + at
+                    timestamp = next((t for pkt_seq, t in reversed(times)
+                                      if pkt_seq <= seq), None)
+                    yield name, timestamp, bytes(stream[at + 10 + n:finish])
+                i = finish
 
 
 def protobuf_varint(data: bytes, i: int):

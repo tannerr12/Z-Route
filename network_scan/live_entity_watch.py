@@ -470,6 +470,53 @@ def trail(args):
 
 
 
+
+def inspect_candidates(args):
+    """Inspect nested fields for every observed entity in the world radius.
+
+    The Favorites X/Y can be a selected map coordinate instead of an object
+    anchor. Never assert which candidate is the Watcher by proximity alone.
+    """
+    out=args.session or latest_session(ROOT)
+    rows=read_csv(out/'latest_entities.csv')
+    candidates=[]
+    for item in rows:
+        if int(item['server'])!=args.server:continue
+        x,y=int(item['x']),int(item['y'])
+        distance=math.hypot(x-args.x,y-args.y)
+        if distance>args.radius:continue
+        if args.types is not None and int(item['type_code']) not in args.types:continue
+        candidates.append((distance,item))
+    candidates.sort(key=lambda pair:(pair[0],int(pair[1]['type_code'])))
+    print(f'Inspecting {len(candidates)} candidate object positions near '
+          f'S{args.server} X:{args.x} Y:{args.y} (radius {args.radius}) '
+          f'from {out}:')
+    for distance, item in candidates[:args.limit]:
+        print(f'\n[{distance:.1f} tiles] S{args.server} '
+              f'X:{item["x"]} Y:{item["y"]}; type {item["type_code"]}; '
+              f'subtype {item["subtype"] or "(none)"}')
+        print(f'  raw candidate ID: {item["candidate_group_id"] or "(none)"}; '
+              f'shared-ID observed: {item["candidate_group_ambiguous"]}')
+        print(f'  first seen: {item["first_seen_utc"]}')
+        print(f'  last seen:  {item["last_seen_utc"]}; '
+              f'capture: {item["last_capture"]}; sightings: {item["sightings"]}')
+        for field in ('last_detail_scalars','last_detail_text'):
+            raw=item.get(field) or '{}'
+            try:
+                detail=json.loads(raw)
+            except json.JSONDecodeError:
+                detail={'unparsed':raw}
+            print(f'  {field}: '+json.dumps(detail,ensure_ascii=False,
+                                            separators=(',',':')))
+    if len(candidates)>args.limit:
+        print(f'...and {len(candidates)-args.limit} more candidates.')
+    if not candidates:
+        print('No matching positions. Try a fresh map capture or increase --radius.')
+    print('\nAn object is NOT a confirmed Watcher until its game-rendered '
+          'position or disappearance is correlated with the same map object.')
+
+
+
 def match(args):
     if not args.label.strip():
         raise SystemExit('Visual label cannot be blank.')
@@ -555,6 +602,16 @@ def main():
             cmd.add_argument('--screenshot',type=Path)
             cmd.add_argument('--allow-nearby',action='store_true')
         cmd.set_defaults(fn=nearby if name=='near' else match)
+    inspector=commands.add_parser('inspect',help='Show raw nested fields around an in-game coordinate')
+    inspector.add_argument('--session',type=Path)
+    inspector.add_argument('--server',type=int,default=125)
+    inspector.add_argument('--x',type=int,required=True)
+    inspector.add_argument('--y',type=int,required=True)
+    inspector.add_argument('--radius',type=float,default=12)
+    inspector.add_argument('--types',type=types_arg)
+    inspector.add_argument('--limit',type=int,default=30)
+    inspector.set_defaults(fn=inspect_candidates)
+
     trail_cmd=commands.add_parser('trail',help='Review recent positions for a candidate entity ID')
     trail_cmd.add_argument('--session',type=Path)
     trail_cmd.add_argument('--server',type=int,default=125)
@@ -567,6 +624,8 @@ def main():
         if not 3<=args.segment_seconds<=120 or args.print_limit<0:
             parser.error('--segment-seconds 3..120 and --print-limit >=0 required')
         args.labels=load_labels(args.labels)
+    if args.command=='inspect' and (args.radius<0 or args.limit<1):
+        parser.error('--radius must be >=0 and --limit >=1')
     if args.command in ('near','match'):
         if args.radius<0 or args.limit<1 or (args.within_minutes is not None
                                               and args.within_minutes<0):

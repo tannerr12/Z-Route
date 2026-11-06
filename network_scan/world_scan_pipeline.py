@@ -157,10 +157,12 @@ def vision_world(cfg,image,roi=MINIMAP_ROI):
 
 
 def locate_city_map(cfg,image):
-    from data_miner.target_locator import locate_text_button
-    return locate_text_button(cfg,image,
-        target='Leave City (the city-screen button that opens the world map)',
-        context='Z-Route HOME CITY screen after login and promotions. Locate the actual button labeled Leave City; do not click Alliance, Explore, or a base.')
+    from data_miner.startup import leave_city_button_point
+    point=leave_city_button_point(image)
+    if point is None:
+        raise RuntimeError('Leave City label not found in bottom-right by local OCR')
+    print(f'  Leave City OCR located button at {point}',flush=True)
+    return point
 
 
 def locate_zoom_out(cfg,image):
@@ -191,16 +193,19 @@ def prepare_radar(cfg,args,folder):
     # Exactly the same proven startup path used by data_miner.player_activity.
     # IMPORTANT: a login warning MUST be handled before calling Ollama.
     # The modal can remain on-screen while a slow world-map inference waits.
-    from data_miner.startup import run_ai_startup, popup_visible
-    from data_miner.vision import classify_screen
+    from data_miner.startup import (run_ai_startup, popup_visible,
+                                   promo_close_visible, city_label_visible)
     image=read_screen(cfg)
     save_screen(cfg,folder,'initial',image)
-    print('[pipeline] Checking login warning locally before any Ollama call...',flush=True)
+    print('[pipeline] Checking login, promotions and city locally '
+          'before any world-map AI...',flush=True)
     if popup_visible(image):
         save_status(folder,'login_warning_detected')
-        print('Login warning visible: going directly to the existing '
-              'Player Activity confirmation handler, no world-map AI first.',
-              flush=True)
+        print('Login warning visible: using existing Player Activity '
+              'confirmation and ad handler.',flush=True)
+        world,radar=False,False
+    elif promo_close_visible(image) or city_label_visible(image):
+        save_status(folder,'startup_screen_detected_locally')
         world,radar=False,False
     else:
         save_status(folder,'checking_already_open_world_map')
@@ -211,9 +216,10 @@ def prepare_radar(cfg,args,folder):
         save_status(folder,'city_verified',startup_actions=actions)
         image=read_screen(cfg)
         save_screen(cfg,folder,'city_after_popups',image)
-        screen,conf=classify_screen(cfg,image)
-        if screen!='city' or conf<.8:
-            raise RuntimeError(f'Expected verified city after login/ads, got {screen} ({conf:.2f})')
+        if not city_label_visible(image):
+            raise RuntimeError('Startup finished, but local OCR could not '
+                               'confirm Leave City on the city screen. '
+                               'Stopped before any map tap; inspect city_after_popups.png')
         target=configured_tap(cfg,args.map_tap,'map_button_tap')
         if target is None:
             try:target=locate_city_map(cfg,image)

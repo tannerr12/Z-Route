@@ -29,7 +29,7 @@ from live_watch import resolve_interface, traffic_stats
 from map_entity_probe import parse_object, classify, status_record, load_labels
 from scan import save_csv
 from zroute_map_decoder import (application_messages, decode_payload,
-                                map_root, protobuf_fields)
+                                map_root, protobuf_fields, value)
 
 ROOT = Path('network_scans') / 'entity_live'
 LATEST_FIELDS = ('entity_key','server','x','y','type_code','type_label','classification',
@@ -43,7 +43,7 @@ STATUS_FIELDS = ('seen_at_utc','capture','server','player_id','username','x','y'
                  'shield_status','status_9','status_13','status_15','status_18',
                  'status_18_utc','status_23','raw_extra_scalars_json')
 SEG_FIELDS = ('file','observed_at_utc','incoming_packets','incoming_bytes',
-              'decoded_views','new_entity_positions','sightings',
+              'decoded_views','decoded_updates','new_entity_positions','sightings',
               'distinct_types','ambiguous_id_groups','player_status_records',
               'errors','status')
 MATCH_FIELDS = ('matched_at_utc','server','x','y','type_code','subtype',
@@ -72,19 +72,55 @@ def candidate_key(obj):
     return (obj['server'],obj['type_code'],str(group))
 
 
-def iter_entities(path):
+
+def decode_for_server(raw,server):
+    """Decode map payload, resolving ambiguous plaintext ONLY by game server ID.
+
+    The original decoder sometimes finds two mathematically valid byte
+    transformations of a small UPDATE message. In the reference captures,
+    exactly one decoded location matches the known S125 game server.
+    Reject rather than guess if no single candidate matches.
+    """
+    try:
+        plain,_=decode_payload(raw)
+        root=map_root(plain)
+        location=protobuf_fields(value(root,4,2))
+        if value(location,1,0)!=server:
+            raise ValueError('Decoded map server does not match S'+str(server))
+        return root
+    except ValueError as exc:
+        if 'valid decoding candidates' not in str(exc):
+            raise
+    if not raw:
+        raise ValueError('Empty encrypted update')
+    matches=[]
+    for salt in range(128):
+        mask=raw[0]^((8+salt)&255)
+        plain=bytes((((c^mask)-salt)&255) for c in raw)
+        try:
+            root=map_root(plain)
+            location=protobuf_fields(value(root,4,2))
+            if value(location,1,0)==server:
+                matches.append(root)
+        except (ValueError,TypeError):
+            continue
+    if len(matches)!=1:
+        raise ValueError(f'Update has {len(matches)} plausible S{server} candidates')
+    return matches[0]
+
+
+def iter_entities(path,server=125):
     """Yield verified full-map responses, their entities and player statuses.
 
-    WorldMapViewUpdateS2C uses an unknown schema; do not silently treat it
-    as a full snapshot or use absence as despawn evidence.
+    Full views and known update-delta object records are both supported.
+    Update fields other than the repeated world-object field remain
+    unclassified; never infer despawns from absent objects.
     """
     for name, when, raw in application_messages(path):
-        if name!='WorldMapViewS2C':
-            yield 'update_skipped',None,None,None
+        if name not in ('WorldMapViewS2C','WorldMapViewUpdateS2C'):
             continue
         try:
-            decoded,_=decode_payload(raw)
-            root=map_root(decoded)
+            root=decode_for_server(raw,server)
             nonplayers=[]
             statuses=[]
             for field,wire,blob in root:
@@ -100,7 +136,8 @@ def iter_entities(path):
                     statuses.append(obj)
                 else:
                     nonplayers.append(obj)
-            yield 'view',nonplayers,statuses,hashlib.sha256(raw).hexdigest()
+            kind='view' if name=='WorldMapViewS2C' else 'delta'
+            yield kind,nonplayers,statuses,hashlib.sha256(name.encode('ascii')+raw).hexdigest()
         except (ValueError,TypeError,EOFError,OSError) as exc:
             yield 'decode_error',str(exc),None,None
 
@@ -136,7 +173,7 @@ def prepare_state(out):
 
 
 def process(file,previous,out,latest,segments,labels,cache,
-            focus,limit=8, index=0):
+            focus,limit=8,index=0,server=125):
     # Overlapping windows repair TCP messages spanning capture rotations.
     temporary=out/'.joined_entity_window.pcapng'
     if previous:
@@ -154,6 +191,7 @@ def process(file,previous,out,latest,segments,labels,cache,
     # Approximate time of capture file closure.
     when=observation_time(file)
     views=0
+    updates=0
     errors=0
     update_skipped=0
     ambiguous=0
@@ -164,7 +202,7 @@ def process(file,previous,out,latest,segments,labels,cache,
     player_rows=[]
     examples=[]
     try:
-        for kind,nonplayers,statuses,fingerprint in iter_entities(to_parse):
+        for kind,nonplayers,statuses,fingerprint in iter_entities(to_parse,server=server):
             if kind=='update_skipped':
                 update_skipped+=1;continue
             if kind=='decode_error':
@@ -176,7 +214,8 @@ def process(file,previous,out,latest,segments,labels,cache,
             if last is not None and index-last<=1:
                 continue
             cache[fingerprint]=index
-            views+=1
+            if kind=='delta':updates+=1
+            else:views+=1
             grouped=defaultdict(set)
             for obj in nonplayers:
                 group=candidate_key(obj)
@@ -210,7 +249,7 @@ def process(file,previous,out,latest,segments,labels,cache,
                                                separators=(',',':'),ensure_ascii=False))
                 latest[key]=record
                 rows.append(dict(seen_at_utc=when,segment=file.name,
-                                 view_index=views,**{
+                                 view_index=views+updates,**{
                     col:record.get(col,'') for col in EVENT_FIELDS
                     if col not in ('seen_at_utc','segment','view_index')}))
                 type_count[code]+=1
@@ -241,11 +280,11 @@ def process(file,previous,out,latest,segments,labels,cache,
               for code,count in tally.most_common()])
     stats=traffic_stats(file)
     status=('NO_GAME_TRAFFIC' if stats['incoming_packets']==0 else
-            'NO_DECODABLE_MAP_VIEW' if views==0 else 'MAP_VIEWS_DECODED')
+            'NO_DECODABLE_MAP_MESSAGES' if views+updates==0 else 'MAP_MESSAGES_DECODED')
     seg=dict(file=str(file.resolve()),observed_at_utc=when,
              incoming_packets=stats['incoming_packets'],
              incoming_bytes=stats['incoming_bytes'],
-             decoded_views=views,new_entity_positions=new_positions,
+             decoded_views=views,decoded_updates=updates,new_entity_positions=new_positions,
              sightings=total_sightings,distinct_types=len(type_count),
              ambiguous_id_groups=ambiguous,
              player_status_records=len(player_rows),
@@ -253,7 +292,7 @@ def process(file,previous,out,latest,segments,labels,cache,
     segments.append(seg)
     append_csv(out/'segments.csv',SEG_FIELDS,[seg])
     timestr=datetime.fromisoformat(when).strftime('%H:%M:%S UTC')
-    print(f'[{timestr}] {file.name} | {views} map views | '
+    print(f'[{timestr}] {file.name} | {views} views + {updates} updates | '
           f'+{new_positions} new entity positions | '
           f'{len(latest)} stored positions | '
           f'{total_sightings} sightings | '
@@ -273,7 +312,7 @@ def process(file,previous,out,latest,segments,labels,cache,
     return seg
 
 
-def decode_windows(paths,out,labels,focus,limit=8,fingerprint_cache=None):
+def decode_windows(paths,out,labels,focus,limit=8,fingerprint_cache=None,server=125):
     out.mkdir(parents=True,exist_ok=True)
     latest,segments,done=prepare_state(out)
     # Recent fingerprint cache only; old repeats count as fresh observations.
@@ -283,7 +322,7 @@ def decode_windows(paths,out,labels,focus,limit=8,fingerprint_cache=None):
     for index,file in enumerate(paths):
         if str(file.resolve()) not in done and file.stat().st_size>40:
             process(file,previous,out,latest,segments,labels,fingerprint_cache,
-                    focus,limit,index)
+                    focus,limit,index,server)
             done.add(str(file.resolve()))
         previous=file
     if len(fingerprint_cache)>10000:
@@ -322,7 +361,7 @@ def watch(args):
                              key=lambda p:(p.stat().st_mtime_ns,p.name))
                 if len(files)>1:
                     decode_windows(files[:-1],out,args.labels,args.types,args.print_limit,
-                                   fingerprint_cache=fingerprint_cache)
+                                   fingerprint_cache=fingerprint_cache,server=args.server)
                 elif time.monotonic()-last_warning>max(20,args.segment_seconds*3):
                     # A new dumpcap file often appears only after traffic arrives.
                     print('Waiting for first completed capture window; '
@@ -342,7 +381,7 @@ def watch(args):
                          key=lambda p:(p.stat().st_mtime_ns,p.name))
             if files:
                 decode_windows(files,out,args.labels,args.types,args.print_limit,
-                               fingerprint_cache=fingerprint_cache)
+                               fingerprint_cache=fingerprint_cache,server=args.server)
     print('Final data:',out.resolve())
     print('REMINDER: no missing sighting establishes despawn or a confirmed move.')
 
@@ -478,6 +517,7 @@ def main():
 
     w=commands.add_parser('watch',help='Live Wireshark rotating capture (manual navigation)')
     w.add_argument('--interface',default='Wi-Fi')
+    w.add_argument('--server',type=int,default=125)
     w.add_argument('--dumpcap',default='dumpcap')
     w.add_argument('--segment-seconds',type=int,default=5)
     w.add_argument('--out',type=Path)
@@ -488,12 +528,13 @@ def main():
 
     replay=commands.add_parser('replay',help='Analyze existing captures with no new capture')
     replay.add_argument('--captures',nargs='+',type=Path,required=True)
+    replay.add_argument('--server',type=int,default=125)
     replay.add_argument('--out',type=Path,default=ROOT/'offline_replay')
     replay.add_argument('--types',type=types_arg)
     replay.add_argument('--labels',type=Path)
     replay.add_argument('--print-limit',type=int,default=8)
     replay.set_defaults(fn=lambda a:decode_windows(
-        a.captures,a.out,load_labels(a.labels),a.types,a.print_limit))
+        a.captures,a.out,load_labels(a.labels),a.types,a.print_limit,server=a.server))
 
     for name in ('near','match'):
         cmd=commands.add_parser(name,help='Find currently observed entities near X/Y'

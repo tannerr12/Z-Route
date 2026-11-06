@@ -140,6 +140,30 @@ Membership CSV columns: `timestamp,player,guild,event,scanned_at`, with event va
 
 The separate [network_scan/](network_scan/) prototype analyzes Z-Route's naturally observed WorldMapViewS2C network responses to recover game coordinates, player IDs, names, alliances, and levels without OCR. Its read-only decoder was validated on five captures; the guided/ADB navigation runner still needs in-game calibration. It provides a 3×3 coverage pilot, serpentine coordinate plans, local PCAPNG capture and resumable checkpoint CSVs. It does not send/replay game-server requests or automatically publish captured player data. See [network_scan/README.md](network_scan/README.md) before using it.
 
+## Private player intelligence and name-change history
+
+The [offline coverage and identity dashboard](network_scan/COVERAGE_AND_PLAYER_HISTORY.md)
+combines the merged player roster with sampled map centers and persistent
+player-name history. It supports lookup by player ID, current name or
+historical alias; clicking a player highlights their last recorded X/Y
+location. A private SQLite database retains every saved alias tied to
+(server, player_id), rather than replacing the old name when roster CSVs
+change.
+
+Run from the repository root:
+
+~~~powershell
+python network_scan/coverage_report.py
+start .\network_scans\coverage\coverage.html
+~~~
+
+New live-watch and automated minimap captures now record player observations
+in network_scans/player_history.sqlite3. The HTML report and SQLite DB stay
+under Git-ignored network_scans/. Existing scans can only establish past
+name changes if the older name is present in a saved snapshot or capture.
+Map-cell suggestions rank **sparse sampling evidence**, not proven
+unscanned or empty regions.
+
 ## Progressive wide-zoom full-map scanner
 
 The experimental [progressive minimap scanner](network_scan/FULL_MAP_SCAN.md) reuses the verified 1080x1920 minimap ROI and the passive packet decoder to search for roughly **9,500 unique bases**. It tests four-second captures first, retries missed responses with seven seconds, and visits 4x4, 7x7, then 10x10 center-first grids. A saved checkpoint prevents repeating completed targets after an interruption. If needed, append a 13x13 stage without clearing previous records.

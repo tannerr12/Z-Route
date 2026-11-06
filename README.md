@@ -148,11 +148,11 @@ To see **cumulative unique player-base counts while manually jumping** around Z-
 git switch dev
 git pull origin dev
 & "C:\\Program Files\\Wireshark\\dumpcap.exe" -D
-python network_scan/live_watch.py --interface 1 --dumpcap "C:\\Program Files\\Wireshark\\dumpcap.exe"
+python network_scan/live_watch.py --interface 1 --dumpcap "C:\\Program Files\\Wireshark\\dumpcap.exe" --segment-seconds 15
 ```
 
 Replace `1` with your active Wi-Fi/Ethernet interface number from `dumpcap -D`. **Start the watcher before entering the world map**, then navigate normally. It prints progress as `+N NEW | N UNIQUE TOTAL | N map centers`. Press **Ctrl+C** to stop and finalize the last capture.
 
-The run creates `network_scans/live/<timestamp>/players.csv`, `views.csv`, `segments.csv`, and `captures/`. To resume and add to a previous session's total, use `--out network_scans/live/<timestamp>`. To report less frequently, use `--segment-seconds 15`.
+The run creates `network_scans/live/<timestamp>/players.csv`, `views.csv`, `segments.csv`, and `captures/`. Progress also shows **incoming TCP packets/bytes** and a status: `NO_INCOMING_GAME_TRAFFIC` (wrong interface or no game traffic), `NO_MAP_RESPONSE_DECODED` (traffic but no complete map response), `OVERLAPPING_OR_REPEATED_VIEWS`, `NO_NEW_PLAYER_IDS`, or `NEW_BASES`. The counter decodes adjacent capture files together so responses spanning a rotation are not silently lost. To resume and add to a previous session's total, use `--out network_scans/live/<timestamp>`. To report less frequently, use `--segment-seconds 15`.
 
 Counts represent **distinct bases observed in captured map responses**, not percentage of the entire map scanned. A quiet interval may show zero even when bases are visible due to caching, and captures split across boundaries can omit responses. Use the saved view locations to audit geographic coverage; never treat the observed count alone as proof that all players were found. PCAPNG captures can contain sensitive session data: keep the entire `network_scans/` directory private and out of Git.

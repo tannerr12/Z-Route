@@ -260,7 +260,7 @@ def prepare_radar(cfg,args,folder):
             break
         if args.zoom_method=='bluestacks':
             from bluestacks_zoom import zoom_out_ctrl_minus
-            zoom_out_ctrl_minus()
+            zoom_out_ctrl_minus(args.zoom_hold)
         else:
             point=args.zoom_tap or (cfg.get('ui',{}).get('world_map',{}) or {}).get('zoom_out_tap')
             if args.zoom_method=='tap':
@@ -297,11 +297,11 @@ def zoom_probe(cfg,args,folder):
     if popup_visible(before):
         raise RuntimeError('Login warning is visible; zoom not sent')
     save_status(folder,'zoom_probe_started',zoom_steps=args.zoom_steps,
-                method='bluestacks_ctrl_minus')
+                method='bluestacks_ctrl_minus',hold_seconds=args.zoom_hold)
     for step in range(1,args.zoom_steps+1):
-        print(f'[zoom] Sending BlueStacks zoom-out {step}/{args.zoom_steps} '
-              '(Ctrl+-), no Ollama or scan',flush=True)
-        zoom_out_ctrl_minus()
+        print(f'[zoom] Holding BlueStacks Ctrl+- for {args.zoom_hold:.1f}s '
+              f'({step}/{args.zoom_steps}); no Ollama or scan',flush=True)
+        zoom_out_ctrl_minus(args.zoom_hold)
         time.sleep(max(0.65,args.zoom_delay))
         after=read_screen(cfg)
         save_screen(cfg,folder,f'zoom_after_{step}',after)
@@ -405,6 +405,8 @@ def cli():
                        help='When radar template is configured: zoom via BlueStacks Ctrl+-, tapped control, or Android keycode')
         a.add_argument('--max-zoom-actions',type=int,default=12)
         a.add_argument('--zoom-delay',type=float,default=.6)
+        a.add_argument('--zoom-hold',type=float,default=4.0,
+                       help='Continuous BlueStacks Ctrl+- key hold, 3–5 seconds (default 4)')
         a.add_argument('--max-startup-actions',type=int,default=12)
         a.add_argument('--execute',action='store_true')
         a.add_argument('--map-only',action='store_true',
@@ -439,6 +441,8 @@ def cli():
     if (not args.stages or args.stages!=sorted(set(args.stages)) or
         any(not 2<=v<=25 for v in args.stages)):
         p.error('Stages must be strictly increasing grid sizes between 2 and 25')
+    if not 3.0<=args.zoom_hold<=5.0:
+        p.error('--zoom-hold must be between 3.0 and 5.0 seconds')
     if not 1<=args.zoom_steps<=4:
         p.error('--zoom-steps must be between 1 and 4')
     if args.max_zoom_actions<1 or args.max_zoom_actions>30 or not .2<=args.zoom_delay<=4:
@@ -462,6 +466,7 @@ def cli():
     if args.command=='run' and not args.execute:
         print('PREVIEW ONLY: no input to game. To navigate, add --execute.')
         print('Ollama-free: fixed bottom-right Leave City; radar requires cropped OpenCV template.')
+        print(f'Zoom uses one continuous Ctrl+- hold for {args.zoom_hold:.1f}s, not repeated key taps.')
         print('Start: confirm login -> dismiss promotions -> Leave City -> zoom to radar')
         print('Then: passive scan '+str(args.stages)+' '+args.pattern+
               ' ; player names stored in '+str(ROOT/'player_history.sqlite3'))

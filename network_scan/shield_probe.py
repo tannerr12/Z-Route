@@ -170,6 +170,70 @@ def inspect(args):
     if not latest:print('No matching player bases. Try a larger radius, or a new map capture.')
 
 
+def session_diagnostics(session, server, marks=None, window_seconds=90):
+    """Explain whether packet data actually arrived after visual state marks.
+
+    A recent completed segment does NOT prove the passive process is still
+    running. We inspect saved evidence only, not process state.
+    """
+    segments=read_csv(session/'segments.csv')
+    rows=[r for r in read_csv(session/'player_status_sightings.csv')
+          if str(r.get('server'))==str(server)]
+    def latest(rows,key):
+        timestamps=[]
+        for row in rows:
+            try:
+                if row.get(key): timestamps.append(read_time(row[key]))
+            except (ValueError, TypeError):
+                continue
+        return max(timestamps) if timestamps else None
+    last_segment=latest(segments,'observed_at_utc')
+    last_player=latest(rows,'seen_at_utc')
+    print(f'SAVED CAPTURE DIAGNOSTICS: {len(segments)} processed windows; '
+          f'{len(rows)} decoded base sightings on S{server}.')
+    print('  Last completed capture:',last_segment.isoformat()
+          if last_segment else '(none)')
+    print('  Last decoded player-base sighting:',last_player.isoformat()
+          if last_player else '(none)')
+    if not marks:
+        return dict(last_segment=last_segment,last_player=last_player)
+    for marker in sorted(marks,key=lambda m:m.get('marked_at_utc') or ''):
+        if str(marker.get('server'))!=str(server):continue
+        try:
+            marked_at=read_time(marker['marked_at_utc'])
+        except (ValueError,KeyError,TypeError):
+            continue
+        player_id=str(marker.get('player_id') or '')
+        player_rows=[r for r in rows if str(r.get('player_id'))==player_id]
+        target_last=latest(player_rows,'seen_at_utc')
+        matched=0
+        for row in player_rows:
+            try:when=read_time(row['seen_at_utc'])
+            except (ValueError,KeyError,TypeError):continue
+            if 0 <= (when-marked_at).total_seconds() <= window_seconds:
+                matched+=1
+        print(f'  {marker.get("state","unknown")} marker for '
+              f'{marker.get("username") or player_id} at '
+              f'{marked_at.isoformat()}: {matched} player-base sightings '
+              f'within the following {window_seconds}s.')
+        if target_last:
+            print(f'    Last sighting of this player: {target_last.isoformat()}')
+        else:
+            print('    This player never appeared in decoded records.')
+        if last_segment is None or last_segment < marked_at:
+            print('    DIAGNOSIS: no processed capture window after this marker. '
+                  'The watcher may have stopped; marking does not start capture.')
+        elif target_last is None or target_last < marked_at:
+            print('    DIAGNOSIS: captures exist after marker, but no NEW '
+                  'decoded base sighting for this player. Navigate away/back '
+                  'while the live watcher is active.')
+        elif matched==0:
+            print('    DIAGNOSIS: post-marker sightings exist, but fall outside '
+                  'the comparison window. Check timestamps and try another '
+                  'visual marker while capture is active.')
+    return dict(last_segment=last_segment,last_player=last_player)
+
+
 def mark(args):
     session=require_session(args.session)
     if args.evidence and not args.evidence.is_file():
@@ -184,6 +248,14 @@ def mark(args):
     print('Now navigate away and back to provoke a fresh passive map response '
           'while the marked shield state remains unchanged.')
     print('The marker is a visual observation, NOT a decoded network state.')
+    diag=session_diagnostics(session,args.server)
+    last=diag['last_segment']
+    if last is None or (read_time(row['marked_at_utc'])-last).total_seconds()>45:
+        print('WARNING: no recently completed capture window in this session. '
+              'Ensure live_entity_watch.py watch is running against THIS '
+              'session while you navigate the game. Do not repeatedly mark '
+              'the same state unless you are taking a new visual observation.')
+
 
 
 def iter_player_observations(files,server,player_id):
@@ -404,6 +476,7 @@ def cohort(args):
     output.mkdir(exist_ok=True)
     from scan import save_csv
     save_csv(output/'cohort_evidence.csv',COHORT_FIELDS,found)
+    session_diagnostics(session,args.server,marks,args.window_seconds)
     print('Visual shield state vs nearby player-detail field observations:')
     print(f'Session: {session} | {len(found)} player/state samples '
           f'within {args.window_seconds}s AFTER a visual marker.')

@@ -46,6 +46,37 @@ Review progress without touching BlueStacks:
 python network_scan/full_map_scan.py report
 ~~~
 
+## Compare against the earlier 9,502-base live session first
+
+Your earlier live watcher displayed approximately 9,502 distinct player IDs.
+Before adding hundreds of minimap clicks, compare the current full-map roster
+with that existing capture using the new **offline, read-only** comparator:
+
+~~~powershell
+python network_scan/compare_player_sessions.py
+~~~
+
+The comparator selects the live session containing the largest number of
+unique valid base IDs, then reports the overlap, previous-only IDs,
+new-only IDs, and union. This verifies whether we have already met the
+approximate 9,500-base roster target.
+
+If your baseline is in a different folder, select it explicitly:
+
+~~~powershell
+python network_scan/compare_player_sessions.py --old "network_scans/live/SESSION/players.csv"
+~~~
+
+Optionally generate a deduplicated combined roster without modifying the
+input files:
+
+~~~powershell
+python network_scan/compare_player_sessions.py --write-merged network_scans/combined_players.csv
+~~~
+
+Even when the union exceeds 9,500 IDs, that does not prove every geographic
+map region was scanned.
+
 ## Additional coverage and retries
 
 If the default stage sequence finishes below the target, **append** a finer 13x13 stage to the same session:

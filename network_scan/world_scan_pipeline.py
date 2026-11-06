@@ -117,181 +117,147 @@ def one_tap(cfg,image,point,what):
     adb(cfg,'shell','input','tap',str(x),str(y))
 
 
-def confidence(data,flag,minimum=CONFIDENCE):
-    conf=data.get('confidence',0)
-    return data.get(flag) is True and isinstance(conf,(float,int)) and not isinstance(conf,bool) and minimum<=conf<=1
+# Calibrated from the player's 604x1080 home-city screenshot:
+# center of the bottom-right "Leave City" button, in IMAGE fractions.
+LEAVE_CITY_FRACTION=(0.907,0.968)
 
 
-def radar_box_valid(box,image,roi=MINIMAP_ROI):
-    """A positive AI answer must actually locate radar within calibrated ROI."""
-    if not isinstance(box,(list,tuple)) or len(box)!=4:
-        return False
-    if any(isinstance(v,bool) or not isinstance(v,(int,float)) for v in box):
-        return False
+def leave_city_point(image, override=None):
+    """Fixed home-city control; all positions are emulator screenshot pixels."""
     h,w=image.shape[:2]
-    x1,y1,x2,y2=box
-    if not (0<=x1<x2<=w and 0<=y1<y2<=h):
-        return False
-    cx,cy=(x1+x2)/2,(y1+y2)/2
-    left,top,right,bottom=roi
-    return (left<=cx<=right and top<=cy<=bottom and
-            x2-x1>=25 and y2-y1>=25)
+    if override is not None:
+        return coordinate(override,image)
+    return coordinate((round(w*LEAVE_CITY_FRACTION[0]),
+                       round(h*LEAVE_CITY_FRACTION[1])),image)
 
 
-def vision_world(cfg,image,roi=MINIMAP_ROI):
-    from data_miner.target_locator import ask_vision
-    result=ask_vision(cfg,image,
-        "Inspect the actual Z-Route screenshot, not an expected workflow. "
-        "Return JSON with world_map boolean, radar_visible boolean, "
-        "confidence number 0..1, radar_box array [x1,y1,x2,y2] or null. "
-        "world_map means the outdoor WORLD MAP with bases/world X-Y, not the "
-        "home city or a promotion. radar_visible means the clickable small "
-        "overview RADAR / MINIMAP in the TOP RIGHT that appears at the "
-        "appropriate zoom, NOT a decorative icon or ordinary base. "
-        "If uncertain return false and null. Do not guess coordinates.",
-        max_tokens=350,retries=1)
-    map_ok=confidence(result,'world_map',.8)
-    radar_ok=(map_ok and confidence(result,'radar_visible') and
-              radar_box_valid(result.get('radar_box'),image,roi))
-    return map_ok,radar_ok,result
+def radar_template_match(image,template_path,roi=MINIMAP_ROI,threshold=.86):
+    """Strict local OpenCV match; never infer radar from a generic minimap-looking area.
+
+    For reliable results, the template should be a distinct STATIONARY radar UI
+    border or icon crop, not changing terrain/player dots inside the radar.
+    """
+    import cv2
+    from scanner import ensure_game_connected
+    template_path=Path(template_path)
+    if not template_path.is_file():
+        return False,0.0
+    template=cv2.imread(str(template_path),cv2.IMREAD_GRAYSCALE)
+    if template is None or template.size==0:
+        raise ValueError(f'Radar reference unreadable: {template_path}')
+    h,w=image.shape[:2]
+    l,t,r,b=roi
+    if not (0<=l<r<=w and 0<=t<b<=h):
+        raise ValueError(f'Radar ROI {roi} outside emulator screenshot {w}x{h}')
+    gray=cv2.cvtColor(image[t:b,l:r],cv2.COLOR_BGR2GRAY)
+    th,tw=template.shape
+    if th>gray.shape[0] or tw>gray.shape[1] or th<10 or tw<10:
+        raise ValueError('Radar template crop must fit minimap ROI, minimum 10px')
+    if float(template.std())<8:
+        raise ValueError('Radar template is too featureless to identify safely')
+    score=float(cv2.matchTemplate(gray,template,cv2.TM_CCOEFF_NORMED).max())
+    return score>=threshold,score
 
 
-def locate_city_map(cfg,image):
-    from data_miner.startup import leave_city_button_point
-    point=leave_city_button_point(image)
-    if point is None:
-        raise RuntimeError('Leave City label not found in bottom-right by local OCR')
-    print(f'  Leave City OCR located button at {point}',flush=True)
-    return point
-
-
-def locate_zoom_out(cfg,image):
-    from data_miner.target_locator import locate_text_button
-    return locate_text_button(cfg,image,
-        target='Zoom OUT / minus (-) button for world map zoom (not a plus button, base or other icon)',
-        context='Z-Route WORLD MAP screen with map controls, where radar has not appeared yet.')
-
-
-def configured_tap(cfg,cli,config_name):
-    if cli is not None:return cli
-    return (cfg.get('ui',{}).get('world_map',{}) or {}).get(config_name)
-
-
-def verify_world_after_map(cfg,folder,roi,max_checks=4):
-    for i in range(max_checks):
-        image=read_screen(cfg)
-        save_screen(cfg,folder,'map_after_open_'+str(i),image)
-        world,radar,result=vision_world(cfg,image,roi)
-        if world:
-            return image,radar
-        if i!=max_checks-1:
-            time.sleep(.85)
-    raise RuntimeError('Map button was tapped but WORLD MAP was never verified; no zoom attempted')
+def verify_radar(cfg,args,folder,label):
+    """Read a current screenshot and locally test a previously calibrated radar crop."""
+    image=read_screen(cfg)
+    if not args.radar_template:
+        save_screen(cfg,folder,label+'_needs_calibration',image)
+        raise RuntimeError('Radar template not calibrated. No Ollama will run. '
+                           'Save a cropped image of a stable radar UI feature, '
+                           'then pass --radar-template PATH. Screenshot saved.')
+    ready,score=radar_template_match(image,args.radar_template,args.roi,
+                                     args.radar_threshold)
+    print(f'[radar] Local template score {score:.3f}, required '
+          f'{args.radar_threshold:.3f}',flush=True)
+    return image,ready
 
 
 def prepare_radar(cfg,args,folder):
-    # Exactly the same proven startup path used by data_miner.player_activity.
-    # IMPORTANT: a login warning MUST be handled before calling Ollama.
-    # The modal can remain on-screen while a slow world-map inference waits.
-    from data_miner.startup import (run_ai_startup, popup_visible,
-                                   promo_close_visible, city_label_visible)
+    """Use Player Activity startup checks; fixed Leave City tap; local radar check."""
+    import cv2
+    from data_miner.startup import (run_ai_startup,popup_visible,
+                                   promo_close_visible,city_label_visible)
     image=read_screen(cfg)
     save_screen(cfg,folder,'initial',image)
-    print('[pipeline] Checking login, promotions and city locally '
-          'before any world-map AI...',flush=True)
-    if popup_visible(image):
-        save_status(folder,'login_warning_detected')
-        print('Login warning visible: using existing Player Activity '
-              'confirmation and ad handler.',flush=True)
-        world,radar=False,False
-    elif promo_close_visible(image) or city_label_visible(image):
-        save_status(folder,'startup_screen_detected_locally')
-        world,radar=False,False
-    else:
-        save_status(folder,'checking_already_open_world_map')
-        world,radar,_=vision_world(cfg,image,args.roi)
-    if not world:
-        save_status(folder,'reusing_player_activity_startup')
-        actions=run_ai_startup(cfg,max_actions=args.max_startup_actions,
-                               allow_ai_fallback=False)
-        save_status(folder,'city_verified',startup_actions=actions)
-        image=read_screen(cfg)
-        save_screen(cfg,folder,'city_after_popups',image)
-        if not city_label_visible(image):
-            if configured_tap(cfg,args.map_tap,'map_button_tap') is None:
-                raise RuntimeError('Startup finished, but local OCR could not '
-                                   'confirm Leave City on the city screen. '
-                                   'Stopped before any map tap; inspect city_after_popups.png')
-            print('City label not found, but manually calibrated map tap '
-                  'was supplied; using user-verified coordinate.',flush=True)
-        target=configured_tap(cfg,args.map_tap,'map_button_tap')
-        if target is None:
-            try:target=locate_city_map(cfg,image)
-            except (RuntimeError,ValueError) as exc:
-                raise RuntimeError('Cannot confidently locate Leave City. Calibrate --map-tap X,Y '
-                                   'using city_after_popups.png (emulator pixels).') from exc
-        one_tap(cfg,image,target,'Leave City / open world map')
-        save_status(folder,'map_tapped',map_tap=list(target))
-        time.sleep(.9)
-        image,radar=verify_world_after_map(cfg,folder,args.roi)
-    else:
-        save_status(folder,'world_map_verified',radar_already_visible=radar)
-    if radar:
-        # Confirm a second independent screen before scanning.
-        image=read_screen(cfg)
-        _,radar,_=vision_world(cfg,image,args.roi)
-        if not radar:
-            raise RuntimeError('Radar verification unstable; no scan initiated')
-        save_screen(cfg,folder,'radar_verified',image)
-        save_status(folder,'radar_verified',zoom_actions=0)
+    save_status(folder,'startup_checks_no_ollama')
+    print('Reusing login/ad handling, Ollama DISABLED for this pipeline.',flush=True)
+    actions=run_ai_startup(cfg,max_actions=args.max_startup_actions,
+                           allow_ai_fallback=False)
+    save_status(folder,'city_ready',startup_actions=actions)
+    image=read_screen(cfg)
+    save_screen(cfg,folder,'city_after_popups',image)
+    if popup_visible(image) or promo_close_visible(image):
+        raise RuntimeError('Login/promo still visible; refusing to click Leave City')
+    # The startup routine already requires a city confirmation; the tap itself
+    # is fixed, avoiding another OCR pass or full-scene model inference.
+    point=leave_city_point(image,args.map_tap or
+                           (cfg.get('ui',{}).get('world_map',{}) or {}).get('map_button_tap'))
+    one_tap(cfg,image,point,'Leave City (bottom-right)')
+    save_status(folder,'leave_city_tapped',map_tap=list(point))
+    time.sleep(1.1)
+    after=read_screen(cfg)
+    save_screen(cfg,folder,'after_leave_city',after)
+    if popup_visible(after) or promo_close_visible(after) or city_label_visible(after):
+        raise RuntimeError('World map not confirmed: city/popup still visible after Leave City')
+    if image.shape!=after.shape:
+        raise RuntimeError('Emulator resolution changed after Leave City; cannot verify')
+    # This only validates that the screen materially changed. It is not
+    # sufficient to assert the radar is visible or scanning is safe.
+    delta=float(cv2.mean(cv2.absdiff(
+        cv2.resize(image,(120,180)),cv2.resize(after,(120,180))))[0])
+    if delta<6:
+        raise RuntimeError('Leave City tap did not visibly change the screen')
+    save_status(folder,'world_screen_changed',screen_change=round(delta,2))
+    if args.map_only:
+        save_status(folder,'map_only_complete')
+        print('LEAVE CITY COMPLETE. World screen saved. No zoom or scan performed.',
+              flush=True)
         return
 
-    save_status(folder,'zoom_to_radar')
-    for step in range(args.max_zoom_actions):
-        image=read_screen(cfg)
-        world,radar,_=vision_world(cfg,image,args.roi)
-        if not world:
-            save_screen(cfg,folder,'lost_world_map',image)
-            raise RuntimeError('World map no longer visible; stopped before next zoom input')
-        if radar:
+    # Radar recognition is a light-weight calibrated template match, NOT AI.
+    # Do not zoom on unknown screens or begin the network scan without it.
+    if not args.radar_template:
+        save_status(folder,'radar_template_needed')
+        raise RuntimeError('World map opened. To scan unattended without Ollama, '
+                           'calibrate the fixed radar UI template via --radar-template. '
+                           'No zoom or scan attempted.')
+    image=after
+    for step in range(args.max_zoom_actions+1):
+        ready,score=radar_template_match(
+            image,args.radar_template,args.roi,args.radar_threshold)
+        print(f'[radar] check {step}: template score={score:.3f}',flush=True)
+        if ready:
             repeat=read_screen(cfg)
-            _,repeat_ok,_=vision_world(cfg,repeat,args.roi)
-            if not repeat_ok:
-                raise RuntimeError('Radar appeared only in one vision reading; stopped')
-            save_screen(cfg,folder,'radar_verified',repeat)
-            save_status(folder,'radar_verified',zoom_actions=step)
-            return
-
-        point=configured_tap(cfg,args.zoom_tap,'zoom_out_tap')
-        key=args.zoom_keyevent
-        if point is None and key is None:
-            try:point=locate_zoom_out(cfg,image)
-            except (RuntimeError,ValueError) as exc:
-                save_screen(cfg,folder,'zoom_control_unverified',image)
-                raise RuntimeError('Zoom-out control could not be verified. Supply '
-                                   '--zoom-tap X,Y for a VERIFIED zoom-out button, '
-                                   'or --zoom-keyevent CODE if you verified the '
-                                   'BlueStacks zoom key. No blind zoom.') from exc
+            second,score2=radar_template_match(
+                repeat,args.radar_template,args.roi,args.radar_threshold)
+            if second:
+                save_screen(cfg,folder,'radar_verified',repeat)
+                save_status(folder,'radar_verified',zoom_actions=step,
+                            radar_score=round(score2,3))
+                return
+        if step==args.max_zoom_actions:
+            break
+        point=args.zoom_tap or (cfg.get('ui',{}).get('world_map',{}) or {}).get('zoom_out_tap')
+        if point is None and args.zoom_keyevent is None:
+            save_screen(cfg,folder,'zoom_not_calibrated',image)
+            raise RuntimeError('Radar not yet visible and zoom-out control not calibrated. '
+                               'Pass --zoom-tap X Y or --zoom-keyevent CODE after verifying it.')
         if point is not None:
             one_tap(cfg,image,point,f'Zoom out {step+1}')
         else:
             from scanner import adb
-            if not isinstance(key,int) or not (1<=key<=300):
-                raise ValueError('Invalid verified Android zoom keycode')
-            print(f'  Verified zoom keyevent {key}, action {step+1}',flush=True)
-            adb(cfg,'shell','input','keyevent',str(key))
+            if not 1<=args.zoom_keyevent<=300:
+                raise ValueError('Invalid calibrated zoom key event')
+            adb(cfg,'shell','input','keyevent',str(args.zoom_keyevent))
         time.sleep(args.zoom_delay)
-    image=read_screen(cfg)
-    world,radar,_=vision_world(cfg,image,args.roi)
-    if world and radar:
-        repeat=read_screen(cfg)
-        _,repeat_ok,_=vision_world(cfg,repeat,args.roi)
-        if repeat_ok:
-            save_screen(cfg,folder,'radar_verified',repeat)
-            save_status(folder,'radar_verified',zoom_actions=args.max_zoom_actions)
-            return
-    save_screen(cfg,folder,'radar_not_found',image)
-    raise RuntimeError(f'Radar not confirmed after {args.max_zoom_actions} zoom actions; scan NOT started')
+        image=read_screen(cfg)
+        if popup_visible(image) or promo_close_visible(image):
+            save_screen(cfg,folder,'unexpected_overlay',image)
+            raise RuntimeError('Unexpected popup during zoom; stopping safely')
+    save_screen(cfg,folder,'radar_not_verified',image)
+    raise RuntimeError('Radar not verified within bounded zoom actions; scan not started')
 
 
 def baseline(out,chosen=None):
@@ -369,6 +335,11 @@ def cli():
         a.add_argument('--zoom-delay',type=float,default=.6)
         a.add_argument('--max-startup-actions',type=int,default=12)
         a.add_argument('--execute',action='store_true')
+        a.add_argument('--map-only',action='store_true',
+                       help='Stop after fixed Leave City tap; no zoom or network scan')
+        a.add_argument('--radar-template',type=Path,
+                       help='Local cropped radar UI reference PNG for OpenCV matching')
+        a.add_argument('--radar-threshold',type=float,default=.86)
         a.add_argument('--prepare-only',action='store_true',
                        help='Stop immediately after radar verified; do not network-scan')
         a.add_argument('--startup-only',action='store_true',
@@ -394,6 +365,8 @@ def cli():
         p.error('Stages must be strictly increasing grid sizes between 2 and 25')
     if args.max_zoom_actions<1 or args.max_zoom_actions>30 or not .2<=args.zoom_delay<=4:
         p.error('Zoom limits invalid')
+    if not .6<=args.radar_threshold<=.99:
+        p.error('--radar-threshold must be between 0.6 and 0.99')
     if args.max_startup_actions<1 or args.max_startup_actions>30 or args.max_clicks<0:
         p.error('Startup/click limit invalid')
     if not 3<=args.seconds<=30 or not 1<=args.retries<=5:
@@ -410,6 +383,7 @@ def cli():
     cfg.setdefault('adb_serial','127.0.0.1:5555')
     if args.command=='run' and not args.execute:
         print('PREVIEW ONLY: no input to game. To navigate, add --execute.')
+        print('Ollama-free: fixed bottom-right Leave City; radar requires cropped OpenCV template.')
         print('Start: confirm login -> dismiss promotions -> Leave City -> zoom to radar')
         print('Then: passive scan '+str(args.stages)+' '+args.pattern+
               ' ; player names stored in '+str(ROOT/'player_history.sqlite3'))
@@ -418,19 +392,14 @@ def cli():
     ensure_adb_device(SimpleNamespace(adb=cfg['adb_path'],serial=cfg['adb_serial']))
     try:
         if args.command=='inspect':
-            from data_miner.startup import popup_visible
+            from data_miner.startup import popup_visible,promo_close_visible,city_label_visible
             image=read_screen(cfg)
             save_screen(cfg,folder,'startup_inspect',image)
-            if popup_visible(image):
-                save_status(folder,'inspection_complete',screen='login_warning',
-                            world_map=False,radar_verified=False)
-                print('READ ONLY: login warning detected; use run --execute '
-                      '--startup-only for existing Confirm/ad workflow',flush=True)
-                return
-            world,radar,result=vision_world(cfg,image,args.roi)
-            save_status(folder,'inspection_complete',world_map=world,
-                        radar_verified=radar,raw_radar_detection=result)
-            print('READ ONLY — no clicks; inspect screenshot and diagnostics')
+            screen=('login_warning' if popup_visible(image) else
+                    'promotion' if promo_close_visible(image) else
+                    'city' if city_label_visible(image) else 'unrecognized')
+            save_status(folder,'inspection_complete',screen=screen)
+            print('READ ONLY (no Ollama): screen='+screen,flush=True)
             return
         save_status(folder,'started',server=args.server,
                     history_db=str(ROOT/'player_history.sqlite3'))
@@ -445,6 +414,8 @@ def cli():
                   'No map or network scan attempted.',flush=True)
             return
         prepare_radar(cfg,args,folder)
+        if args.map_only:
+            return
         if args.prepare_only:
             save_status(folder,'prepared_no_scan')
             print('RADAR READY. No network scanning requested.',flush=True)

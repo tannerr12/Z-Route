@@ -14,10 +14,53 @@ from datetime import datetime,timezone
 from live_entity_watch import append_csv,STATUS_FIELDS
 from shield_probe import (MARK_FIELDS, assign_marks, cohort_samples,
                           compare_fields, detail_map, mark, read_csv,
-                          require_session, resolve_player)
+                          require_session, resolve_player, session_diagnostics)
 
 
 class ShieldCalibrationTests(unittest.TestCase):
+    def test_diagnostics_flags_markers_newer_than_all_capture_files(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        from live_entity_watch import SEG_FIELDS
+        with tempfile.TemporaryDirectory() as td:
+            path=Path(td)
+            append_csv(path/'segments.csv',SEG_FIELDS,[dict(
+                file='old.pcapng',observed_at_utc='2026-11-06T18:28:40+00:00',
+                decoded_views=3,decoded_updates=0)])
+            append_csv(path/'player_status_sightings.csv',STATUS_FIELDS,[
+                dict(server=125,player_id='1234',username='BlueBase',
+                     x=502,y=423,seen_at_utc='2026-11-06T18:28:40+00:00')])
+            markers=[dict(server=125,player_id='1234',username='BlueBase',
+                         state='shielded',
+                         marked_at_utc='2026-11-06T18:36:22+00:00')]
+            output=StringIO()
+            with redirect_stdout(output):
+                state=session_diagnostics(path,125,markers,90)
+            self.assertIn('no processed capture window after this marker',
+                          output.getvalue())
+            self.assertIn('18:28:40',state['last_player'].isoformat())
+
+    def test_diagnostics_separates_other_base_updates_from_target_updates(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        from live_entity_watch import SEG_FIELDS
+        with tempfile.TemporaryDirectory() as td:
+            path=Path(td)
+            append_csv(path/'segments.csv',SEG_FIELDS,[dict(
+                file='new.pcapng',observed_at_utc='2026-11-06T18:37:10+00:00',
+                decoded_views=3,decoded_updates=1)])
+            append_csv(path/'player_status_sightings.csv',STATUS_FIELDS,[
+                dict(server=125,player_id='2222',username='Other',
+                     seen_at_utc='2026-11-06T18:37:10+00:00')])
+            markers=[dict(server=125,player_id='1234',username='BlueBase',
+                         state='shielded',
+                         marked_at_utc='2026-11-06T18:36:22+00:00')]
+            output=StringIO()
+            with redirect_stdout(output):
+                session_diagnostics(path,125,markers,90)
+            self.assertIn('no NEW decoded base sighting for this player',
+                          output.getvalue())
+
     def test_placeholder_session_is_rejected_with_actionable_error(self):
         with tempfile.TemporaryDirectory() as td:
             fake=Path(td)/'SESSION'

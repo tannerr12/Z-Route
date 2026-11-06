@@ -309,13 +309,21 @@ def scan(args):
                      incoming_bytes=result['incoming_bytes'],
                      decode_errors=result['errors'],
                      updated_at=datetime.now(timezone.utc).isoformat())
-        state['entries'].append(entry)
-        write_outputs(args.out, state, players)
+        # Name history is more important than a finished click checkpoint.
+        # Save each capture's identities first, before a later roster update
+        # can replace the old username. A failed write leaves this target
+        # pending for a safe retry and the underlying PCAP untouched.
         try:
             with connection(getattr(args, 'history_db', Path('network_scans/player_history.sqlite3'))) as history:
-                ingest_records(history, result['players'].values(), result['capture'])
+                ingest_records(history, result['players'].values(),
+                               result['capture'], observed_at=entry['updated_at'])
         except Exception as exc:
-            print('WARNING: player name history could not be saved:', exc, flush=True)
+            print('ERROR: name history could not be preserved:', exc, flush=True)
+            print('Stopped without checkpointing this click. Capture is still at:',
+                  result['capture'], flush=True)
+            return
+        state['entries'].append(entry)
+        write_outputs(args.out, state, players)
         clicks_run += 1
         print(f'  +{additions} NEW | {len(players):,} UNIQUE / ~{args.goal:,} '
               f'({len(players)/args.goal*100:.1f}%) | '

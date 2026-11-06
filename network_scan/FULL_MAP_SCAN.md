@@ -77,6 +77,26 @@ python network_scan/compare_player_sessions.py --write-merged network_scans/comb
 Even when the union exceeds 9,500 IDs, that does not prove every geographic
 map region was scanned.
 
+## Recurring scans: preserve player name history first
+
+Every decoded base is keyed by the stable **(server, player_id)** identity.
+**Usernames are mutable**. Name changes are the highest-priority output of
+each refresh, even if a player stays in exactly the same location.
+
+- The automatic minimap scanner records each decoded capture's usernames
+  into the **shared** `network_scans/player_history.sqlite3` before its
+  checkpoint advances. If saving history fails, the scan stops and leaves
+  the point pending so names are not silently lost.
+- Each refresh gets its own `network_scans/map_refresh/TIMESTAMP/players.csv`.
+  The shared history database retains all previously observed names even
+  when that file is replaced or a player moves.
+- `scan_changes.py` reports **name changes before movement** and writes
+  `renames.csv` (this pair of snapshots) and `all_name_changes.csv`
+  (all previously observed transitions in the persistent database).
+- Old and new names in a report are supported by actual observations, not
+  game-supplied rename-event times. A player not seen in a newer scan is
+  merely unobserved, not deleted.
+
 ## Recurring scans for player movement
 
 The default network_scans/full_map folder is a **resumable discovery pass**:
@@ -102,7 +122,12 @@ until radar appears** must still be calibrated in BlueStacks before
 unattended launch can safely be implemented. Do not hardcode unknown
 screen coordinates.
 
-Inspect "$current/changes_from_previous/changes.csv" and summary.json.
+Review **"$current/changes_from_previous/renames.csv" first** to see name
+changes during the refresh. The file `all_name_changes.csv` records the
+full history of known name transitions. Then inspect `changes.csv` for
+movement, alliance changes, levels, and missing observations.
+
+
 This compares stable (server, player_id) across the two captures and
 reports moved coordinates, newly observed IDs, renames and alliances.
 Players not seen in a later sample are labeled **not_seen_in_after**,
@@ -130,6 +155,7 @@ Compare any two scan sessions without a live connection:
 ~~~powershell
 python network_scan/scan_changes.py --before network_scans/map_refresh/OLDER/players.csv --after network_scans/map_refresh/NEWER/players.csv
 python -m unittest discover -s network_scan -p test_scan_changes.py
+python -m unittest discover -s network_scan -p test_player_history.py
 ~~~
 
 ## Additional coverage and retries

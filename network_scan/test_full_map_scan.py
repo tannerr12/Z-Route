@@ -29,6 +29,22 @@ class FullMapTests(unittest.TestCase):
         self.assertTrue(870 <= first['tap_x'] <= 990)
         self.assertTrue(85 <= first['tap_y'] <= 210)
 
+    def test_spread_first_can_revisit_same_grid_in_new_session(self):
+        spiral=route(self.roi,[4,7,10],.07,8,pattern='spiral')
+        spread=route(self.roi,[4,7,10],.07,8,pattern='spread')
+        self.assertEqual(len(spiral),len(spread))
+        self.assertEqual({(p['tap_x'],p['tap_y']) for p in spiral},
+                         {(p['tap_x'],p['tap_y']) for p in spread})
+        self.assertNotEqual([p['target_id'] for p in spiral[:8]],
+                            [p['target_id'] for p in spread[:8]])
+        self.assertEqual(route(self.roi,[4,7,10],.07,8),spiral)
+
+    def test_snake_and_checkerboard_visit_same_targets(self):
+        first=route(self.roi,[4,7,10],.07,8,'snake')
+        second=route(self.roi,[4,7,10],.07,8,'checkerboard')
+        self.assertEqual({p['target_id'] for p in first},
+                         {p['target_id'] for p in second})
+
     def test_duplicate_filter_uses_persisted_tap_fields(self):
         # First point is stored as tap_x/tap_y, not x/y. This reproduces
         # the KeyError that previously stopped route construction.

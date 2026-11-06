@@ -11,8 +11,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from live_entity_watch import (candidate_key, entity_key, match, nearby,
-                               process, read_csv, trail)
+from live_entity_watch import (candidate_key, decode_for_server, entity_key,
+                               iter_entities, match, nearby, process,
+                               read_csv, trail)
 
 
 def entity(x,y,group=1793928700943,code=3):
@@ -21,7 +22,47 @@ def entity(x,y,group=1793928700943,code=3):
                 detail_text={})
 
 
+
+def varint(v):
+    out=[]
+    while v>=128:
+        out.append((v&127)|128);v>>=7
+    out.append(v);return bytes(out)
+
+
+def field(n,value):
+    if isinstance(value,int):
+        return varint(n<<3)+varint(value)
+    return varint((n<<3)|2)+varint(len(value))+value
+
+
+def encoded_update(server=125):
+    location=field(1,server)+field(2,522)+field(3,415)+field(4,2000320207)
+    objloc=field(1,server)+field(2,510)+field(3,400)
+    obj=(field(1,1793928700943)+field(2,objloc)+field(3,3)
+         +field(5,field(1,310)+field(2,1234))+field(999,4567))
+    plain=(field(1,1)+field(2,34)+field(3,54)
+           +field(4,location)+field(5,obj))
+    salt,mask=19,206
+    return bytes((((c+salt)&255)^mask) for c in plain)
+
+
 class EntityWatchTests(unittest.TestCase):
+    def test_small_encrypted_world_map_update_is_decoded(self):
+        raw=encoded_update()
+        root=decode_for_server(raw,125)
+        self.assertTrue(any(n==5 and w==2 for n,w,v in root))
+        with patch('live_entity_watch.application_messages',
+                   return_value=iter([('WorldMapViewUpdateS2C',1.5,raw)])):
+            decoded=list(iter_entities(Path('fake.pcapng'),server=125))
+        self.assertEqual(len(decoded),1)
+        kind,objects,players,fingerprint=decoded[0]
+        self.assertEqual(kind,'delta')
+        self.assertEqual(len(objects),1)
+        self.assertEqual((objects[0]['x'],objects[0]['y']),(510,400))
+        self.assertEqual(objects[0]['type_code'],3)
+        self.assertEqual(len(fingerprint),64)
+
     def test_shared_candidate_id_is_not_a_unique_entity_id(self):
         a,b=entity(492,409),entity(493,401)
         self.assertEqual(candidate_key(a),candidate_key(b))

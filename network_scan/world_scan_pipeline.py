@@ -7,6 +7,10 @@ From the repository root:
   python network_scan/world_scan_pipeline.py run --execute --max-clicks 4
   python network_scan/world_scan_pipeline.py run --execute
 
+This pipeline REUSES data_miner.startup.run_ai_startup() from
+ data_miner/player_activity.py for login confirmation and advertisements.
+It does not implement another popup handler.
+
 This pipeline does not know your emulator's map/zoom button locations until
 they are detected on an actual screenshot or explicitly calibrated. Unknown
 screens and absent radar verification STOP, not trigger speculative taps.
@@ -184,13 +188,14 @@ def verify_world_after_map(cfg,folder,roi,max_checks=4):
 
 
 def prepare_radar(cfg,args,folder):
+    # Exactly the same proven startup path used by data_miner.player_activity.
     from data_miner.startup import run_ai_startup
     from data_miner.vision import classify_screen
     image=read_screen(cfg)
     save_screen(cfg,folder,'initial',image)
     world,radar,_=vision_world(cfg,image,args.roi)
     if not world:
-        save_status(folder,'login_and_promotion')
+        save_status(folder,'reusing_player_activity_startup')
         actions=run_ai_startup(cfg,max_actions=args.max_startup_actions)
         save_status(folder,'city_verified',startup_actions=actions)
         image=read_screen(cfg)

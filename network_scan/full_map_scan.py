@@ -29,6 +29,7 @@ from pattern_benchmark import (
     targets, verify_device,
 )
 from live_watch import resolve_interface, traffic_stats
+from player_history import connection, ingest_records
 from scan import BASE_FIELDS, inspect, load_csv, save_csv
 
 STEPS_FIELDS = ('number', 'stage', 'target_id', 'tap_x', 'tap_y', 'status',
@@ -306,6 +307,11 @@ def scan(args):
                      updated_at=datetime.now(timezone.utc).isoformat())
         state['entries'].append(entry)
         write_outputs(args.out, state, players)
+        try:
+            with connection(args.out.parent / 'player_history.sqlite3') as history:
+                ingest_records(history, result['players'].values(), result['capture'])
+        except Exception as exc:
+            print('WARNING: player name history could not be saved:', exc, flush=True)
         clicks_run += 1
         print(f'  +{additions} NEW | {len(players):,} UNIQUE / ~{args.goal:,} '
               f'({len(players)/args.goal*100:.1f}%) | '

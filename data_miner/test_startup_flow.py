@@ -20,7 +20,7 @@ class StartupFlowTests(unittest.TestCase):
               patch.object(startup,'popup_visible',
                            side_effect=[True,False,False,False,False,False]),
               patch.object(startup,'city_label_visible',
-                           side_effect=[False,True]),
+                           side_effect=[False,False,False,False,True]),
               patch.object(startup,'promo_close_point',
                            side_effect=[(70,12)]*4),
               patch.object(startup,'close_verified_promo') as close,
@@ -32,6 +32,20 @@ class StartupFlowTests(unittest.TestCase):
             self.assertEqual(actions,5)
             confirm.assert_called_once()
             self.assertEqual(close.call_count,4)
+            expensive.assert_not_called()
+
+    def test_city_with_top_right_decoration_does_not_close_fake_promo(self):
+        frame=np.zeros((120,90,3),dtype=np.uint8)
+        with (patch.object(startup,'screenshot',return_value=frame),
+              patch.object(startup,'popup_visible',return_value=False),
+              patch.object(startup,'city_label_visible',return_value=True),
+              patch.object(startup,'promo_close_point',
+                           return_value=(83,8)) as promo,
+              patch.object(startup,'close_verified_promo') as close,
+              patch('data_miner.vision.classify_screen') as expensive):
+            self.assertEqual(startup.run_ai_startup({},allow_ai_fallback=False),0)
+            promo.assert_not_called()
+            close.assert_not_called()
             expensive.assert_not_called()
 
     def test_city_detected_without_promotions_needs_no_ai(self):

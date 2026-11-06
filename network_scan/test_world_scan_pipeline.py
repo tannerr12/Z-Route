@@ -21,10 +21,12 @@ class WorldPipelineTests(unittest.TestCase):
         self.roi=(80,2,106,27)
 
     def test_leave_city_scales_to_emulator_screen(self):
-        self.assertEqual(p.leave_city_point(self.image),(98,186))
-        self.assertEqual(p.leave_city_point(self.image,[80,120]),(80,120))
+        self.assertEqual(p.leave_city_point(self.image),(98,183))
+        self.assertEqual(p.leave_city_point(self.image,[80,180]),(80,180))
         with self.assertRaises(ValueError):
             p.leave_city_point(self.image,[120,190])
+        with self.assertRaisesRegex(ValueError,'NOT in the bottom-right'):
+            p.leave_city_point(self.image,[98,20])
 
     def test_local_template_requires_real_radar_reference(self):
         with tempfile.TemporaryDirectory() as td:
@@ -68,9 +70,44 @@ class WorldPipelineTests(unittest.TestCase):
                 startup.assert_called_once_with(
                     {},max_actions=12,allow_ai_fallback=False)
                 tap.assert_called_once()
-                self.assertEqual(tap.call_args.args[2],(98,186))
+                self.assertEqual(tap.call_args.args[2],(98,183))
                 self.assertTrue(any(x.args[1]=='map_only_complete'
                                     for x in status.call_args_list))
+
+    def test_configured_old_map_point_in_top_right_is_ignored(self):
+        args=SimpleNamespace(
+            roi=self.roi,max_startup_actions=12,
+            map_tap=None,map_only=True,radar_template=None)
+        cfg={'ui':{'world_map':{'map_button_tap':[99,18]}}}
+        with tempfile.TemporaryDirectory() as td:
+            with (patch('data_miner.startup.run_ai_startup',return_value=0),
+                  patch('data_miner.startup.popup_visible',return_value=False),
+                  patch('data_miner.startup.promo_close_visible',return_value=False),
+                  patch('data_miner.startup.city_label_visible',return_value=False),
+                  patch.object(p,'read_screen',side_effect=[
+                      self.image,self.image,self.map_image]),
+                  patch.object(p,'save_screen'),
+                  patch.object(p,'save_status'),
+                  patch.object(p,'one_tap') as tap,
+                  patch('time.sleep')):
+                p.prepare_radar(cfg,args,Path(td))
+                self.assertEqual(tap.call_args.args[2],(98,183))
+
+    def test_explicit_top_right_map_tap_fails_closed(self):
+        args=SimpleNamespace(
+            roi=self.roi,max_startup_actions=12,
+            map_tap=[99,18],map_only=True,radar_template=None)
+        with tempfile.TemporaryDirectory() as td:
+            with (patch('data_miner.startup.run_ai_startup',return_value=0),
+                  patch('data_miner.startup.popup_visible',return_value=False),
+                  patch('data_miner.startup.promo_close_visible',return_value=False),
+                  patch.object(p,'read_screen',return_value=self.image),
+                  patch.object(p,'save_screen'),
+                  patch.object(p,'save_status'),
+                  patch.object(p,'one_tap') as tap):
+                with self.assertRaisesRegex(ValueError,'NOT in the bottom-right'):
+                    p.prepare_radar({},args,Path(td))
+                tap.assert_not_called()
 
     def test_popup_after_startup_never_taps_map(self):
         args=SimpleNamespace(

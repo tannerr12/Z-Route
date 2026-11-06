@@ -159,8 +159,8 @@ def city_label_visible(image):
         print(f"Local Leave City OCR unavailable: {exc}; will use safe fallback",
               flush=True)
         return False
-    words = " ".join(raw.split())
-    return "leave city" in words
+    words = "".join(char for char in raw.casefold() if char.isalpha())
+    return "leavecity" in words
 
 
 def leave_city_button_point(image):

@@ -109,26 +109,34 @@ def application_messages(path: Path):
             print('Warning: incomplete TCP stream skipped in %s' % path.name, file=sys.stderr)
             continue
         parts.sort(key=lambda p: p[0])
+        # A capture may start halfway through an existing TCP application message.
+        # Resynchronize on validated message envelopes, never on raw 'ASCII dumps'.
         i = 0
         while i + 10 <= len(stream):
-            if stream[i:i + 2] != MAGIC:
-                print('Warning: unexpected envelope in %s at offset %d' % (path.name, i), file=sys.stderr)
+            at = stream.find(MAGIC, i)
+            if at < 0 or at + 10 > len(stream):
                 break
-            n = struct.unpack_from('>H', stream, i + 4)[0]
-            if not 1 <= n <= 100 or i + 10 + n > len(stream):
-                break
+            n = struct.unpack_from('>H', stream, at + 4)[0]
+            if not 1 <= n <= 100 or at + 10 + n > len(stream):
+                i = at + 1
+                continue
             try:
-                name = stream[i + 6:i + 6 + n].decode('ascii')
+                name = stream[at + 6:at + 6 + n].decode('ascii')
             except UnicodeDecodeError:
-                break
-            size = struct.unpack_from('>I', stream, i + 6 + n)[0]
-            end = i + 10 + n + size
-            if end > len(stream):
-                break
+                i = at + 1
+                continue
+            if not name or not all(ch.isalnum() or ch == '_' for ch in name):
+                i = at + 1
+                continue
+            size = struct.unpack_from('>I', stream, at + 6 + n)[0]
+            end = at + 10 + n + size
+            if size > 16_000_000 or end > len(stream):
+                i = at + 1
+                continue
             if name in ('WorldMapViewS2C', 'WorldMapViewUpdateS2C'):
-                seq = low + i
+                seq = low + at
                 when = next((t for s, t, p in parts if s <= seq < s + len(p)), None)
-                yield name, when, bytes(stream[i + 10 + n:end])
+                yield name, when, bytes(stream[at + 10 + n:end])
             i = end
 
 

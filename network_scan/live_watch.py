@@ -23,6 +23,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from player_history import connection, ingest_records
 from scan import BASE_FIELDS, VIEW_FIELDS, inspect, load_csv, save_csv
 from zroute_map_decoder import read_packets, TCP_PORT
 
@@ -114,6 +115,15 @@ def process_segment(file, previous_file, players, view_rows, segments, out, seen
                          base_observations=observations, new_bases=newly_found,
                          total_unique=len(players), decode_failures=failures,
                          status=status, **stats))
+    # Preserve observed identities per capture, even when a later roster CSV
+    # overwrites the player's last known name. Failure is nonfatal.
+    try:
+        with connection(out.parent.parent / 'player_history.sqlite3') as history:
+            ingest_records(history,
+                           (p for _view, bases in decoded for p in bases),
+                           str(file))
+    except Exception as exc:
+        print('WARNING: player history could not be written:', exc, flush=True)
     save_csv(out / 'players.csv', BASE_FIELDS,
              sorted(players.values(), key=lambda p: base_key(p) or ('', '')))
     save_csv(out / 'views.csv', WATCH_VIEW_FIELDS, view_rows)

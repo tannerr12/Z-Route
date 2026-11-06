@@ -78,7 +78,7 @@ def detail_map(detail):
     return {k:tuple(sorted(values)) for k,values in result.items()}
 
 
-def resolve_player(session,server,player_id=None,x=None,y=None):
+def resolve_player(session,server,player_id=None,x=None,y=None,username=None):
     if player_id is not None:
         player_id=str(player_id)
     rows=read_csv(session/'player_status_sightings.csv')
@@ -86,6 +86,8 @@ def resolve_player(session,server,player_id=None,x=None,y=None):
     for row in rows:
         if str(row.get('server'))!=str(server):continue
         if player_id is not None and str(row.get('player_id'))!=player_id:
+            continue
+        if username is not None and str(row.get('username') or '').casefold()!=username.casefold():
             continue
         if x is not None and str(row.get('x'))!=str(x):continue
         if y is not None and str(row.get('y'))!=str(y):continue
@@ -95,13 +97,16 @@ def resolve_player(session,server,player_id=None,x=None,y=None):
         if player_id is not None:
             return dict(server=server,player_id=player_id,
                         username='',x=x or '',y=y or '')
-        raise ValueError('No saved player-base observation at those coordinates. '
-                         'Navigate to the base with live watch running, wait for '
-                         'a decoded map response, or pass --player-id explicitly.')
+        description=('username '+username if username is not None
+                     else f'X:{x} Y:{y}')
+        raise ValueError('No saved player-base observation matching '+description+
+                         '. Navigate to the base while the live watcher is '
+                         'running, wait for a decoded map response, or use '
+                         '--player-id if already known.')
     ids={str(row['player_id']) for row in matches}
     if len(ids)>1:
         raise ValueError('Multiple player IDs matched; pass --player-id explicitly. '
-                         'Coordinates can be reused or a base can move: '+', '.join(sorted(ids)))
+                         'Names and coordinates can be reused: '+', '.join(sorted(ids)))
     row=matches[-1]
     return dict(server=row['server'],player_id=row['player_id'],
                 username=row.get('username') or '',x=row.get('x') or '',
@@ -149,6 +154,8 @@ def inspect(args):
     for r in rows:
         if str(r.get('server'))!=str(args.server):continue
         if args.player_id is not None and str(r.get('player_id'))!=str(args.player_id):
+            continue
+        if args.username is not None and str(r.get('username') or '').casefold()!=args.username.casefold():
             continue
         if args.x is not None and abs(int(r['x'])-args.x)>args.radius:continue
         if args.y is not None and abs(int(r['y'])-args.y)>args.radius:continue
@@ -238,7 +245,7 @@ def mark(args):
     session=require_session(args.session)
     if args.evidence and not args.evidence.is_file():
         raise ValueError('Screenshot evidence file not found: '+str(args.evidence))
-    who=resolve_player(session,args.server,args.player_id,args.x,args.y)
+    who=resolve_player(session,args.server,args.player_id,args.x,args.y,args.username)
     row=dict(marked_at_utc=utc_now(),state=args.state,
              **who,evidence=str(args.evidence or ''),note=args.note or '')
     append_csv(session/'shield_marks.csv',MARK_FIELDS,[row])
@@ -525,6 +532,7 @@ def main():
     inspect_p.add_argument('--session',type=Path)
     inspect_p.add_argument('--server',type=int,default=125)
     inspect_p.add_argument('--player-id')
+    inspect_p.add_argument('--username',help='Exact player name (case-insensitive)')
     inspect_p.add_argument('--x',type=int)
     inspect_p.add_argument('--y',type=int)
     inspect_p.add_argument('--radius',type=int,default=0)
@@ -534,6 +542,7 @@ def main():
     mark_p.add_argument('--session',type=Path)
     mark_p.add_argument('--server',type=int,default=125)
     mark_p.add_argument('--player-id')
+    mark_p.add_argument('--username',help='Exact player name; must match one stable player ID')
     mark_p.add_argument('--x',type=int)
     mark_p.add_argument('--y',type=int)
     mark_p.add_argument('--state',required=True,choices=['shielded','unshielded'])
@@ -560,8 +569,8 @@ def main():
         p.error('radius must be >=0 and limit >=1')
     if args.command=='compare' and not 5<=args.window_seconds<=180:
         p.error('window-seconds must be in 5..180')
-    if args.command=='mark' and args.player_id is None and (args.x is None or args.y is None):
-        p.error('mark requires --player-id or both --x and --y')
+    if args.command=='mark' and args.player_id is None and args.username is None and (args.x is None or args.y is None):
+        p.error('mark requires --player-id, --username, or both --x and --y')
     try:args.fn(args)
     except (OSError,ValueError,csv.Error) as exc:p.error(str(exc))
 

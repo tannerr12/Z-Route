@@ -1,12 +1,41 @@
-# Z-Route Player Locator
+# Z-Route Player Locator — Exact World Coordinates
 
-Static GitHub Pages site at repository root (`index.html`). It loads `data/players.csv` using fetch and displays every player by default. Features: username search, guild dropdown, clickable guild legend sorted by count, consistent guild colors, hover tooltips, click-to-pin details, wheel zoom and drag pan.
+The GitHub Pages site at repository root (index.html) now uses **real Z-Route world X/Y** from passively decoded WorldMapViewS2C player records. It does **not** load or draw the legacy vision scanner swipe-grid CSV. Every position uses a stable (server, player_id) identity; same-name players stay distinct. Game-world **Y increases upward**, matching the game map.
 
-## Base-level range filter
+Features: username search, alliance/guild filter, slider to select a **base level range**, shield status filter (with stale/unknown states), X/Y world grid lines, exact coordinates in tooltip and details, map zoom/pan and guild colors. The map automatically frames the **observed coordinate extent**; its edges are not claimed to be the whole server's boundaries. A coordinate from an old scan remains a **last recorded** position, not a real-time location guarantee.
 
-The GitHub Pages player map now has a two-handle **Base level** slider like the sample World Map screenshot. It reads the existing `level` column in `data/players.csv` and works alongside username search and guild filtering. The range starts at **Lv 1 to the greater of Lv 30 and the highest observed player level**; both ends can be adjusted independently, and **Clear filters** resets them. Moving the range immediately updates the displayed player count, map markers, guild selection, and selected player details.
+## Data source and deploying your complete roster
 
-Players with empty/unparseable levels remain visible with the full default range and are hidden when any level bound is narrowed. This prevents a missing level from being treated as level 0 or a verified value. No scanner or CSV changes are required.
+The committed data/world-players.csv is a **starter set of 25 network-verified S125 world-coordinate records** from the previously supplied shield investigation. Several of those do not have base levels or alliance names; those values are intentionally left blank, not guessed. To replace it with the full exact-coordinate roster from your local scans, from the repo root in PowerShell run:
+
+~~~powershell
+git switch dev
+git pull origin dev
+
+python network_scan/compare_player_sessions.py --write-merged network_scans/combined_players.csv
+python network_scan/export_world_map.py
+python -m unittest discover -s network_scan -p test_export_world_map.py
+~~~
+
+export_world_map.py reads network_scans/combined_players.csv (or a custom --roster), preserves exact server,x,y,player_id,username,alliance_tag,base_level and merges recent shield-status observations by stable player ID. Missing or outdated shield status becomes unknown. The exported CSV is saved at data/world-players.csv. It does not copy or calculate the old row,col,view swipe-grid coordinates.
+
+Review the CSV before committing; publishing a GitHub Pages site can expose player coordinates. To publish the full dataset to the dev branch:
+
+~~~powershell
+git add data/world-players.csv
+git commit -m "Refresh exact S125 world map coordinates"
+git push origin dev
+~~~
+
+In GitHub **Settings → Pages**, select **Deploy from a branch**, then select the branch the website should use and **/(root)**. If Pages is set to dev, the refreshed CSV/site should deploy from that branch. If Pages serves another branch, merge the relevant changes there first.
+
+For a local preview, start python -m http.server 8000 at the repository root and open http://localhost:8000 in a browser.
+
+## Level and shield filters
+
+The two-handle **Base level** control reads the exact network roster's base_level column and works alongside username and guild filters. The range starts at Lv 1 to at least Lv 30 (or the highest observed level). Players with missing levels stay visible with the full range, but are hidden if you narrow either bound. **Clear filters** restores the full range.
+
+The shield selector uses the project's accepted decoded player-detail **field 9** mapping (1 = shielded; absent = unshielded; other values = unknown) for **complete player records**. Historical observations older than the export's 60-minute default threshold display **Unknown / stale**; a missing record never implies unshielded.
 
 ## Watchers, Trucks and SpecOps
 

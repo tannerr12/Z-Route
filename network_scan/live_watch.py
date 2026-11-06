@@ -134,6 +134,23 @@ def process_segment(file, previous_file, players, view_rows, segments, out, seen
 
 
 def watch(args):
+    if args.recount:
+        if not args.out or not args.out.is_dir():
+            raise SystemExit('--recount requires --out pointing to an existing scan session folder')
+        capture_dir = args.out / 'captures'
+        files = sorted(capture_dir.glob('zroute*.pcapng'),
+                       key=lambda p: (p.stat().st_mtime_ns, p.name))
+        if not files:
+            raise SystemExit('No saved PCAPNG segments in ' + str(capture_dir))
+        print(f'Recounting {len(files)} saved capture segments without starting Wireshark.')
+        players, views, segments, seen_views = {}, [], [], set()
+        for i, file in enumerate(files):
+            process_segment(file, files[i - 1] if i else None,
+                            players, views, segments, args.out, seen_views)
+        print(f'RECOUNT COMPLETE: {len(players)} unique observed bases.')
+        return
+    if not args.interface:
+        raise SystemExit('--interface is required unless using --recount')
     if not 3 <= args.segment_seconds <= 120:
         raise SystemExit('--segment-seconds must be between 3 and 120')
     out = args.out or (Path('network_scans') / 'live' /
@@ -219,11 +236,13 @@ def watch(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--interface', required=True,
+    parser.add_argument('--interface',
                         help='Interface ID reported by dumpcap -D')
     parser.add_argument('--dumpcap', default='dumpcap')
     parser.add_argument('--segment-seconds', type=int, default=15)
     parser.add_argument('--out', type=Path, help='Existing session directory to resume')
+    parser.add_argument('--recount', action='store_true',
+                        help='Reprocess saved capture segments offline; no new capture')
     watch(parser.parse_args())
 
 

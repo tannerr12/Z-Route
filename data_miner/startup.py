@@ -241,10 +241,10 @@ def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75,
             time.sleep(0.8)
             continue
 
-        # As soon as a city button is visible, hand off without loading a
-        # costly multimodal model. This also protects decorative X icons
-        # from ever being mistaken for the next promotion's close button.
-        if promotions_closed >= 3 and city_label_visible(image):
+        # Check the actual bottom-right Leave City label BEFORE looking for
+        # any top-right gold X. Otherwise a decorative city X can be mistaken
+        # for a promotional close control, especially if zero ads appeared.
+        if city_label_visible(image):
             print("Leave City button confirmed by local OCR; city ready",
                   flush=True)
             return actions
@@ -270,13 +270,6 @@ def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75,
             print("Waiting up to 3s for next overlay...", flush=True)
             wait_for_next_overlay(cfg)
             continue
-
-        # No promotion close button is visible. Check the city locally once
-        # before allowing a heavier AI-based fallback.
-        if city_label_visible(image):
-            print("Leave City button confirmed by local OCR; city ready",
-                  flush=True)
-            return actions
 
         if time.monotonic() < loading_deadline:
             print("No overlay yet; allowing transition to finish...",

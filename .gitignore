@@ -9,3 +9,8 @@ progress.json
 screenshots/
 logs/
 .env
+
+# Private passive network scan captures and local analysis
+network_scans/
+*.pcap
+*.pcapng

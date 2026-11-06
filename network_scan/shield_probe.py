@@ -108,12 +108,42 @@ def resolve_player(session,server,player_id=None,x=None,y=None):
                 y=row.get('y') or '')
 
 
+
+def require_session(path):
+    """Reject placeholder/missing session folders instead of saying no players."""
+    if path is None:
+        return latest_session(ROOT)
+    path=Path(path)
+    if not path.is_dir():
+        known=sorted(
+            (p for p in ROOT.glob('*') if p.is_dir() and
+             (p/'segments.csv').is_file()),
+            key=lambda p:p.stat().st_mtime,reverse=True)
+        recent=', '.join(str(p) for p in known[:3]) or '(none yet)'
+        raise ValueError('Capture session folder not found: '+str(path)+'. '
+                         'SESSION is a placeholder, not a literal folder name. '
+                         'Start live_entity_watch.py watch in another PowerShell '
+                         'window and use the path printed after "Private session:". '
+                         'Recent sessions: '+recent)
+    return path
+
+
+
 def inspect(args):
-    session=args.session or latest_session(ROOT)
+    session=require_session(args.session)
     rows=read_csv(session/'player_status_sightings.csv')
     if not rows:
-        print('No player-base observations yet in this session. '
-              'Navigate around the target base to request a map view.')
+        segments=read_csv(session/'segments.csv')
+        views=sum(int(r.get('decoded_views') or 0) for r in segments)
+        updates=sum(int(r.get('decoded_updates') or 0) for r in segments)
+        print(f'No player-base observations saved in {session}. '
+              f'Decoded so far: {views} full map views, {updates} map updates.')
+        print('Keep live_entity_watch.py watch RUNNING in another PowerShell '
+              'window. Navigate away from the target base and back, wait '
+              'for a completed 5-second capture window, then retry.')
+        print('Make sure --x and --y are the BASE coordinates rather '
+              'than the camera center. A blue dome is visual shield evidence, '
+              'not proof of a decoded shield field.')
         return
     candidates=[]
     for r in rows:
@@ -141,7 +171,7 @@ def inspect(args):
 
 
 def mark(args):
-    session=args.session or latest_session(ROOT)
+    session=require_session(args.session)
     if args.evidence and not args.evidence.is_file():
         raise ValueError('Screenshot evidence file not found: '+str(args.evidence))
     who=resolve_player(session,args.server,args.player_id,args.x,args.y)
@@ -265,7 +295,7 @@ def compare_fields(samples):
 
 
 def compare(args):
-    session=args.session or latest_session(ROOT)
+    session=require_session(args.session)
     mark_rows=read_csv(session/'shield_marks.csv')
     if not mark_rows:
         raise ValueError('No visual marks; use mark first.')

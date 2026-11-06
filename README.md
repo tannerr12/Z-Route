@@ -139,3 +139,20 @@ Membership CSV columns: `timestamp,player,guild,event,scanned_at`, with event va
 ## Experimental network-based map scanner
 
 The separate [network_scan/](network_scan/) prototype analyzes Z-Route's naturally observed WorldMapViewS2C network responses to recover game coordinates, player IDs, names, alliances, and levels without OCR. Its read-only decoder was validated on five captures; the guided/ADB navigation runner still needs in-game calibration. It provides a 3×3 coverage pilot, serpentine coordinate plans, local PCAPNG capture and resumable checkpoint CSVs. It does not send/replay game-server requests or automatically publish captured player data. See [network_scan/README.md](network_scan/README.md) before using it.
+
+## Live network map base counter (experimental)
+
+To see **cumulative unique player-base counts while manually jumping** around Z-Route, use the standalone read-only watcher. It captures the BlueStacks TCP traffic on port 9929 via Wireshark's `dumpcap`, rotates captures every 8 seconds, decodes received `WorldMapViewS2C` messages, and deduplicates by server + player ID.
+
+```powershell
+git switch dev
+git pull origin dev
+& "C:\\Program Files\\Wireshark\\dumpcap.exe" -D
+python network_scan/live_watch.py --interface 1 --dumpcap "C:\\Program Files\\Wireshark\\dumpcap.exe"
+```
+
+Replace `1` with your active Wi-Fi/Ethernet interface number from `dumpcap -D`. **Start the watcher before entering the world map**, then navigate normally. It prints progress as `+N NEW | N UNIQUE TOTAL | N map centers`. Press **Ctrl+C** to stop and finalize the last capture.
+
+The run creates `network_scans/live/<timestamp>/players.csv`, `views.csv`, `segments.csv`, and `captures/`. To resume and add to a previous session's total, use `--out network_scans/live/<timestamp>`. To report less frequently, use `--segment-seconds 15`.
+
+Counts represent **distinct bases observed in captured map responses**, not percentage of the entire map scanned. A quiet interval may show zero even when bases are visible due to caching, and captures split across boundaries can omit responses. Use the saved view locations to audit geographic coverage; never treat the observed count alone as proof that all players were found. PCAPNG captures can contain sensitive session data: keep the entire `network_scans/` directory private and out of Git.

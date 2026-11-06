@@ -189,11 +189,21 @@ def verify_world_after_map(cfg,folder,roi,max_checks=4):
 
 def prepare_radar(cfg,args,folder):
     # Exactly the same proven startup path used by data_miner.player_activity.
-    from data_miner.startup import run_ai_startup
+    # IMPORTANT: a login warning MUST be handled before calling Ollama.
+    # The modal can remain on-screen while a slow world-map inference waits.
+    from data_miner.startup import run_ai_startup, popup_visible
     from data_miner.vision import classify_screen
     image=read_screen(cfg)
     save_screen(cfg,folder,'initial',image)
-    world,radar,_=vision_world(cfg,image,args.roi)
+    if popup_visible(image):
+        save_status(folder,'login_warning_detected')
+        print('Login warning visible: going directly to the existing '
+              'Player Activity confirmation handler, no world-map AI first.',
+              flush=True)
+        world,radar=False,False
+    else:
+        save_status(folder,'checking_already_open_world_map')
+        world,radar,_=vision_world(cfg,image,args.roi)
     if not world:
         save_status(folder,'reusing_player_activity_startup')
         actions=run_ai_startup(cfg,max_actions=args.max_startup_actions)

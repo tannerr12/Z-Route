@@ -173,6 +173,58 @@ def sync(db, root=DEFAULT_ROOT, extra_files=()):
     return imported, observations
 
 
+
+def ingest_records(db, records, source, observed_at=None):
+    """Append a real capture's currently observed players.
+
+    Unlike importing players.csv, these rows come from individual decoded map
+    responses, allowing us to retain renames seen between roster exports.
+    Safe to repeat for the same capture; never overwrites previous aliases.
+    """
+    rows = {}
+    for row in records:
+        server = str(row.get('server') or '').strip()
+        pid = str(row.get('player_id') or '').strip()
+        name = str(row.get('username') or '').strip()
+        if not server or not pid or not name:
+            continue
+        rows[(server,pid)] = (server,pid,name,
+            str(row.get('alliance_tag') or ''),
+            str(row.get('alliance_name') or ''),
+            str(row.get('base_level') or ''),
+            str(row.get('x') or ''),str(row.get('y') or ''),
+            Path(str(row.get('capture') or '')).name)
+    if not rows:
+        return 0
+    if observed_at is None:
+        observed_at = datetime.now(timezone.utc).isoformat()
+    source = str(source).replace('\\','/')
+    # Stable fingerprint for a processed capture; repeated decoding doesn't
+    # create duplicate snapshots for unchanged content.
+    digest = hashlib.sha256(json.dumps(
+        sorted(rows.values()),ensure_ascii=False,separators=(',',':')
+    ).encode('utf-8')).hexdigest()
+    if db.execute('SELECT 1 FROM snapshots WHERE source=? AND content_sha=?',
+                  (source,digest)).fetchone():
+        return 0
+    basis='decoded map response recorded (approximate)'
+    with db:
+        cursor=db.execute("""
+          INSERT INTO snapshots
+          (source,content_sha,saved_at,timestamp_basis,imported_at,row_count)
+          VALUES(?,?,?,?,?,?)""",
+          (source,digest,observed_at,basis,
+           datetime.now(timezone.utc).isoformat(),len(rows)))
+        sid=cursor.lastrowid
+        db.executemany("""
+          INSERT INTO observations
+          (snapshot_id,server,player_id,username,alliance_tag,alliance_name,
+           base_level,x,y,capture,observed_at,timestamp_basis)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+          [(sid,*row,observed_at,basis) for row in rows.values()])
+    return len(rows)
+
+
 def directory(db, server=None):
     params = [] if server is None else [str(server)]
     sql = """SELECT o.*, s.source, s.id AS source_version

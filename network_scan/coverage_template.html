@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Z-Route • Private coverage evidence report</title>
+<title>Z-Route • Private player intelligence & coverage</title>
 <style>
 :root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:#0b1424;color:#eaf2fb}
 *{box-sizing:border-box}body{margin:0;padding:24px;max-width:1530px;margin-inline:auto}
@@ -27,16 +27,56 @@ ol{padding-left:23px;margin:0}li{padding:9px 0;border-bottom:1px solid #23354a;c
 button.copy{background:#193d51;border:1px solid #2a7d79;color:#c0fff0;padding:7px 12px;border-radius:8px;cursor:pointer;margin-top:8px}.copy:hover{background:#205e69}
 footer{color:#8ba0b9;font-size:.8rem;margin:20px 0;line-height:1.55}
 @media(max-width:980px){body{padding:14px}.layout{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.mapwrap{max-width:760px}}
+
+/* Player intelligence: searchable current and former identities. */
+.stats{grid-template-columns:repeat(5,minmax(0,1fr))}
+.directory{margin-bottom:16px}
+.directoryGrid{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(360px,1.1fr);gap:16px}
+.searchControls{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+#playerSearch{flex:1;min-width:190px;padding:11px 13px;background:#0c192a;border:1px solid #34516a;color:#eefaff;border-radius:9px}
+#playerSearch::placeholder{color:#91a6bd}
+#matches{max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+.playerRow{padding:9px 12px;background:#13243a;border:1px solid transparent;border-radius:8px;cursor:pointer;text-align:left;color:#e8f5ff;width:100%}
+.playerRow:hover{background:#1c3552;border-color:#3f6580}.playerRow strong{display:block;font-weight:620}
+.playerRow small{color:#94b3c7;display:block;margin-top:4px}
+.playerProfile{min-height:168px;background:#0c1929;border:1px solid #263d53;border-radius:10px;padding:16px}
+.playerProfile h3{font-size:1.15rem;margin:0 0 7px}
+.playerProfile p{margin:5px 0;font-size:.85rem}
+.aliasTag{display:inline-block;border:1px solid #315b6c;border-radius:999px;padding:3px 9px;margin:3px 5px 3px 0;color:#afe7df;font-size:.8rem}
+.historyEvents{padding-left:21px;margin:9px 0 0}.historyEvents li{padding:6px 0;font-size:.83rem}
+.profileActions{display:flex;gap:8px;flex-wrap:wrap}
+.changedMark{color:#60dec1}
+.selectedPlayer{fill:#f9d77e;stroke:#fff7c6;stroke-width:3;pointer-events:none}
+.cellPlayers{margin-top:8px;display:flex;flex-wrap:wrap;gap:5px}
+.cellPlayers button{border:1px solid #275268;background:#15344a;color:#bcece8;border-radius:7px;padding:5px 8px;cursor:pointer;font-size:.78rem}
+@media(max-width:980px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.directoryGrid{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
-<header><div><div class="eyebrow">Z-Route / local analysis</div><h1>Player density & sampling evidence</h1><p style="margin:5px 0 0">Server <span id="server"></span> · World coordinates · Generated from your saved captures</p></div><div class="tag">PRIVATE · Standalone HTML · No network requests</div></header>
+<header><div><div class="eyebrow">Z-Route / local analysis</div><h1>Player intelligence & map coverage</h1><p style="margin:5px 0 0">Server <span id="server"></span> · World coordinates · Generated from your saved captures</p></div><div class="tag">PRIVATE · Standalone HTML · No network requests</div></header>
 <div class="stats">
  <div class="card"><span class="stat-num" id="baseCount">—</span><span class="stat-label">Distinct player IDs on roster</span></div>
  <div class="card"><span class="stat-num" id="centerCount">—</span><span class="stat-label">Distinct recorded map centers</span></div>
  <div class="card"><span class="stat-num" id="denseCount">—</span><span class="stat-label">Grid cells containing ≥1 base</span></div>
  <div class="card"><span class="stat-num" id="failedCount">—</span><span class="stat-label">Minimap targets needing review</span></div>
+ <div class="card"><span class="stat-num" id="renameCount">—</span><span class="stat-label">Players with observed aliases</span></div>
 </div>
+<section class="panel directory">
+ <h2>Player directory & name history</h2>
+ <div class="directoryGrid">
+  <div>
+   <div class="searchControls">
+    <input type="search" id="playerSearch" aria-label="Search player ID, current name, previous names, or alliance" placeholder="Search player ID, name, past alias or guild…">
+    <label style="white-space:nowrap"><input id="changedOnly" type="checkbox"> Renamed only</label>
+   </div>
+   <div id="searchStatus" class="tiny" style="margin-bottom:8px"></div>
+   <div id="matches" aria-live="polite"></div>
+  </div>
+  <div class="playerProfile" id="playerProfile">Search for a player by current or previous name, player ID, or alliance. Select a result to see its recorded identity history and latest known map position.</div>
+ </div>
+ <div class="notice" style="margin-bottom:0"><strong>Name-change history shows observations, not exact rename times.</strong> Older names are retained only if they occurred in a scan snapshot we still have, or were imported before the source was overwritten. Usernames are searchable aliases; the stable identity is the server + player ID.</div>
+</section>
 <div class="layout">
  <div class="panel">
   <div class="toolbar">
@@ -55,7 +95,7 @@ footer{color:#8ba0b9;font-size:.8rem;margin:20px 0;line-height:1.55}
   <div class="panel"><h2>Failed automated targets</h2><div id="failures" class="tiny"></div></div>
  </div>
 </div>
-<footer>This report contains aggregate counts and recorded sample centers, not player names or IDs. It opens entirely offline. The world-map analysis window is data-derived unless explicit bounds were supplied. This does not establish the total player population or all map regions.</footer>
+<footer>This report includes player names, historical aliases and IDs from local scans. It opens entirely offline; keep the generated HTML private. The world-map analysis window is data-derived unless explicit bounds were supplied. This does not establish the total player population or all map regions.</footer>
 <script id="data" type="application/json">__REPORT_DATA__</script>
 <script>
 (()=>{
@@ -67,6 +107,7 @@ $('baseCount').textContent=fmt(s.unique_ids);
 $('centerCount').textContent=fmt(s.distinct_view_centers);
 $('denseCount').textContent=fmt(s.cells_with_players)+' / '+fmt(s.grid*s.grid);
 $('failedCount').textContent=fmt(s.failed_targets);
+$('renameCount').textContent=fmt(s.players_with_observed_renames||0);
 $('boundsText').textContent='Analysis bounds (XMIN,YMIN,XMAX,YMAX): '+s.bounds.join(', ')+' — '+s.bounds_type+'. '+(s.outside_bounds?'Excluded outside explicit bounds: '+fmt(s.outside_bounds)+' bases. ':'')+'World Y increases upward.';
 if(!s.source_comparison_available){
   for(const option of [...$('layer').options])if(option.value!=='player_count')option.disabled=true;
@@ -74,7 +115,8 @@ if(!s.source_comparison_available){
 }else{
   $('provenance').innerHTML='<p>Previous scan only: <strong>'+fmt(s.prior_only)+'</strong></p><p>In both scans: <strong>'+fmt(s.shared)+'</strong></p><p>Automated scan only: <strong>'+fmt(s.new_only)+'</strong></p><p>Other/unclassified: <strong>'+fmt(s.unclassified)+'</strong></p>';
 }
-let selected=null;
+let selected=null,activePlayer=null;
+const players=data.players||[];
 function node(name,props,contents){const el=document.createElementNS(svgNS,name);Object.entries(props||{}).forEach(([k,v])=>el.setAttribute(k,String(v)));if(contents!=null)el.textContent=contents;return el;}
 function pointX(worldX){return 1000*(worldX-s.bounds[0])/(s.bounds[2]-s.bounds[0]);}
 function pointY(worldY){return 1000-1000*(worldY-s.bounds[1])/(s.bounds[3]-s.bounds[1]);}
@@ -100,6 +142,9 @@ function render(){
    plot.append(node('circle',{cx:pointX(c.x),cy:pointY(c.y),r:4.3,class:'marker'}));
   }
  }
+ if(activePlayer && activePlayer.x>=s.bounds[0] && activePlayer.x<=s.bounds[2] && activePlayer.y>=s.bounds[1] && activePlayer.y<=s.bounds[3]){
+   plot.append(node('circle',{cx:pointX(activePlayer.x),cy:pointY(activePlayer.y),r:10,class:'selectedPlayer'}));
+ }
  $('maxCell').textContent='Max: '+fmt(max)+' bases / cell';
 }
 function choose(c){selected=c;render();
@@ -116,6 +161,16 @@ function choose(c){selected=c;render();
  copy.textContent='Copy center X,Y: '+coord;
  copy.addEventListener('click',()=>{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(coord).then(()=>copy.textContent='Copied '+coord,()=>window.prompt('Copy X,Y',coord));}else{window.prompt('Copy X,Y',coord);}});
  details.append(copy);
+ const inCell=players.filter(p=>p.x>=c.x_min && p.x<=c.x_max && p.y>=c.y_min && p.y<=c.y_max);
+ if(inCell.length){
+   const head=document.createElement('p');head.textContent='Observed players in this cell (first 25):';details.append(head);
+   const group=document.createElement('div');group.className='cellPlayers';
+   for(const p of inCell.slice(0,25)){
+     const b=document.createElement('button');b.textContent=p.username||p.player_id;
+     b.addEventListener('click',()=>selectPlayer(p));group.append(b);
+   }
+   details.append(group);
+ }
 }
 $('layer').addEventListener('change',render);$('showCenters').addEventListener('change',render);
 const review=$('review');for(const r of data.candidates){
@@ -129,7 +184,62 @@ if(!data.candidates.length)review.textContent='No view-center evidence available
 const fail=$('failures');
 if(!data.failed_targets.length){fail.textContent='No failed targets recorded (or checkpoint unavailable).';}
 else{const l=document.createElement('ul');for(const f of data.failed_targets){const li=document.createElement('li');li.textContent=f.target_id+' — '+f.status+' (minimap tap '+f.tap_x+','+f.tap_y+')';l.append(li);}fail.append(l);}
+
+function appendTextRow(parent,title,value){
+ const p=document.createElement('p');const strong=document.createElement('strong');
+ strong.textContent=title+' ';p.append(strong,document.createTextNode(String(value)));parent.append(p);
+}
+function selectPlayer(p){
+ activePlayer=p;render();
+ const panel=$('playerProfile');panel.replaceChildren();
+ const head=document.createElement('h3');head.textContent=p.username||'(unnamed)';panel.append(head);
+ appendTextRow(panel,'Stable ID:','S'+p.server+' / '+p.player_id);
+ appendTextRow(panel,'Alliance:',p.alliance_tag||p.alliance_name||'Unassigned / unknown');
+ appendTextRow(panel,'Base level:',p.level||'Unknown');
+ appendTextRow(panel,'Last recorded position:','X:'+p.x+' Y:'+p.y);
+ appendTextRow(panel,'Saved snapshots:',p.history_snapshot_count||'No earlier snapshot');
+ const sub=document.createElement('h3');sub.textContent='Observed name history';sub.style.marginTop='16px';panel.append(sub);
+ if(!p.name_events?.length){const note=document.createElement('p');note.textContent='No historical snapshot data available. Current roster name shown above.';panel.append(note);}
+ else{
+   const list=document.createElement('ol');list.className='historyEvents';
+   for(const ev of p.name_events){
+     const li=document.createElement('li'),name=document.createElement('strong');
+     name.textContent=ev.name;
+     const time=document.createElement('small');time.className='muted';
+     time.textContent=' — snapshot '+ev.observed_at+' · '+ev.timestamp_basis;
+     li.append(name,time);list.append(li);
+   }panel.append(list);
+ }
+ const action=document.createElement('div');action.className='profileActions';
+ const copy=document.createElement('button');copy.className='copy';
+ copy.textContent='Copy player ID';
+ copy.addEventListener('click',()=>{const value=p.server+':'+p.player_id;if(navigator.clipboard?.writeText)navigator.clipboard.writeText(value).catch(()=>window.prompt('Copy player ID',value));else window.prompt('Copy player ID',value);});action.append(copy);
+ const coords=document.createElement('button');coords.className='copy';coords.textContent='Copy X,Y';
+ coords.addEventListener('click',()=>{const value=p.x+','+p.y;if(navigator.clipboard?.writeText)navigator.clipboard.writeText(value).catch(()=>window.prompt('Copy coordinates',value));else window.prompt('Copy coordinates',value);});action.append(coords);
+ panel.append(action);
+}
+function renderMatches(){
+ const q=$('playerSearch').value.trim().toLocaleLowerCase(),changed=$('changedOnly').checked;
+ const all=players.filter(p=>(!changed||p.observed_name_changes>0) &&
+   (!q||[p.username,p.player_id,p.server+':'+p.player_id,p.alliance_tag,p.alliance_name,...(p.aliases||[])]
+     .some(v=>String(v||'').toLocaleLowerCase().includes(q))));
+ const matches=all.slice(0,30),box=$('matches');box.replaceChildren();
+ $('searchStatus').textContent=fmt(all.length)+' matching players · showing '+fmt(matches.length)+' (sort by current name)';
+ for(const p of matches){
+   const b=document.createElement('button');b.type='button';b.className='playerRow';
+   const name=document.createElement('strong');name.textContent=p.username||'(unnamed)';
+   if(p.observed_name_changes){const indicator=document.createElement('span');indicator.className='changedMark';indicator.textContent=' · aliases observed';name.append(indicator);}
+   const meta=document.createElement('small');
+   meta.textContent='S'+p.server+' · ID '+p.player_id+' · '+(p.alliance_tag||'No tag')+' · X'+p.x+' Y'+p.y;
+   b.append(name,meta);b.addEventListener('click',()=>selectPlayer(p));box.append(b);
+ }
+ if(!matches.length){const note=document.createElement('p');note.className='tiny';note.textContent='No matching player in the saved roster.';box.append(note);}
+}
+$('playerSearch').addEventListener('input',renderMatches);
+$('changedOnly').addEventListener('change',renderMatches);
+
 render();
+renderMatches();
 })();
 </script>
 </body>

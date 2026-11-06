@@ -134,3 +134,8 @@ Open [Player Activity](https://tannerr12.github.io/Z-Route/activity.html) for tw
 Attack CSV columns: `timestamp,attacker,attacker_guild,attacker_server,attacked,attacked_guild,destination_server,destination_x,destination_y,outcome,scanned_at`. The future bot should record only attacks where the victim has a guild tag, the victim name does not start with `Commander2`, and the destination server is `#125`. Multiple distinct attacks between the same players must be kept; deduplicate on an event identifier when available, or on event time and participants/coordinates, noting identical-time collisions are possible.
 
 Membership CSV columns: `timestamp,player,guild,event,scanned_at`, with event values such as `joined`, `left`, and `removed`. Entries represent activity in the scanned alliance; they do not prove a player transferred directly between two named guilds. Event times should retain the in-game clock as displayed unless the scanner verifies its timezone.
+
+
+## Experimental network-based map scanner
+
+The separate [network_scan/](network_scan/) prototype analyzes Z-Route's naturally observed WorldMapViewS2C network responses to recover game coordinates, player IDs, names, alliances, and levels without OCR. Its read-only decoder was validated on five captures; the guided/ADB navigation runner still needs in-game calibration. It provides a 3×3 coverage pilot, serpentine coordinate plans, local PCAPNG capture and resumable checkpoint CSVs. It does not send/replay game-server requests or automatically publish captured player data. See [network_scan/README.md](network_scan/README.md) before using it.

@@ -342,6 +342,108 @@ def compare(args):
     print('Saved:',output/'sampled_observations.json',output/'field_differences.csv')
 
 
+COHORT_FIELDS=('server','player_id','username','state','marked_at_utc',
+               'observed_at_utc','capture','status_9','status_13',
+               'status_15','status_18','status_23','evidence_basis')
+
+
+def cohort_samples(marks,rows,server,window_seconds):
+    """Return one most recent post-mark observation per player and state.
+
+    Marked UI status is supplied by the user, NOT inferred from the packet.
+    Requires a *new* map observation after the visual mark, which avoids
+    accidentally comparing a previous, stale map state.
+    """
+    grouped=defaultdict(list)
+    for marker in marks:
+        if (str(marker.get('server'))==str(server)
+                and marker.get('state') in ('shielded','unshielded')
+                and marker.get('player_id')):
+            grouped[str(marker['player_id'])].append(marker)
+    for identity in grouped:
+        grouped[identity].sort(key=lambda m:read_time(m['marked_at_utc']))
+    found={}
+    for row in rows:
+        if str(row.get('server'))!=str(server):continue
+        identity=str(row.get('player_id') or '')
+        if identity not in grouped:continue
+        try:
+            seen=read_time(str(row['seen_at_utc']))
+        except (ValueError,TypeError,KeyError):
+            continue
+        valid=[m for m in grouped[identity] if (
+            0<=(seen-read_time(m['marked_at_utc'])).total_seconds()
+            <=window_seconds)]
+        if not valid:continue
+        marker=valid[-1]
+        selected=(identity,marker['state'])
+        evidence=dict(server=row['server'],player_id=identity,
+            username=row.get('username') or marker.get('username') or '',
+            state=marker['state'],marked_at_utc=marker['marked_at_utc'],
+            observed_at_utc=row['seen_at_utc'],capture=row.get('capture',''),
+            evidence_basis='passive_map_observation_after_visual_marker',
+            **{field:row.get(field) or '' for field in
+                ('status_9','status_13','status_15','status_18','status_23')})
+        earlier=found.get(selected)
+        if earlier is None or read_time(evidence['observed_at_utc'])>read_time(
+                earlier['observed_at_utc']):
+            found[selected]=evidence
+    return sorted(found.values(),key=lambda r:(r['state'],r['player_id']))
+
+
+def cohort(args):
+    session=require_session(args.session)
+    marks=read_csv(session/'shield_marks.csv')
+    if not marks:
+        raise ValueError('No visual shielded/unshielded markers in '+str(session))
+    rows=read_csv(session/'player_status_sightings.csv')
+    if not rows:
+        raise ValueError('No decoded player-status sightings in '+str(session))
+    found=cohort_samples(marks,rows,args.server,args.window_seconds)
+    output=session/'shield_probe'
+    output.mkdir(exist_ok=True)
+    from scan import save_csv
+    save_csv(output/'cohort_evidence.csv',COHORT_FIELDS,found)
+    print('Visual shield state vs nearby player-detail field observations:')
+    print(f'Session: {session} | {len(found)} player/state samples '
+          f'within {args.window_seconds}s AFTER a visual marker.')
+    for state in ('shielded','unshielded'):
+        group=[r for r in found if r['state']==state]
+        counts=Counter((r.get('status_9') or '<ABSENT>') for r in group)
+        print(f'  {state}: {len(group)} recorded players/observed states '
+              f'| raw status_9 values: {dict(counts)}')
+        for row in group[:args.limit]:
+            print(f'    {row["username"]} ID:{row["player_id"]} '
+                  f'status_9:{row["status_9"] or "<ABSENT>"} '
+                  f'other raw flags:13={row["status_13"] or "-"},'
+                  f'15={row["status_15"] or "-"},'
+                  f'18={row["status_18"] or "-"},'
+                  f'23={row["status_23"] or "-"} '
+                  f'last:{row["observed_at_utc"]}')
+    ids_by_state={state:{row['player_id'] for row in found
+                         if row['state']==state}
+                  for state in ('shielded','unshielded')}
+    missing=set(str(m['player_id']) for m in marks
+                if str(m.get('server'))==str(args.server))-{
+                    row['player_id'] for row in found}
+    if missing:
+        print('VISUAL MARKS WITHOUT A SUBSEQUENT DECODED SIGHTING: '
+              +', '.join(sorted(missing)))
+        print('Navigate away and back while live capture runs, then repeat.')
+    if not all(ids_by_state.values()):
+        print('INCONCLUSIVE: needs visually confirmed shielded AND unshielded '
+              'controls, each followed by a decoded map observation.')
+    else:
+        overlap=ids_by_state['shielded'] & ids_by_state['unshielded']
+        print(f'Stable player IDs observed in BOTH states: {len(overlap)} '
+              '(stronger than cross-player comparisons).')
+        print('Field 9 is a candidate only. Unshielded visual controls and '
+              'same-player shield transitions are needed to verify it.')
+    print('Saved private field evidence:',output/'cohort_evidence.csv')
+    return found
+
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -372,7 +474,15 @@ def main():
     compare_p.add_argument('--window-seconds',type=int,default=45,
         help='Accept captured map responses up to N seconds after each marker')
     compare_p.set_defaults(fn=compare)
+    cohort_p=cmds.add_parser('cohort',help='Compare shielded and unshielded visually marked bases')
+    cohort_p.add_argument('--session',type=Path)
+    cohort_p.add_argument('--server',type=int,default=125)
+    cohort_p.add_argument('--window-seconds',type=int,default=90)
+    cohort_p.add_argument('--limit',type=int,default=30)
+    cohort_p.set_defaults(fn=cohort)
     args=p.parse_args()
+    if args.command=='cohort' and (not 5<=args.window_seconds<=300 or args.limit<1):
+        p.error('cohort requires window-seconds 5..300 and limit >=1')
     if args.command=='inspect' and (args.radius<0 or args.limit<1):
         p.error('radius must be >=0 and limit >=1')
     if args.command=='compare' and not 5<=args.window_seconds<=180:

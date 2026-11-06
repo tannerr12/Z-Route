@@ -21,6 +21,7 @@ import math
 import statistics
 import struct
 import subprocess
+import shutil
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,6 +44,55 @@ PROGRESS_FIELDS = ('pattern', 'click', 'target_id', 'new_bases', 'cumulative_uni
 def utcnow():
     return datetime.now(timezone.utc).isoformat()
 
+
+def load_adb_settings(args):
+    """Use the same ADB executable and serial as the existing scanner."""
+    config_path = Path(__file__).resolve().parent.parent / 'config.json'
+    cfg = {}
+    if config_path.is_file():
+        try:
+            cfg = json.loads(config_path.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise SystemExit(f'Cannot read {config_path}: {exc}') from exc
+    args.adb = args.adb or cfg.get('adb_path') or 'adb'
+    args.serial = args.serial or cfg.get('adb_serial') or '127.0.0.1:5555'
+    if not shutil.which(args.adb):
+        raise SystemExit(
+            f'ADB executable not found: {args.adb!r}. '
+            'Set adb_path in config.json or supply --adb with the full path to adb.exe. '
+            'No game clicks were performed.')
+    print(f'ADB: {args.adb} (device {args.serial})', flush=True)
+
+
+def ensure_adb_device(args):
+    """Reconnect ONLY the explicitly configured local TCP Android device."""
+    def call(*parts):
+        try:
+            return subprocess.run([args.adb, *parts], capture_output=True, text=True,
+                                  errors='replace', timeout=12)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise RuntimeError(f'ADB check failed: {exc}') from exc
+
+    status = call('devices', '-l')
+    if status.returncode:
+        raise RuntimeError('adb devices failed: ' + status.stderr.strip())
+    def is_connected(output):
+        return any(line.split()[:2] == [args.serial, 'device']
+                   for line in output.splitlines())
+    if is_connected(status.stdout):
+        return
+    if args.serial.startswith('127.0.0.1:') or args.serial.startswith('localhost:'):
+        print(f'ADB device {args.serial} missing. Trying adb connect...', flush=True)
+        result = call('connect', args.serial)
+        print((result.stdout or result.stderr).strip(), flush=True)
+        status = call('devices', '-l')
+        if is_connected(status.stdout):
+            return
+    raise RuntimeError(
+        f'ADB device {args.serial!r} is not connected. Run "{args.adb}" devices -l '
+        'to see available devices. Enable Android Debug Bridge in BlueStacks settings, '
+        'and update config.json adb_serial if the BlueStacks port is different. '
+        'No game clicks were performed.')
 
 def adb_run(adb, serial, *argv, timeout=20, binary=False):
     args = [adb, '-s', serial, *argv]
@@ -372,8 +422,8 @@ def main():
     commands = parser.add_subparsers(dest='command', required=True)
     s = commands.add_parser('screenshot', help='Save native BlueStacks screenshot for ROI calibration')
     s.add_argument('--out', type=Path, default=Path('network_scans/minimap_reference.png'))
-    s.add_argument('--adb', default='adb')
-    s.add_argument('--serial', default='127.0.0.1:5555')
+    s.add_argument('--adb', help='Override config.json adb_path')
+    s.add_argument('--serial', help='Override config.json adb_serial')
     s.set_defaults(fn=screenshot)
 
     p = commands.add_parser('plan', help='Generate safe preview paths: no game clicks')
@@ -391,8 +441,8 @@ def main():
     r.add_argument('--pattern', choices=PATTERNS, default='snake')
     r.add_argument('--interface', default='Wi-Fi')
     r.add_argument('--dumpcap', default='dumpcap')
-    r.add_argument('--adb', default='adb')
-    r.add_argument('--serial', default='127.0.0.1:5555')
+    r.add_argument('--adb', help='Override config.json adb_path')
+    r.add_argument('--serial', help='Override config.json adb_serial')
     r.add_argument('--capture-seconds', type=int, default=6)
     r.add_argument('--settle', type=float, default=.5)
     r.add_argument('--max-clicks', type=int, default=0, help='0=entire grid; try 1 first')
@@ -405,6 +455,9 @@ def main():
     c.add_argument('--plan', type=Path, required=True)
     c.set_defaults(fn=compare)
     args = parser.parse_args()
+    if args.command == 'screenshot' or (args.command == 'run' and args.execute):
+        load_adb_settings(args)
+        ensure_adb_device(args)
     args.fn(args)
 
 

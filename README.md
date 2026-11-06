@@ -6,11 +6,25 @@ Experimental Z-Route tools for scanning the game through BlueStacks, publishing 
 
 > The website is publicly accessible through GitHub Pages. The BlueStacks scanner and AI Data Miner are experimental and have not been fully validated end-to-end. Donation records currently include **synthetic demo data** marked `DEMO`; do not interpret them as real guild results.
 
+## Exact world map
+
+The published Player Locator now uses data/world-players.csv, keyed by the
+game's (server, player_id) and real S125 world X/Y (Y increases upward). It
+does NOT display the old swipe-grid approximation. The committed 25-base
+dataset is only a starter sample. The full 9k+ locally decoded player roster
+is NOT automatically uploaded or published: generate it on dev using
+network_scan/export_world_map.py and then copy the generated
+data/world-players.csv onto main.
+
+The archived scan-date selector and its approximate grid data are preserved
+separately at [Legacy scan map](https://tannerr12.github.io/Z-Route/legacy-map.html).
+See [Player Map instructions](PLAYER_MAP.md) for the PowerShell publishing steps.
+
 ## Features
 
 | Component | What it does | Entry point |
 | --- | --- | --- |
-| Player Locator | Search a swipe-grid map of players; hover for names and distinguish guilds by color | `index.html` |
+| Player Locator | Map last-recorded exact S125 X/Y from network scans; filter levels, shields, guilds and players | `index.html` |
 | Map scanner | Capture BlueStacks screenshots and collect player observations using ADB and OCR | `scanner.py` |
 | Data Miner | Navigate game ranking screens and extract VS rankings and alliance donation rows with a local vision model | `data_miner/mine_rankings.py` |
 | VS Comparison | Analyze one guild’s individual member VS contributions, daily scores, weekly totals, low-score flags and trends | `vs.html` |\n| Donation Analytics | Load guild-specific CSV histories automatically; compare weeks, search players, inspect donation trends and contribution shares | `donations.html` |
@@ -18,10 +32,12 @@ Experimental Z-Route tools for scanning the game through BlueStacks, publishing 
 ## Repository data layout
 
 ```text
-index.html
+index.html                  # Exact-world network-coordinate map
+legacy-map.html             # Archived approximate swipe-grid history
 donations.html
 data/
-  players.csv
+  world-players.csv         # Exact S125 X/Y starter sample; export full CSV from dev
+  players.csv               # Legacy approximate data only
   donations/
     guilds.json                 # Guild dropdown directory
     D3AD/

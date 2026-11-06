@@ -138,7 +138,6 @@ def radar_template_match(image,template_path,roi=MINIMAP_ROI,threshold=.86):
     border or icon crop, not changing terrain/player dots inside the radar.
     """
     import cv2
-    from scanner import ensure_game_connected
     template_path=Path(template_path)
     if not template_path.is_file():
         return False,0.0
@@ -205,8 +204,8 @@ def prepare_radar(cfg,args,folder):
         raise RuntimeError('Emulator resolution changed after Leave City; cannot verify')
     # This only validates that the screen materially changed. It is not
     # sufficient to assert the radar is visible or scanning is safe.
-    delta=float(cv2.mean(cv2.absdiff(
-        cv2.resize(image,(120,180)),cv2.resize(after,(120,180))))[0])
+    delta=float(sum(cv2.mean(cv2.absdiff(
+        cv2.resize(image,(120,180)),cv2.resize(after,(120,180))))[:3])/3)
     if delta<6:
         raise RuntimeError('Leave City tap did not visibly change the screen')
     save_status(folder,'world_screen_changed',screen_change=round(delta,2))
@@ -326,7 +325,7 @@ def cli():
         a.add_argument('--roi',type=str,default='800,25,1060,270',
                        help='Previously calibrated radar ROI as emulator L,T,R,B')
         a.add_argument('--map-tap',type=int,nargs=2,metavar=('X','Y'),
-                       help='Manually VERIFIED View Map button center in emulator pixels')
+                       help='Override fixed bottom-right Leave City tap center in emulator pixels')
         a.add_argument('--zoom-tap',type=int,nargs=2,metavar=('X','Y'),
                        help='Manually VERIFIED minus / zoom-out button center')
         a.add_argument('--zoom-keyevent',type=int,

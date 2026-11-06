@@ -135,10 +135,7 @@ def process_segment(file, previous_file, players, view_rows, segments, out, seen
 
 
 def resolve_interface(dumpcap, requested):
-    """Resolve a Wireshark display label such as Wi-Fi or device index.
-
-    dumpcap -D numbers are local to the PC and differ between installations.
-    """
+    """Resolve an exact Wireshark interface display label or numeric ID."""
     try:
         listing = subprocess.run([dumpcap, '-D'], capture_output=True, text=True,
                                  errors='replace', timeout=15)
@@ -148,7 +145,34 @@ def resolve_interface(dumpcap, requested):
         raise SystemExit('dumpcap -D failed: ' + listing.stderr.strip())
     devices = []
     for line in listing.stdout.splitlines():
-        match = re.match(r'^\s*(\d+)\.\s*(.+?)\s*    if args.recount:
+        match = re.match(r'^\s*(\d+)\.\s*(.+?)\s*$', line)
+        if match:
+            devices.append((match.group(1), match.group(2)))
+    if not devices:
+        raise SystemExit('No adapters returned by dumpcap -D.')
+    if requested.isdigit():
+        matches = [item for item in devices if item[0] == requested]
+    else:
+        requested_cf = requested.strip().casefold()
+        matches = [item for item in devices
+                   if item[1].casefold() == requested_cf
+                   or any(name.casefold() == requested_cf for name in
+                          re.findall(r'\(([^()]*)\)', item[1]))]
+    if len(matches) != 1:
+        print('Available dumpcap adapters:', file=sys.stderr)
+        for number, description in devices:
+            print(f'  {number}. {description}', file=sys.stderr)
+        if not matches:
+            raise SystemExit(f'No interface matches {requested!r}. '
+                             'Use its displayed name or number.')
+        raise SystemExit(f'Interface {requested!r} is ambiguous; use its number.')
+    number, description = matches[0]
+    print(f'CAPTURE INTERFACE: {number}. {description}', flush=True)
+    return number
+
+
+def watch(args):
+    if args.recount:
         if not args.out or not args.out.is_dir():
             raise SystemExit('--recount requires --out pointing to an existing scan session folder')
         capture_dir = args.out / 'captures'
@@ -253,147 +277,6 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--interface',
                         help='Interface number or friendly name from dumpcap -D (e.g. Wi-Fi)')
-    parser.add_argument('--dumpcap', default='dumpcap')
-    parser.add_argument('--segment-seconds', type=int, default=15)
-    parser.add_argument('--out', type=Path, help='Existing session directory to resume')
-    parser.add_argument('--recount', action='store_true',
-                        help='Reprocess saved capture segments offline; no new capture')
-    watch(parser.parse_args())
-
-
-if __name__ == '__main__':
-    main()
-, line)
-        if match:
-            devices.append((match.group(1), match.group(2)))
-    if not devices:
-        raise SystemExit('No adapters returned by dumpcap -D.')
-    if requested.isdigit():
-        matches = [item for item in devices if item[0] == requested]
-    else:
-        requested_cf = requested.strip().casefold()
-        matches = [item for item in devices
-                   if item[1].casefold() == requested_cf
-                   or any(name.casefold() == requested_cf for name in
-                          re.findall(r'\(([^()]*)\)', item[1]))]
-    if len(matches) != 1:
-        print('Available dumpcap adapters:', file=sys.stderr)
-        for number, description in devices:
-            print(f'  {number}. {description}', file=sys.stderr)
-        if not matches:
-            raise SystemExit(f'No interface matches {requested!r}. '
-                             'Use its displayed name or number.')
-        raise SystemExit(f'Interface {requested!r} is ambiguous; use its number.')
-    number, description = matches[0]
-    print(f'CAPTURE INTERFACE: {number}. {description}', flush=True)
-    return number
-
-
-def watch(args):
-    if args.recount:
-        if not args.out or not args.out.is_dir():
-            raise SystemExit('--recount requires --out pointing to an existing scan session folder')
-        capture_dir = args.out / 'captures'
-        files = sorted(capture_dir.glob('zroute*.pcapng'),
-                       key=lambda p: (p.stat().st_mtime_ns, p.name))
-        if not files:
-            raise SystemExit('No saved PCAPNG segments in ' + str(capture_dir))
-        print(f'Recounting {len(files)} saved capture segments without starting Wireshark.')
-        players, views, segments, seen_views = {}, [], [], set()
-        for i, file in enumerate(files):
-            process_segment(file, files[i - 1] if i else None,
-                            players, views, segments, args.out, seen_views)
-        print(f'RECOUNT COMPLETE: {len(players)} unique observed bases.')
-        return
-    if not args.interface:
-        raise SystemExit('--interface is required unless using --recount')
-    if not 3 <= args.segment_seconds <= 120:
-        raise SystemExit('--segment-seconds must be between 3 and 120')
-    out = args.out or (Path('network_scans') / 'live' /
-                       datetime.now().strftime('%Y%m%d_%H%M%S'))
-    out.mkdir(parents=True, exist_ok=True)
-    captures = out / 'captures'
-    captures.mkdir(exist_ok=True)
-    players = {}
-    if (out / 'players.csv').exists():
-        for player in load_csv(out / 'players.csv'):
-            key = base_key(player)
-            if key:
-                players[key] = player
-    views = load_csv(out / 'views.csv') if (out / 'views.csv').exists() else []
-    segments = load_csv(out / 'segments.csv') if (out / 'segments.csv').exists() else []
-    seen_views = {str(v.get('signature', '')) for v in views if v.get('signature')}
-    done = {r['filename'] for r in segments}
-    before_count = len(players)
-
-    print('Output:', out.resolve())
-    print(f'Starting from {before_count} saved bases. Navigate normally in BlueStacks.')
-    print(f'Counting every ~{args.segment_seconds}s. Press Ctrl+C to finish.', flush=True)
-    command = [args.dumpcap, '-i', str(args.interface),
-               '-f', 'tcp port 9929',
-               '-b', f'duration:{args.segment_seconds}',
-               '-w', str(captures / 'zroute.pcapng')]
-    log_path = out / 'dumpcap.log'
-    proc = None
-    last_activity = time.monotonic()
-
-    def process_closed(include_active=False):
-        nonlocal last_activity
-        files = sorted(captures.glob('zroute*.pcapng'),
-                       key=lambda p: (p.stat().st_mtime_ns, p.name))
-        closed = files if include_active else files[:-1]
-        for index, file in enumerate(closed):
-            if file.name in done or file.stat().st_size < 32:
-                continue
-            previous = files[index - 1] if index else None
-            try:
-                process_segment(file, previous, players, views, segments, out, seen_views)
-            except (ValueError, OSError, EOFError, IndexError, KeyError) as exc:
-                print(f'WARNING: cannot decode {file.name}: {exc}', file=sys.stderr)
-                continue
-            done.add(file.name)
-            last_activity = time.monotonic()
-
-    try:
-        with log_path.open('a', encoding='utf-8') as log:
-            proc = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=log)
-            time.sleep(1)
-            if proc.poll() is not None:
-                raise RuntimeError(f'dumpcap exited ({proc.returncode}); see {log_path}')
-            while proc.poll() is None:
-                process_closed()
-                if time.monotonic() - last_activity > max(30, args.segment_seconds * 3):
-                    print('No completed capture segments yet. '
-                          'Check dumpcap.log and whether traffic is reaching the interface.',
-                          flush=True)
-                    last_activity = time.monotonic()
-                time.sleep(1)
-            print(f'WARNING: dumpcap ended ({proc.returncode}); see {log_path}',
-                  file=sys.stderr)
-    except KeyboardInterrupt:
-        print('\nStopping; analyzing final capture...', flush=True)
-    except OSError as exc:
-        raise SystemExit(f'Could not launch dumpcap: {exc}') from exc
-    finally:
-        if proc is not None and proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=8)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait(timeout=5)
-        process_closed(include_active=True)
-        print(f'FINAL: {len(players)} observed unique bases '
-              f'(+{len(players)-before_count} this session).')
-        print('Saved:', out / 'players.csv', out / 'views.csv', out / 'segments.csv')
-        print('A unique-base count does not establish full geographic coverage.')
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--interface',
-                        help='Interface ID reported by dumpcap -D')
     parser.add_argument('--dumpcap', default='dumpcap')
     parser.add_argument('--segment-seconds', type=int, default=15)
     parser.add_argument('--out', type=Path, help='Existing session directory to resume')

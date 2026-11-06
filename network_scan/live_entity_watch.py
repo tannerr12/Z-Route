@@ -242,7 +242,7 @@ def process(file,previous,out,latest,segments,labels,cache,
     stats=traffic_stats(file)
     status=('NO_GAME_TRAFFIC' if stats['incoming_packets']==0 else
             'NO_DECODABLE_MAP_VIEW' if views==0 else 'MAP_VIEWS_DECODED')
-    seg=dict(file=file.name,observed_at_utc=when,
+    seg=dict(file=str(file.resolve()),observed_at_utc=when,
              incoming_packets=stats['incoming_packets'],
              incoming_bytes=stats['incoming_bytes'],
              decoded_views=views,new_entity_positions=new_positions,
@@ -281,11 +281,17 @@ def decode_windows(paths,out,labels,focus,limit=8,fingerprint_cache=None):
         fingerprint_cache={}
     previous=None
     for index,file in enumerate(paths):
-        if file.name not in done and file.stat().st_size>40:
+        if str(file.resolve()) not in done and file.stat().st_size>40:
             process(file,previous,out,latest,segments,labels,fingerprint_cache,
                     focus,limit,index)
-            done.add(file.name)
+            done.add(str(file.resolve()))
         previous=file
+    if len(fingerprint_cache)>10000:
+        fingerprint_cache.update((k,v) for k,v in list(fingerprint_cache.items())
+                                 if v>=len(paths)-2)
+        for k in list(fingerprint_cache):
+            if fingerprint_cache[k]<len(paths)-2:
+                del fingerprint_cache[k]
     return latest,segments
 
 
@@ -305,12 +311,12 @@ def watch(args):
          '-w',str(captures/'entity.pcapng')]
     with (out/'dumpcap.log').open('a',encoding='utf-8') as log:
         proc=subprocess.Popen(cmd,stdout=subprocess.DEVNULL,stderr=log)
+        fingerprint_cache={}
         try:
             time.sleep(.7)
             if proc.poll() is not None:
                 raise RuntimeError('dumpcap exited early; inspect '+str(out/'dumpcap.log'))
             last_warning=0
-            fingerprint_cache={}
             while proc.poll() is None:
                 files=sorted(captures.glob('entity*.pcapng'),
                              key=lambda p:(p.stat().st_mtime_ns,p.name))

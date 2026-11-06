@@ -80,7 +80,7 @@ def iter_entities(path):
     """
     for name, when, raw in application_messages(path):
         if name!='WorldMapViewS2C':
-            yield 'update_skipped',None,None
+            yield 'update_skipped',None,None,None
             continue
         try:
             decoded,_=decode_payload(raw)
@@ -100,9 +100,9 @@ def iter_entities(path):
                     statuses.append(obj)
                 else:
                     nonplayers.append(obj)
-            yield 'view',nonplayers,statuses
+            yield 'view',nonplayers,statuses,hashlib.sha256(raw).hexdigest()
         except (ValueError,TypeError,EOFError,OSError) as exc:
-            yield 'decode_error',str(exc),None
+            yield 'decode_error',str(exc),None,None
 
 
 def observation_time(file):
@@ -164,7 +164,7 @@ def process(file,previous,out,latest,segments,labels,cache,
     player_rows=[]
     examples=[]
     try:
-        for kind,nonplayers,statuses in iter_entities(to_parse):
+        for kind,nonplayers,statuses,fingerprint in iter_entities(to_parse):
             if kind=='update_skipped':
                 update_skipped+=1;continue
             if kind=='decode_error':
@@ -172,11 +172,6 @@ def process(file,previous,out,latest,segments,labels,cache,
             # Message fingerprint only de-duplicates duplicate responses in
             # adjacent, overlapping capture windows. A later identical view
             # can still be an independent sighting.
-            fingerprint=hashlib.sha256(repr((
-                [(e['server'],e['type_code'],e['x'],e['y'],
-                  e['raw_object_field1']) for e in nonplayers],
-                [(e['server'],e['player_id']) for e in statuses]
-            )).encode('utf-8')).hexdigest()
             last=cache.get(fingerprint)
             if last is not None and index-last<=1:
                 continue
@@ -278,11 +273,12 @@ def process(file,previous,out,latest,segments,labels,cache,
     return seg
 
 
-def decode_windows(paths,out,labels,focus,limit=8):
+def decode_windows(paths,out,labels,focus,limit=8,fingerprint_cache=None):
     out.mkdir(parents=True,exist_ok=True)
     latest,segments,done=prepare_state(out)
     # Recent fingerprint cache only; old repeats count as fresh observations.
-    fingerprint_cache={}
+    if fingerprint_cache is None:
+        fingerprint_cache={}
     previous=None
     for index,file in enumerate(paths):
         if file.name not in done and file.stat().st_size>40:
@@ -314,11 +310,13 @@ def watch(args):
             if proc.poll() is not None:
                 raise RuntimeError('dumpcap exited early; inspect '+str(out/'dumpcap.log'))
             last_warning=0
+            fingerprint_cache={}
             while proc.poll() is None:
                 files=sorted(captures.glob('entity*.pcapng'),
                              key=lambda p:(p.stat().st_mtime_ns,p.name))
                 if len(files)>1:
-                    decode_windows(files[:-1],out,args.labels,args.types,args.print_limit)
+                    decode_windows(files[:-1],out,args.labels,args.types,args.print_limit,
+                                   fingerprint_cache=fingerprint_cache)
                 elif time.monotonic()-last_warning>max(20,args.segment_seconds*3):
                     # A new dumpcap file often appears only after traffic arrives.
                     print('Waiting for first completed capture window; '
@@ -337,7 +335,8 @@ def watch(args):
             files=sorted(captures.glob('entity*.pcapng'),
                          key=lambda p:(p.stat().st_mtime_ns,p.name))
             if files:
-                decode_windows(files,out,args.labels,args.types,args.print_limit)
+                decode_windows(files,out,args.labels,args.types,args.print_limit,
+                               fingerprint_cache=fingerprint_cache)
     print('Final data:',out.resolve())
     print('REMINDER: no missing sighting establishes despawn or a confirmed move.')
 

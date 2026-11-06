@@ -29,6 +29,20 @@ class FullMapTests(unittest.TestCase):
         self.assertTrue(870 <= first['tap_x'] <= 990)
         self.assertTrue(85 <= first['tap_y'] <= 210)
 
+    def test_duplicate_filter_uses_persisted_tap_fields(self):
+        # First point is stored as tap_x/tap_y, not x/y. This reproduces
+        # the KeyError that previously stopped route construction.
+        points = route(self.roi, [4, 7, 10], .07, 8)
+        for i, p in enumerate(points):
+            self.assertIn('tap_x', p)
+            self.assertIn('tap_y', p)
+            self.assertNotIn('x', p)
+            self.assertNotIn('y', p)
+            for q in points[:i]:
+                squared = ((p['tap_x'] - q['tap_x']) ** 2
+                           + (p['tap_y'] - q['tap_y']) ** 2)
+                self.assertGreaterEqual(squared, 8 ** 2)
+
     def test_adding_larger_stage_keeps_route_prefix(self):
         small = route(self.roi, [4, 7, 10], .07, 8)
         big = route(self.roi, [4, 7, 10, 13], .07, 8)

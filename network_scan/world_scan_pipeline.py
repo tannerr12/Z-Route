@@ -193,7 +193,8 @@ def prepare_radar(cfg,args,folder):
     save_status(folder,'city_ready',startup_actions=actions)
     image=read_screen(cfg)
     save_screen(cfg,folder,'city_after_popups',image)
-    if popup_visible(image) or promo_close_visible(image):
+    if popup_visible(image) or (promo_close_visible(image)
+                                and not city_label_visible(image)):
         raise RuntimeError('Login/promo still visible; refusing to click Leave City')
     # The startup routine already requires a city confirmation; the tap itself
     # is fixed, avoiding another OCR pass or full-scene model inference.

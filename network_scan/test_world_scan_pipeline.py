@@ -158,17 +158,17 @@ class WorldPipelineTests(unittest.TestCase):
                     zoom_out_ctrl_minus(hold)
 
     def test_zoom_probe_passes_configured_five_second_hold(self):
-        args=SimpleNamespace(zoom_steps=1,zoom_delay=.6,zoom_hold=5.0)
+        args=SimpleNamespace(zoom_steps=2,zoom_delay=.6,zoom_hold=5.0)
         with tempfile.TemporaryDirectory() as td:
             with (patch('data_miner.startup.popup_visible',return_value=False),
                   patch('bluestacks_zoom.zoom_out_ctrl_minus') as zoom,
                   patch.object(p,'read_screen',side_effect=[
-                      self.image,self.map_image]),
+                      self.image,self.map_image,self.image]),
                   patch.object(p,'save_screen'),
                   patch.object(p,'save_status'),
                   patch('time.sleep')):
                 p.zoom_probe({},args,Path(td))
-                zoom.assert_called_once_with(5.0)
+                self.assertEqual([c.args for c in zoom.call_args_list],[(5.0,),(5.0,)])
 
     def test_non_two_hold_count_rejected_without_keys(self):
         args=SimpleNamespace(zoom_steps=1,zoom_delay=.6,zoom_hold=3.0)

@@ -258,18 +258,22 @@ def prepare_radar(cfg,args,folder):
                 return
         if step==args.max_zoom_actions:
             break
-        point=args.zoom_tap or (cfg.get('ui',{}).get('world_map',{}) or {}).get('zoom_out_tap')
-        if point is None and args.zoom_keyevent is None:
-            save_screen(cfg,folder,'zoom_not_calibrated',image)
-            raise RuntimeError('Radar not yet visible and zoom-out control not calibrated. '
-                               'Pass --zoom-tap X Y or --zoom-keyevent CODE after verifying it.')
-        if point is not None:
-            one_tap(cfg,image,point,f'Zoom out {step+1}')
+        if args.zoom_method=='bluestacks':
+            from bluestacks_zoom import zoom_out_ctrl_minus
+            zoom_out_ctrl_minus()
         else:
-            from scanner import adb
-            if not 1<=args.zoom_keyevent<=300:
-                raise ValueError('Invalid calibrated zoom key event')
-            adb(cfg,'shell','input','keyevent',str(args.zoom_keyevent))
+            point=args.zoom_tap or (cfg.get('ui',{}).get('world_map',{}) or {}).get('zoom_out_tap')
+            if args.zoom_method=='tap':
+                if point is None:
+                    raise RuntimeError('Zoom tap not calibrated; pass --zoom-tap X Y')
+                one_tap(cfg,image,point,f'Zoom out {step+1}')
+            elif args.zoom_method=='keyevent':
+                from scanner import adb
+                if args.zoom_keyevent is None or not 1<=args.zoom_keyevent<=300:
+                    raise ValueError('Set a verified --zoom-keyevent between 1 and 300')
+                adb(cfg,'shell','input','keyevent',str(args.zoom_keyevent))
+            else:
+                raise ValueError('Unknown zoom method: '+str(args.zoom_method))
         time.sleep(args.zoom_delay)
         image=read_screen(cfg)
         if popup_visible(image) or promo_close_visible(image):
@@ -396,6 +400,9 @@ def cli():
                        help='Manually VERIFIED minus / zoom-out button center')
         a.add_argument('--zoom-keyevent',type=int,
                        help='Verified Android keycode mapped to zoom-out, if no button exists')
+        a.add_argument('--zoom-method',choices=('bluestacks','tap','keyevent'),
+                       default='bluestacks',
+                       help='When radar template is configured: zoom via BlueStacks Ctrl+-, tapped control, or Android keycode')
         a.add_argument('--max-zoom-actions',type=int,default=12)
         a.add_argument('--zoom-delay',type=float,default=.6)
         a.add_argument('--max-startup-actions',type=int,default=12)

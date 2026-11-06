@@ -61,7 +61,7 @@ def bluestacks_foreground_handle():
     return user32, hwnd, name
 
 
-def zoom_out_ctrl_minus(hold_seconds=4.0):
+def zoom_out_ctrl_minus(hold_seconds=3.0):
     """Send one uninterrupted Ctrl+- zoom-out hold to focused BlueStacks.
 
     Hold continuously for the calibrated 3-5s, rather than repeating

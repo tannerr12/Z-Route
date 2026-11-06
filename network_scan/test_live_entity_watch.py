@@ -12,8 +12,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from live_entity_watch import (candidate_key, decode_for_server, entity_key,
-                               iter_entities, match, nearby, process,
-                               read_csv, trail)
+                               inspect_candidates, iter_entities, match, nearby,
+                               process, read_csv, trail)
 
 
 def entity(x,y,group=1793928700943,code=3):
@@ -62,6 +62,36 @@ class EntityWatchTests(unittest.TestCase):
         self.assertEqual((objects[0]['x'],objects[0]['y']),(510,400))
         self.assertEqual(objects[0]['type_code'],3)
         self.assertEqual(len(fingerprint),64)
+
+    def test_candidate_inspection_shows_nested_fields(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        with tempfile.TemporaryDirectory() as td:
+            session=Path(td)
+            headers=('entity_key','server','x','y','type_code','type_label','classification',
+                     'subtype','candidate_group_id','candidate_group_ambiguous',
+                     'first_seen_utc','last_seen_utc','last_capture','sightings',
+                     'last_detail_scalars','last_detail_text')
+            with (session/'latest_entities.csv').open('w',newline='',encoding='utf-8') as out:
+                writer=csv.DictWriter(out,fieldnames=headers)
+                writer.writeheader()
+                writer.writerow(dict(entity_key='one',server=125,x=159,y=678,
+                    type_code=5,type_label='Unclassified type 5',
+                    classification='unknown',subtype=49,
+                    candidate_group_id='1234',candidate_group_ambiguous='false',
+                    first_seen_utc='2026-11-06T12:00:00+00:00',
+                    last_seen_utc='2026-11-06T12:01:00+00:00',
+                    last_capture='entity_00001.pcapng',sightings=3,
+                    last_detail_scalars='{"1":[49]}',
+                    last_detail_text='{}'))
+            args=SimpleNamespace(session=session,server=125,x=160,y=687,
+                                 radius=12,types=None,limit=30)
+            buffer=StringIO()
+            with redirect_stdout(buffer): inspect_candidates(args)
+            output=buffer.getvalue()
+            self.assertIn('type 5; subtype 49',output)
+            self.assertIn('raw candidate ID: 1234',output)
+            self.assertIn('{"1":[49]}',output)
 
     def test_shared_candidate_id_is_not_a_unique_entity_id(self):
         a,b=entity(492,409),entity(493,401)

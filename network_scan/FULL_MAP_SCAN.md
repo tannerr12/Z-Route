@@ -90,7 +90,7 @@ PowerShell and keep the same calibrated minimap zoom/ROI:
 $run = Get-Date -Format "yyyyMMdd_HHmmss"
 $previous = "network_scans/full_map/players.csv"
 $current = "network_scans/map_refresh/$run"
-python network_scan/full_map_scan.py run --execute --out $current --interface "Wi-Fi" --dumpcap "C:\Program Files\Wireshark\dumpcap.exe"
+python network_scan/full_map_scan.py run --execute --pattern spread --out $current --interface "Wi-Fi" --dumpcap "C:\Program Files\Wireshark\dumpcap.exe"
 python network_scan/scan_changes.py --before $previous --after "$current/players.csv"
 ~~~
 
@@ -107,6 +107,8 @@ This compares stable (server, player_id) across the two captures and
 reports moved coordinates, newly observed IDs, renames and alliances.
 Players not seen in a later sample are labeled **not_seen_in_after**,
 never "gone", because missing observations can reflect coverage/cache.
+
+Use `--pattern spiral` for the original best-early-discovery sequence or `--pattern spread` for a candidate geographically distributed early refresh. Other supported experimental routes are `snake` and `checkerboard`. A fresh `--out` folder is required for each independent scan; do not switch patterns inside an existing checkpoint.
 
 For repeated full sweeps, we have **not yet proved an optimal route**.
 The earlier 16-click spiral pilot yielded 1,109 IDs and was a good

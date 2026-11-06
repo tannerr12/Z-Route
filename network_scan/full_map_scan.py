@@ -50,11 +50,11 @@ def stages_arg(text):
     return values
 
 
-def route(roi, stages, inset, min_separation):
-    """Build center-first stages, omitting nearly identical minimap taps."""
+def route(roi, stages, inset, min_separation, pattern='spiral'):
+    """Build progressive stages with selected route, omitting repeated taps."""
     points = []
     for size in stages:
-        for p in ordered(targets(size, size, roi, inset), 'spiral'):
+        for p in ordered(targets(size, size, roi, inset), pattern):
             if any((p['x']-q['tap_x'])**2 + (p['y']-q['tap_y'])**2 <
                    min_separation**2 for q in points):
                 continue
@@ -126,8 +126,12 @@ def summary(record, players, route_points, goal):
 
 def build(args):
     args.out.mkdir(parents=True, exist_ok=True)
+    pattern=getattr(args,'pattern','spiral')
     cfg = dict(roi=args.roi, inset=args.inset, min_separation=args.min_separation)
-    all_points = route(args.roi, args.stages, args.inset, args.min_separation)
+    all_points = route(args.roi, args.stages, args.inset, args.min_separation, pattern)
+    # Preserve old spiral checkpoints (their route.json has no pattern key).
+    if pattern!='spiral':
+        cfg['pattern']=pattern
     plan_path = args.out / 'route.json'
     if plan_path.exists():
         prior = json.loads(plan_path.read_text(encoding='utf-8'))
@@ -234,7 +238,7 @@ def scan(args):
                    not in ('OK', 'OVERLAP', 'EMPTY'))]
     if args.max_clicks:
         pending = pending[:args.max_clicks]
-    print(f'Center-first route: {len(points)} distinct minimap clicks '
+    print(f'{getattr(args,"pattern","spiral")} route: {len(points)} distinct minimap clicks '
           f'({",".join(str(n)+"x"+str(n) for n in args.stages)}).')
     print(f'Existing: {len(players):,} unique bases, '
           f'{len(latest)} visited targets; {len(pending)} pending this run.')
@@ -349,6 +353,9 @@ def main():
                      help='BlueStacks screenshot pixel bounds: L,T,R,B')
     run.add_argument('--stages', type=stages_arg, default=[4, 7, 10],
                      help='Increasing grid sizes, e.g. 4,7,10 or 4,7,10,13')
+    run.add_argument('--pattern', choices=('spiral','spread','snake','checkerboard'),
+                     default='spiral',
+                     help='Within-stage visiting order; spiral is original default')
     run.add_argument('--inset', type=float, default=.07)
     run.add_argument('--min-separation', type=float, default=8,
                      help='Skip minimap clicks within this many pixels of past targets')

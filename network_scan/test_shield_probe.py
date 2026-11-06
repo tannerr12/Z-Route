@@ -12,9 +12,9 @@ from unittest.mock import patch
 from datetime import datetime,timezone
 
 from live_entity_watch import append_csv,STATUS_FIELDS
-from shield_probe import (MARK_FIELDS, assign_marks, compare_fields,
-                          detail_map, mark, read_csv, require_session,
-                          resolve_player)
+from shield_probe import (MARK_FIELDS, assign_marks, cohort_samples,
+                          compare_fields, detail_map, mark, read_csv,
+                          require_session, resolve_player)
 
 
 class ShieldCalibrationTests(unittest.TestCase):
@@ -27,6 +27,34 @@ class ShieldCalibrationTests(unittest.TestCase):
     def test_real_existing_session_is_accepted(self):
         with tempfile.TemporaryDirectory() as td:
             self.assertEqual(require_session(Path(td)),Path(td))
+
+    def test_cohort_fields_are_after_visual_marker_and_per_player(self):
+        marks=[
+            dict(server=125,player_id='100',state='shielded',
+                 marked_at_utc='2026-11-06T18:28:30+00:00',username='BlueBase'),
+            dict(server=125,player_id='101',state='unshielded',
+                 marked_at_utc='2026-11-06T18:28:30+00:00',username='NoDome')]
+        rows=[
+            dict(server=125,player_id='100',username='BlueBase',
+                 seen_at_utc='2026-11-06T18:28:29+00:00',status_9=''),
+            dict(server=125,player_id='100',username='BlueBase',
+                 seen_at_utc='2026-11-06T18:28:40+00:00',status_9='1'),
+            dict(server=125,player_id='101',username='NoDome',
+                 seen_at_utc='2026-11-06T18:28:40+00:00',status_9=''),
+            dict(server=125,player_id='102',username='Unmarked',
+                 seen_at_utc='2026-11-06T18:28:40+00:00',status_9='1')]
+        evidence=cohort_samples(marks,rows,125,60)
+        self.assertEqual(len(evidence),2)
+        self.assertEqual({e['state']:e['status_9'] for e in evidence},
+                         {'shielded':'1','unshielded':''})
+        self.assertTrue(all(e['observed_at_utc']>e['marked_at_utc'] for e in evidence))
+
+    def test_cohort_marks_without_post_marker_sighting_not_used(self):
+        marks=[dict(server=125,player_id='100',state='shielded',
+                    marked_at_utc='2026-11-06T18:28:30+00:00')]
+        rows=[dict(server=125,player_id='100',seen_at_utc='2026-11-06T18:28:20+00:00',
+                   status_9='1')]
+        self.assertEqual(cohort_samples(marks,rows,125,60),[])
 
     def test_all_detail_fields_preserved_without_guessing_flag_names(self):
         detail=[(1,0,1234),(2,0,27),(4,2,b'TestPlayer'),

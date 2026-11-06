@@ -42,7 +42,8 @@ class WorldPipelineTests(unittest.TestCase):
         cfg={}
         args=SimpleNamespace(roi=self.roi,max_startup_actions=12,max_zoom_actions=5)
         with tempfile.TemporaryDirectory() as td:
-            with (patch.object(p,'read_screen',return_value=self.image),
+            with (patch('data_miner.startup.popup_visible',return_value=False),
+                  patch.object(p,'read_screen',return_value=self.image),
                   patch.object(p,'save_screen'),
                   patch.object(p,'save_status') as status,
                   patch.object(p,'vision_world',return_value=(True,True,{})) as vision,
@@ -56,12 +57,39 @@ class WorldPipelineTests(unittest.TestCase):
                 zoom_loc.assert_not_called()
                 self.assertTrue(any(c.args[1]=='radar_verified' for c in status.call_args_list))
 
+    def test_login_warning_uses_existing_player_activity_startup_before_world_ai(self):
+        cfg={}
+        args=SimpleNamespace(roi=self.roi,max_startup_actions=12,
+                             max_zoom_actions=5,map_tap=[930,1850])
+        events=[]
+        with tempfile.TemporaryDirectory() as td:
+            with (patch('data_miner.startup.popup_visible',return_value=True),
+                  patch('data_miner.startup.run_ai_startup',
+                        side_effect=lambda *a,**kw:events.append('startup') or 4) as startup,
+                  patch('data_miner.vision.classify_screen',return_value=('city',.99)),
+                  patch.object(p,'read_screen',return_value=self.image),
+                  patch.object(p,'save_screen'),
+                  patch.object(p,'save_status') as status,
+                  patch.object(p,'one_tap'),
+                  patch.object(p,'vision_world',
+                        side_effect=lambda *a,**kw:events.append('vision') or (True,True,{})) as vision,
+                  patch.object(p,'verify_world_after_map',return_value=(self.image,True)),
+                  patch('time.sleep')):
+                p.prepare_radar(cfg,args,Path(td))
+                self.assertEqual(events,['startup','vision'],
+                                 'Login handler must run before any world-map AI')
+                startup.assert_called_once_with(cfg,max_actions=12)
+                self.assertEqual(vision.call_count,1)
+                self.assertTrue(any(c.args[1]=='login_warning_detected'
+                                    for c in status.call_args_list))
+
     def test_unverified_radar_causes_safe_stop_before_scanner(self):
         cfg={}
         args=SimpleNamespace(roi=self.roi,max_startup_actions=12,max_zoom_actions=1,
                              zoom_tap=None,zoom_keyevent=None)
         with tempfile.TemporaryDirectory() as td:
-            with (patch.object(p,'read_screen',return_value=self.image),
+            with (patch('data_miner.startup.popup_visible',return_value=False),
+                  patch.object(p,'read_screen',return_value=self.image),
                   patch.object(p,'save_screen'),
                   patch.object(p,'save_status'),
                   patch.object(p,'vision_world',return_value=(True,False,{})),

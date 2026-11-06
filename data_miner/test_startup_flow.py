@@ -52,7 +52,7 @@ class StartupFlowTests(unittest.TestCase):
               patch.object(startup,'city_label_visible',return_value=False),
               patch('data_miner.vision.classify_screen',
                     return_value=('other',.99)) as expensive,
-              patch.object(startup.time,'monotonic',return_value=999999),
+              patch.object(startup.time,'monotonic',side_effect=[1000.0,1013.0]),
               patch.object(startup.time,'sleep')):
             with self.assertRaisesRegex(RuntimeError,'Expected city'):
                 startup.run_ai_startup({})

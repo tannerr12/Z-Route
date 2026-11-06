@@ -51,7 +51,12 @@ are NOT the exact time of a rename.
 
 **Privacy:** publishing `data/world-players.csv` to GitHub Pages can
 make this full alias history public, along with player coordinates.
-Review the CSV before committing it. The persistent SQLite file remains
+Review the CSV before committing it. If you want historical names to
+remain **private** while publishing coordinates, use
+`python network_scan/export_world_map.py --no-name-history`; the SQLite
+database still retains the private history.
+
+The persistent SQLite file remains
 local under git-ignored `network_scans/`. The 25-row starter
 sample has no collected rename history; the alias filter becomes meaningful
 after you run the full local export and publish the refreshed CSV.

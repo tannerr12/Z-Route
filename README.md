@@ -140,6 +140,12 @@ Membership CSV columns: `timestamp,player,guild,event,scanned_at`, with event va
 
 The separate [network_scan/](network_scan/) prototype analyzes Z-Route's naturally observed WorldMapViewS2C network responses to recover game coordinates, player IDs, names, alliances, and levels without OCR. Its read-only decoder was validated on five captures; the guided/ADB navigation runner still needs in-game calibration. It provides a 3×3 coverage pilot, serpentine coordinate plans, local PCAPNG capture and resumable checkpoint CSVs. It does not send/replay game-server requests or automatically publish captured player data. See [network_scan/README.md](network_scan/README.md) before using it.
 
+## Minimap click-pattern benchmark
+
+The experimental [minimap benchmark](network_scan/PATTERN_BENCHMARK.md) uses a native BlueStacks screenshot to calibrate the clickable minimap region, generates snake/checkerboard/spiral/spread-out routes, and optionally taps a bounded grid through ADB while passively capturing map responses. It records unique player IDs for each clicked location, then replays the same observed sets in multiple orders so caching does not unfairly penalize later trials. An offline greedy-oracle result gives a hindsight upper bound on early discovery.
+
+Start with a **preview**, test **one actual click** only after confirming the ROI, then collect a small 4x4 pilot and run the offline comparison. The program is separate from both scanner.py and live_watch.py. No game-server requests are generated. Keep raw PCAPNG files and player output private.
+
 ## Live network map base counter (experimental)
 
 To see **cumulative unique player-base counts while manually jumping** around Z-Route, use the standalone read-only watcher. It captures the BlueStacks TCP traffic on port 9929 via Wireshark's `dumpcap`, rotates captures every 8 seconds, decodes received `WorldMapViewS2C` messages, and deduplicates by server + player ID.

@@ -135,7 +135,7 @@ class WorldPipelineTests(unittest.TestCase):
 
     def test_zoom_only_skips_startup_and_stops_on_no_change(self):
         cfg={}
-        args=SimpleNamespace(zoom_steps=3,zoom_delay=.6)
+        args=SimpleNamespace(zoom_steps=3,zoom_delay=.6,zoom_hold=4.0)
         with tempfile.TemporaryDirectory() as td:
             with (patch('data_miner.startup.popup_visible',return_value=False),
                   patch('bluestacks_zoom.zoom_out_ctrl_minus') as zoom,
@@ -145,13 +145,33 @@ class WorldPipelineTests(unittest.TestCase):
                   patch.object(p,'save_status') as status,
                   patch('time.sleep')):
                 p.zoom_probe(cfg,args,Path(td))
-                zoom.assert_called_once()
+                zoom.assert_called_once_with(4.0)
                 self.assertTrue(any(c.args[1]=='zoom_probe_complete'
                                     for c in status.call_args_list))
 
+    def test_zoom_hold_is_bounded_and_does_not_need_windows_for_validation(self):
+        from bluestacks_zoom import zoom_out_ctrl_minus
+        for hold in (0.16,2.0,5.1,True,'4'):
+            with self.subTest(hold=hold):
+                with self.assertRaises(ValueError):
+                    zoom_out_ctrl_minus(hold)
+
+    def test_zoom_probe_passes_configured_five_second_hold(self):
+        args=SimpleNamespace(zoom_steps=1,zoom_delay=.6,zoom_hold=5.0)
+        with tempfile.TemporaryDirectory() as td:
+            with (patch('data_miner.startup.popup_visible',return_value=False),
+                  patch('bluestacks_zoom.zoom_out_ctrl_minus') as zoom,
+                  patch.object(p,'read_screen',side_effect=[
+                      self.image,self.map_image]),
+                  patch.object(p,'save_screen'),
+                  patch.object(p,'save_status'),
+                  patch('time.sleep')):
+                p.zoom_probe({},args,Path(td))
+                zoom.assert_called_once_with(5.0)
+
     def test_zoom_only_does_not_send_key_on_login_popup(self):
         cfg={}
-        args=SimpleNamespace(zoom_steps=1,zoom_delay=.6)
+        args=SimpleNamespace(zoom_steps=1,zoom_delay=.6,zoom_hold=4.0)
         with tempfile.TemporaryDirectory() as td:
             with (patch('data_miner.startup.popup_visible',return_value=True),
                   patch('bluestacks_zoom.zoom_out_ctrl_minus') as zoom,

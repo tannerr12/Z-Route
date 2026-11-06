@@ -360,6 +360,8 @@ def cli():
         a.add_argument('--execute',action='store_true')
         a.add_argument('--prepare-only',action='store_true',
                        help='Stop immediately after radar verified; do not network-scan')
+        a.add_argument('--startup-only',action='store_true',
+                       help='Reuse Player Activity login confirmation and ad closing only; skip map and scan')
         a.add_argument('--pattern',choices=('spread','spiral','snake','checkerboard'),default='spread')
         a.add_argument('--stages',type=str,default='4,7,10')
         a.add_argument('--max-clicks',type=int,default=0,
@@ -414,6 +416,15 @@ def cli():
             return
         save_status(folder,'started',server=args.server,
                     history_db=str(ROOT/'player_history.sqlite3'))
+        if args.startup_only:
+            from data_miner.startup import run_ai_startup
+            save_status(folder,'reusing_player_activity_startup')
+            actions=run_ai_startup(cfg,max_actions=args.max_startup_actions)
+            save_status(folder,'startup_complete',startup_actions=actions)
+            save_screen(cfg,folder,'city_after_startup',read_screen(cfg))
+            print('STARTUP COMPLETE: city verified by Player Activity handler. '
+                  'No map or network scan attempted.',flush=True)
+            return
         prepare_radar(cfg,args,folder)
         if args.prepare_only:
             save_status(folder,'prepared_no_scan')

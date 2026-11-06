@@ -31,6 +31,31 @@ In GitHub **Settings → Pages**, select **Deploy from a branch**, then select t
 
 For a local preview, start python -m http.server 8000 at the repository root and open http://localhost:8000 in a browser.
 
+## Username history and rename search
+
+**Names can change; player IDs cannot be substituted with usernames as database keys.**
+The world-map CSV exporter on dev joins the private append-only
+`network_scans/player_history.sqlite3` database by stable
+`(server, player_id)`. It publishes these optional fields alongside each player:
+
+- `known_aliases_json`: every username previously observed for this player ID
+- `observed_name_changes`: count of observed transitions (including changes back to an older name)
+- `name_history_json`: the old and new names and when each transition was first observed
+- `name_observed_at_utc`: most recent name observation, which can be newer than the roster's saved coordinates
+
+The map's search input matches **current and past usernames**. Select
+**Renamed only** to highlight people with at least one observed change,
+then click a player to view their known aliases and chronological
+old-name → new-name observations. The approximate observed timestamps
+are NOT the exact time of a rename.
+
+**Privacy:** publishing `data/world-players.csv` to GitHub Pages can
+make this full alias history public, along with player coordinates.
+Review the CSV before committing it. The persistent SQLite file remains
+local under git-ignored `network_scans/`. The 25-row starter
+sample has no collected rename history; the alias filter becomes meaningful
+after you run the full local export and publish the refreshed CSV.
+
 ## Level and shield filters
 
 The two-handle **Base level** control reads the exact network roster's base_level column and works alongside username and guild filters. The range starts at Lv 1 to at least Lv 30 (or the highest observed level). Players with missing levels stay visible with the full range, but are hidden if you narrow either bound. **Clear filters** restores the full range.

@@ -195,6 +195,7 @@ def prepare_radar(cfg,args,folder):
     from data_miner.vision import classify_screen
     image=read_screen(cfg)
     save_screen(cfg,folder,'initial',image)
+    print('[pipeline] Checking login warning locally before any Ollama call...',flush=True)
     if popup_visible(image):
         save_status(folder,'login_warning_detected')
         print('Login warning visible: going directly to the existing '

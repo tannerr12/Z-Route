@@ -140,7 +140,7 @@ class ShieldCalibrationTests(unittest.TestCase):
             self.assertEqual(who['player_id'],'1234')
             self.assertEqual(who['username'],'NewName')
             args=SimpleNamespace(session=path,state='shielded',
-                server=125,player_id=None,x=500,y=400,evidence=None,note='')
+                server=125,player_id=None,username=None,x=500,y=400,evidence=None,note='')
             with patch('shield_probe.utc_now',return_value='2026-11-06T12:02:00+00:00'):
                 mark(args)
             result=read_csv(path/'shield_marks.csv')
@@ -148,6 +148,45 @@ class ShieldCalibrationTests(unittest.TestCase):
             self.assertEqual(result[0]['state'],'shielded')
             self.assertEqual(result[0]['player_id'],'1234')
             self.assertEqual(result[0]['x'],'500')
+
+    def test_find_shield_candidate_by_exact_username_without_coordinates(self):
+        with tempfile.TemporaryDirectory() as td:
+            path=Path(td)
+            append_csv(path/'player_status_sightings.csv',STATUS_FIELDS,[
+                dict(seen_at_utc='2026-11-06T18:30:00+00:00',
+                     server=125,player_id=111,username='BigDaddyKane',
+                     x=300,y=420,status_9=1),
+                dict(seen_at_utc='2026-11-06T18:30:05+00:00',
+                     server=125,player_id=222,username='Unrelated',
+                     x=301,y=420,status_9='')])
+            matched=resolve_player(path,125,username='bigdaddykane')
+            self.assertEqual(str(matched['player_id']),'111')
+            self.assertEqual((str(matched['x']),str(matched['y'])),('300','420'))
+            args=SimpleNamespace(session=path,server=125,player_id=None,
+                                 username='BigDaddyKane',x=None,y=None,
+                                 evidence=None,note='',state='shielded')
+            with patch('shield_probe.utc_now',return_value='2026-11-06T18:31:00+00:00'):
+                mark(args)
+            saved=read_csv(path/'shield_marks.csv')
+            self.assertEqual(saved[0]['player_id'],'111')
+            self.assertEqual(saved[0]['state'],'shielded')
+
+    def test_same_username_for_multiple_player_ids_refused(self):
+        with tempfile.TemporaryDirectory() as td:
+            path=Path(td)
+            append_csv(path/'player_status_sightings.csv',STATUS_FIELDS,[
+                dict(server=125,player_id=111,username='BigDaddyKane',x=300,y=420),
+                dict(server=125,player_id=222,username='BigDaddyKane',x=301,y=420)])
+            with self.assertRaisesRegex(ValueError,'Multiple player IDs'):
+                resolve_player(path,125,username='BigDaddyKane')
+
+    def test_unknown_username_requires_fresh_capture(self):
+        with tempfile.TemporaryDirectory() as td:
+            path=Path(td)
+            append_csv(path/'player_status_sightings.csv',STATUS_FIELDS,[
+                dict(server=125,player_id=111,username='Other',x=300,y=420)])
+            with self.assertRaisesRegex(ValueError,'No saved player-base observation matching username'):
+                resolve_player(path,125,username='BigDaddyKane')
 
     def test_multiple_player_ids_at_same_coordinate_refused(self):
         with tempfile.TemporaryDirectory() as td:

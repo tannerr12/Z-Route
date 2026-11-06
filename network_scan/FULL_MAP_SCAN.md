@@ -39,6 +39,31 @@ It will not zoom or scan. Inspect the screenshot to confirm that the
 world map opened correctly. It also supports
 `--startup-only` for a login/ad-only trial.
 
+**Already on the world map? Test zoom without repeating login/ads:**
+
+~~~powershell
+git pull origin dev
+python network_scan/world_scan_pipeline.py run --execute --zoom-only --zoom-steps 1
+~~~
+
+The **zoom-only** mode focuses the single visible BlueStacks App Player
+window and sends **Ctrl + -** once through the Windows keyboard API,
+then saves `zoom_before.png` and `zoom_after_1.png`, reports visual
+change and stops. It makes no network captures and never starts Ollama.
+To try multiple attempts after verifying the first, use
+`--zoom-steps 3` (maximum 4 per probe). It pauses if no visible change
+occurs. This only works if the BlueStacks Zoom game control accepts
+Ctrl+-; check its controls editor/Override setting if there is no zoom.
+Zoom-only does **not** prove that the radar is visible, so the full
+network scanner still requires local radar verification.
+
+**Bug fix:** the world map can contain a gold decorative X or screen
+text that resembles the city. The old code could falsely reject a
+successful Leave City transition with "city/popup still visible".
+Map-only no longer runs the CITY promotion/label checks on a world-map
+screenshot; it checks the login dialog and verifies a meaningful scene
+transition instead. Only a calibrated radar matcher authorizes a scan.
+
 **Radar is a separate calibration.** We have an existing calibrated
 minimap click ROI `800,25,1060,270` on the 1080x1920
 emulator screenshot, but no stable visual reference for detecting the
@@ -49,19 +74,22 @@ change with the terrain or player dots. Store that crop locally, outside
 git, e.g. `network_scans/radar_icon.png`, and pass it with
 `--radar-template`. The zoom-out control also needs one
 verified calibration via `--zoom-tap X Y` or
-`--zoom-keyevent CODE`. No scan begins unless the radar
-template matches twice.
+`--zoom-keyevent CODE`. By default, the full pipeline now supports
+`--zoom-method bluestacks`, using the same Ctrl+- action as the
+zoom-only probe. If the shortcut fails or is remapped, select
+`--zoom-method tap` or `--zoom-method keyevent` instead.
+No scan begins unless the radar template matches twice.
 
 After those calibrations, try radar navigation without scanning:
 
 ~~~powershell
-python network_scan/world_scan_pipeline.py run --execute --prepare-only --radar-template network_scans/radar_icon.png --zoom-tap X Y
+python network_scan/world_scan_pipeline.py run --execute --prepare-only --radar-template network_scans/radar_icon.png
 ~~~
 
 Then perform the small first capture:
 
 ~~~powershell
-python network_scan/world_scan_pipeline.py run --execute --max-clicks 4 --radar-template network_scans/radar_icon.png --zoom-tap X Y
+python network_scan/world_scan_pipeline.py run --execute --max-clicks 4 --radar-template network_scans/radar_icon.png
 ~~~
 
 The scanner preserves player IDs and name observations in the shared,

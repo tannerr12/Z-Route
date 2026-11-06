@@ -119,16 +119,22 @@ def one_tap(cfg,image,point,what):
 
 # Calibrated from the player's 604x1080 home-city screenshot:
 # center of the bottom-right "Leave City" button, in IMAGE fractions.
-LEAVE_CITY_FRACTION=(0.907,0.968)
+LEAVE_CITY_FRACTION=(0.907,0.954)
 
 
 def leave_city_point(image, override=None):
-    """Fixed home-city control; all positions are emulator screenshot pixels."""
+    """Fixed lower-right city button; reject any top/right-side ad close tap."""
     h,w=image.shape[:2]
-    if override is not None:
-        return coordinate(override,image)
-    return coordinate((round(w*LEAVE_CITY_FRACTION[0]),
-                       round(h*LEAVE_CITY_FRACTION[1])),image)
+    point=coordinate(override if override is not None else
+                     (round(w*LEAVE_CITY_FRACTION[0]),
+                      round(h*LEAVE_CITY_FRACTION[1])),image)
+    x,y=point
+    if not (w*.72<=x<w and h*.85<=y<h):
+        raise ValueError(
+            f'Leave City target {point} is NOT in the bottom-right '
+            f'of the {w}x{h} emulator screenshot. '
+            'Refusing possible ad-close or stale map-button coordinate.')
+    return point
 
 
 def radar_template_match(image,template_path,roi=MINIMAP_ROI,threshold=.86):
@@ -191,8 +197,17 @@ def prepare_radar(cfg,args,folder):
         raise RuntimeError('Login/promo still visible; refusing to click Leave City')
     # The startup routine already requires a city confirmation; the tap itself
     # is fixed, avoiding another OCR pass or full-scene model inference.
-    point=leave_city_point(image,args.map_tap or
-                           (cfg.get('ui',{}).get('world_map',{}) or {}).get('map_button_tap'))
+    # Never use a possibly stale config.json map_button_tap: earlier
+    # calibration may refer to the top-right UI, not Leave City.
+    # Only an explicitly provided --map-tap may override this fixed button.
+    point=leave_city_point(image,args.map_tap)
+    h,w=image.shape[:2]
+    print(f'[pipeline] Leave City: emulator screenshot {w}x{h}; '
+          f'fixed bottom-right tap {point} '
+          f'({point[0]/w:.1%} across, {point[1]/h:.1%} down). '
+          'This is NOT the ad X in the top-right.',flush=True)
+    save_status(folder,'leave_city_target_verified',
+                map_tap=list(point),emulator_size=[w,h])
     one_tap(cfg,image,point,'Leave City (bottom-right)')
     save_status(folder,'leave_city_tapped',map_tap=list(point))
     time.sleep(1.1)

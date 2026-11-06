@@ -39,20 +39,26 @@ It will not zoom or scan. Inspect the screenshot to confirm that the
 world map opened correctly. It also supports
 `--startup-only` for a login/ad-only trial.
 
+**Current calibrated zoom: two continuous Ctrl + - holds of 3 seconds each.**
+Separate holds are intentional; they reproduce the player's working BlueStacks
+sequence. The number of calls is controlled by `--zoom-steps`; e.g.,
+`--zoom-steps 4` causes four calls, not two. The default is now **2**.
+Each held key may itself cause multiple zoom increments inside BlueStacks.
+
 **Already on the world map? Test zoom without repeating login/ads:**
 
 ~~~powershell
 git pull origin dev
-python network_scan/world_scan_pipeline.py run --execute --zoom-only --zoom-steps 1
+python network_scan/world_scan_pipeline.py run --execute --zoom-only --zoom-steps 2 --zoom-hold 3
 ~~~
 
 The **zoom-only** mode focuses the single visible BlueStacks App Player
-window and sends **one continuous Ctrl + - hold for 4 seconds** through
-the Windows keyboard API, then releases both keys and saves
-`zoom_before.png` and `zoom_after_1.png`. The hold is adjustable to
+window and sends **two continuous Ctrl + - holds of 3 seconds each** through
+the Windows keyboard API, releasing both keys between holds, then saves
+`zoom_before.png` and `zoom_after_1.png`. Each hold is adjustable to
 3–5 seconds with `--zoom-hold 3` or `--zoom-hold 5`. The user confirmed
 that repeating three individual zoom presses can reset the zoom, so
-**prefer a single uninterrupted hold with `--zoom-steps 1`**:
+**prefer the two verified holds with `--zoom-steps 2`**:
 
 ~~~powershell
 python network_scan/world_scan_pipeline.py run --execute --zoom-only --zoom-steps 1 --zoom-hold 4
@@ -86,7 +92,7 @@ git, e.g. `network_scans/radar_icon.png`, and pass it with
 verified calibration via `--zoom-tap X Y` or
 `--zoom-keyevent CODE`. By default, the full pipeline now supports
 `--zoom-method bluestacks`, using the same held Ctrl+- action as
-the zoom-only probe (default 4 seconds, adjustable by `--zoom-hold`). If the shortcut fails or is remapped, select
+the zoom-only probe (default 3 seconds per hold, adjustable by `--zoom-hold`). If the shortcut fails or is remapped, select
 `--zoom-method tap` or `--zoom-method keyevent` instead.
 No scan begins unless the radar template matches twice.
 

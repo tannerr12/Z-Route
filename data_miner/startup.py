@@ -138,8 +138,37 @@ def wait_for_next_overlay(cfg, timeout=3.0, interval=0.3):
     return screenshot(cfg)
 
 
+def city_label_visible(image):
+    """Fast local check for the HOME CITY's bottom-right Leave City button.
+
+    This is much cheaper than a full-resolution Ollama vision request and
+    distinguishes the unobstructed home city from full-screen sales offers.
+    A failed OCR check is inconclusive (never grounds a tap).
+    """
+    height, width = image.shape[:2]
+    region = image[int(height * .82):height, int(width * .70):width]
+    if region.size == 0:
+        return False
+    gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
+    gray = cv2.resize(gray, None, fx=2, fy=2,
+                      interpolation=cv2.INTER_LINEAR)
+    try:
+        raw = pytesseract.image_to_string(
+            gray, config="--psm 11", timeout=5).casefold()
+    except (RuntimeError, OSError) as exc:
+        print(f"Local Leave City OCR unavailable: {exc}; will use safe fallback",
+              flush=True)
+        return False
+    words = " ".join(raw.split())
+    return "leave city" in words
+
+
 def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75):
-    """Handle sequential promotions, tolerating short transition/loading states."""
+    """Reuse Player Activity's local login + popup flow; only ask AI as fallback.
+
+    Crucially, don't call Ollama after an arbitrary number of promotions
+    while another clearly identified promotion is still on-screen.
+    """
     from data_miner.vision import classify_screen
 
     actions = 0
@@ -156,22 +185,16 @@ def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75):
             time.sleep(0.8)
             continue
 
-        # Once ads have been closed, check whether we are back in the city
-        # before interpreting decorative X-shaped graphics as close buttons.
-        if promotions_closed >= 3:
-            print("Checking for city after promotions...", flush=True)
-            screen, confidence = classify_screen(cfg, image)
-            print(f"Screen: {screen}, confidence: {confidence:.2f}", flush=True)
-            if screen == "city" and confidence >= confidence_threshold:
-                print("City ready; handing off to Alliance navigation", flush=True)
-                return actions
-            if screen == "unknown" and time.monotonic() < loading_deadline:
-                print("Screen still loading; waiting for next overlay...", flush=True)
-                time.sleep(0.8)
-                continue
-            if screen != "promotion" or confidence < confidence_threshold:
-                raise RuntimeError("Unable to verify city or promotion; no tap performed")
+        # As soon as a city button is visible, hand off without loading a
+        # costly multimodal model. This also protects decorative X icons
+        # from ever being mistaken for the next promotion's close button.
+        if promotions_closed >= 3 and city_label_visible(image):
+            print("Leave City button confirmed by local OCR; city ready",
+                  flush=True)
+            return actions
 
+        # Process the actual visible promo *before* using AI. There may be
+        # four, five, or more sequential offers; never assume exactly three.
         point = promo_close_point(image)
         if point is not None:
             if last_tap_image is not None:
@@ -192,20 +215,45 @@ def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75):
             wait_for_next_overlay(cfg)
             continue
 
+        # No promotion close button is visible. Check the city locally once
+        # before allowing a heavier AI-based fallback.
+        if city_label_visible(image):
+            print("Leave City button confirmed by local OCR; city ready",
+                  flush=True)
+            return actions
+
         if time.monotonic() < loading_deadline:
-            print("No overlay yet; allowing transition to finish...", flush=True)
+            print("No overlay yet; allowing transition to finish...",
+                  flush=True)
             time.sleep(0.8)
             continue
 
-        print("Checking stable screen with Ollama...", flush=True)
-        screen, confidence = classify_screen(cfg, image)
+        print("No verified promotion or Leave City label; using reduced-size "
+              "Ollama classification fallback...", flush=True)
+        height, width = image.shape[:2]
+        target_height = min(height, 896)
+        reduced = (cv2.resize(
+            image, (max(1, round(width * target_height / height)),
+                    target_height), interpolation=cv2.INTER_AREA)
+                   if height > target_height else image)
+        screen, confidence = classify_screen(cfg, reduced)
         print(f"Screen: {screen}, confidence: {confidence:.2f}", flush=True)
         if screen == "city" and confidence >= confidence_threshold:
-            print("City ready; handing off to Alliance navigation", flush=True)
+            print("City ready; handing off to navigation", flush=True)
             return actions
         if screen == "promotion" and confidence >= confidence_threshold:
-            raise RuntimeError("Promotion detected but X not verified; no tap performed")
-        raise RuntimeError("Startup screen not recognized safely; no tap performed")
+            raise RuntimeError(
+                "Promotion detected but close button not verified; no tap performed"
+            )
+        if screen == "unknown":
+            raise RuntimeError(
+                "Unrecognized screen after local startup checks; "
+                "saved state intact, no further taps performed"
+            )
+        raise RuntimeError(
+            f"Expected city or verified promotion, got {screen} "
+            f"({confidence:.2f}); no tap performed"
+        )
     raise TimeoutError("Startup exceeded max_actions; stopped safely")
 
 

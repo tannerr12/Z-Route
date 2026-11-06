@@ -7,8 +7,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from datetime import datetime,timezone
 
-from entity_event_audit import (audit_rows,compare_sightings,cutoff_from_marks,
-                                mark,message_stats,parse_time,report)
+from entity_event_audit import (compare_sightings,cutoff_from_marks,
+                                mark,message_stats,parse_time)
 from live_entity_watch import append_csv,EVENT_FIELDS,SEG_FIELDS
 
 

@@ -80,12 +80,14 @@ def atomic_json(path, data):
 
 
 def write_outputs(folder, record, players):
-    atomic_json(folder / 'checkpoint.json', record)
+    # Persist player IDs before marking a target complete, so an interrupted
+    # write cannot checkpoint a view while silently losing its discoveries.
+    save_csv(folder / 'players.csv', BASE_FIELDS,
+             sorted(players.values(), key=lambda p: player_key(p) or ''))
     latest = {p['target_id']: p for p in record['entries']}
     ordered_rows = sorted(latest.values(), key=lambda r: r['number'])
     save_csv(folder / 'steps.csv', STEPS_FIELDS, ordered_rows)
-    save_csv(folder / 'players.csv', BASE_FIELDS,
-             sorted(players.values(), key=lambda p: player_key(p) or ''))
+    atomic_json(folder / 'checkpoint.json', record)
 
 
 def load_players(path):

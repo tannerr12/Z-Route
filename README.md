@@ -140,6 +140,33 @@ Membership CSV columns: `timestamp,player,guild,event,scanned_at`, with event va
 
 The separate [network_scan/](network_scan/) prototype analyzes Z-Route's naturally observed WorldMapViewS2C network responses to recover game coordinates, player IDs, names, alliances, and levels without OCR. Its read-only decoder was validated on five captures; the guided/ADB navigation runner still needs in-game calibration. It provides a 3×3 coverage pilot, serpentine coordinate plans, local PCAPNG capture and resumable checkpoint CSVs. It does not send/replay game-server requests or automatically publish captured player data. See [network_scan/README.md](network_scan/README.md) before using it.
 
+## Live Walker and moving-world-object investigation
+
+The [passive live entity watcher](network_scan/LIVE_ENTITY_WATCH.md)
+captures normal BlueStacks network traffic in short 5-second PCAPNG windows
+while you **manually navigate the map**. It records latest-seen X/Y,
+numeric world-object type/subtype, raw candidate IDs and repeated
+sightings, including the supported parts of incremental map updates.
+
+In one PowerShell window:
+
+~~~powershell
+python network_scan/live_entity_watch.py watch --interface "Wi-Fi" --dumpcap "C:\Program Files\Wireshark\dumpcap.exe" --segment-seconds 5 --server 125
+~~~
+
+In another, inspect raw objects near an in-game Walker:
+
+~~~powershell
+python network_scan/live_entity_watch.py near --server 125 --x 500 --y 450 --radius 8 --within-minutes 3
+~~~
+
+After checking a specific in-game location and screenshot, use the
+match command to save that one **visually confirmed** type/subtype. The
+candidate object ID is not always unique: a single ID can appear at
+multiple coordinates in one map response, so these sightings are
+**not** guaranteed paths for moving Walkers. Shield interpretation
+remains unverified. Data stays under Git-ignored network_scans/.
+
 ## Passive world-map entity inventory
 
 The experimental [world-map entity explorer](network_scan/MAP_ENTITY_DISCOVERY.md)

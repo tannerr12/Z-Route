@@ -214,14 +214,18 @@ def prepare_radar(cfg,args,folder):
     time.sleep(1.1)
     after=read_screen(cfg)
     save_screen(cfg,folder,'after_leave_city',after)
-    if popup_visible(after) or promo_close_visible(after) or city_label_visible(after):
-        raise RuntimeError('World map not confirmed: city/popup still visible after Leave City')
+    # A world map can contain gold X decorations and text OCR that falsely
+    # resembles a promo or Leave City. Those generic detectors are intended
+    # for city STARTUP only, not for deciding if a map transition succeeded.
+    if popup_visible(after):
+        raise RuntimeError('Login warning visible after Leave City; map not ready')
     if image.shape!=after.shape:
         raise RuntimeError('Emulator resolution changed after Leave City; cannot verify')
     # This only validates that the screen materially changed. It is not
     # sufficient to assert the radar is visible or scanning is safe.
     delta=float(sum(cv2.mean(cv2.absdiff(
         cv2.resize(image,(120,180)),cv2.resize(after,(120,180))))[:3])/3)
+    print(f'[pipeline] City-to-world screen change: {delta:.2f}',flush=True)
     if delta<6:
         raise RuntimeError('Leave City tap did not visibly change the screen')
     save_status(folder,'world_screen_changed',screen_change=round(delta,2))
@@ -273,6 +277,52 @@ def prepare_radar(cfg,args,folder):
             raise RuntimeError('Unexpected popup during zoom; stopping safely')
     save_screen(cfg,folder,'radar_not_verified',image)
     raise RuntimeError('Radar not verified within bounded zoom actions; scan not started')
+
+
+def zoom_probe(cfg,args,folder):
+    """One or a few controlled zoom attempts on an ALREADY OPEN world map.
+
+    Does not run startup, touch the city navigation, detect the radar, or scan.
+    The caller explicitly confirms the world map is open by using --zoom-only.
+    """
+    import cv2
+    from bluestacks_zoom import zoom_out_ctrl_minus
+    from data_miner.startup import popup_visible
+    before=read_screen(cfg)
+    save_screen(cfg,folder,'zoom_before',before)
+    if popup_visible(before):
+        raise RuntimeError('Login warning is visible; zoom not sent')
+    save_status(folder,'zoom_probe_started',zoom_steps=args.zoom_steps,
+                method='bluestacks_ctrl_minus')
+    for step in range(1,args.zoom_steps+1):
+        print(f'[zoom] Sending BlueStacks zoom-out {step}/{args.zoom_steps} '
+              '(Ctrl+-), no Ollama or scan',flush=True)
+        zoom_out_ctrl_minus()
+        time.sleep(max(0.65,args.zoom_delay))
+        after=read_screen(cfg)
+        save_screen(cfg,folder,f'zoom_after_{step}',after)
+        if before.shape!=after.shape:
+            raise RuntimeError('Screen resolution changed during zoom; inspect screenshots')
+        h,w=before.shape[:2]
+        # Compare the center of the game map, not static sidebars or moving timers.
+        y0,y1=round(h*.22),round(h*.78)
+        x0,x1=round(w*.18),round(w*.82)
+        first=cv2.resize(before[y0:y1,x0:x1],(180,180))
+        second=cv2.resize(after[y0:y1,x0:x1],(180,180))
+        diff=float(sum(cv2.mean(cv2.absdiff(first,second))[:3])/3)
+        print(f'[zoom] Center-map visual difference: {diff:.2f}',flush=True)
+        save_status(folder,'zoom_probe_step',zoom_step=step,
+                    visual_change=round(diff,2))
+        if diff<3:
+            print('[zoom] Little visible change; stopping zoom attempts. '
+                  'Check BlueStacks Game controls > Zoom mapping/Override.',
+                  flush=True)
+            break
+        before=after
+    save_status(folder,'zoom_probe_complete')
+    print('ZOOM PROBE COMPLETE: check zoom_before.png and zoom_after_*.png. '
+          'Radar readiness has NOT been verified, and no scan started.',
+          flush=True)
 
 
 def baseline(out,chosen=None):
@@ -352,6 +402,10 @@ def cli():
         a.add_argument('--execute',action='store_true')
         a.add_argument('--map-only',action='store_true',
                        help='Stop after fixed Leave City tap; no zoom or network scan')
+        a.add_argument('--zoom-only',action='store_true',
+                       help='Assume world map is already open; test BlueStacks zoom out and save screenshots, no scan')
+        a.add_argument('--zoom-steps',type=int,default=1,
+                       help='Zoom attempts in zoom-only probe (1..4, default 1)')
         a.add_argument('--radar-template',type=Path,
                        help='Local cropped radar UI reference PNG for OpenCV matching')
         a.add_argument('--radar-threshold',type=float,default=.86)
@@ -378,6 +432,8 @@ def cli():
     if (not args.stages or args.stages!=sorted(set(args.stages)) or
         any(not 2<=v<=25 for v in args.stages)):
         p.error('Stages must be strictly increasing grid sizes between 2 and 25')
+    if not 1<=args.zoom_steps<=4:
+        p.error('--zoom-steps must be between 1 and 4')
     if args.max_zoom_actions<1 or args.max_zoom_actions>30 or not .2<=args.zoom_delay<=4:
         p.error('Zoom limits invalid')
     if not .6<=args.radar_threshold<=.99:
@@ -418,6 +474,9 @@ def cli():
             return
         save_status(folder,'started',server=args.server,
                     history_db=str(ROOT/'player_history.sqlite3'))
+        if args.zoom_only:
+            zoom_probe(cfg,args,folder)
+            return
         if args.startup_only:
             from data_miner.startup import run_ai_startup
             save_status(folder,'reusing_player_activity_startup')

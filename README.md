@@ -140,6 +140,26 @@ Membership CSV columns: `timestamp,player,guild,event,scanned_at`, with event va
 
 The separate [network_scan/](network_scan/) prototype analyzes Z-Route's naturally observed WorldMapViewS2C network responses to recover game coordinates, player IDs, names, alliances, and levels without OCR. Its read-only decoder was validated on five captures; the guided/ADB navigation runner still needs in-game calibration. It provides a 3×3 coverage pilot, serpentine coordinate plans, local PCAPNG capture and resumable checkpoint CSVs. It does not send/replay game-server requests or automatically publish captured player data. See [network_scan/README.md](network_scan/README.md) before using it.
 
+## Passive world-map entity inventory
+
+The experimental [world-map entity explorer](network_scan/MAP_ENTITY_DISCOVERY.md)
+inspects existing PCAPNG captures and exports all recognized world-object
+type codes and X/Y positions, not only player-base type 1. It also records
+uninterpreted player-status fields for later in-game confirmation of shield
+state. Other types are intentionally marked **unclassified** until their
+map coordinates are matched against visible Walkers, bosses, resources or
+event structures; the scanner does not guess these labels.
+
+Run a small offline pilot:
+
+~~~powershell
+python network_scan/map_entity_probe.py --max-files 12
+~~~
+
+Review network_scans/map_entities/type_inventory.csv and
+network_scans/map_entities/world_objects.csv. The outputs and captures
+remain private and Git-ignored. No direct game-server requests occur.
+
 ## Private player intelligence and name-change history
 
 The [offline coverage and identity dashboard](network_scan/COVERAGE_AND_PLAYER_HISTORY.md)

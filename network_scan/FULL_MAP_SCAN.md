@@ -77,6 +77,59 @@ python network_scan/compare_player_sessions.py --write-merged network_scans/comb
 Even when the union exceeds 9,500 IDs, that does not prove every geographic
 map region was scanned.
 
+## Recurring scans for player movement
+
+The default network_scans/full_map folder is a **resumable discovery pass**:
+a second invocation skips already completed minimap clicks. Therefore it
+does NOT constitute a new full-world scan when players move.
+
+For each periodic refresh, use a **new timestamped session folder** in
+PowerShell and keep the same calibrated minimap zoom/ROI:
+
+~~~powershell
+$run = Get-Date -Format "yyyyMMdd_HHmmss"
+$previous = "network_scans/full_map/players.csv"
+$current = "network_scans/map_refresh/$run"
+python network_scan/full_map_scan.py run --execute --out $current --interface "Wi-Fi" --dumpcap "C:\Program Files\Wireshark\dumpcap.exe"
+python network_scan/scan_changes.py --before $previous --after "$current/players.csv"
+~~~
+
+**Only execute when the radar is visible and zoom is verified.** This
+command does not get the app through login or dismiss overlays.
+The existing data_miner/startup.py can verify/dismiss the known login
+warning and ads, but the subsequent **View Map button** and **zoom-out
+until radar appears** must still be calibrated in BlueStacks before
+unattended launch can safely be implemented. Do not hardcode unknown
+screen coordinates.
+
+Inspect "$current/changes_from_previous/changes.csv" and summary.json.
+This compares stable (server, player_id) across the two captures and
+reports moved coordinates, newly observed IDs, renames and alliances.
+Players not seen in a later sample are labeled **not_seen_in_after**,
+never "gone", because missing observations can reflect coverage/cache.
+
+For repeated full sweeps, we have **not yet proved an optimal route**.
+The earlier 16-click spiral pilot yielded 1,109 IDs and was a good
+discovery-first order. It is not evidence for the best *recapture* order.
+Use the same route for controlled comparisons, and measure:
+- % of previous IDs seen again during the newest sweep
+- count of player IDs with changed X/Y
+- decoded view success per minimap target
+- geographic gaps and map-view centers
+- time to sweep all targets and age of the oldest scanned region
+
+For frequent updates, a quicker coarse 4x4 pass could supply a partial
+refresh, but don't treat it as a complete refresh. Deeper 7x7 and 10x10
+passes sample the remaining regions and should be revisited even once
+the unique-player count reaches ~9,500.
+
+Compare any two scan sessions without a live connection:
+
+~~~powershell
+python network_scan/scan_changes.py --before network_scans/map_refresh/OLDER/players.csv --after network_scans/map_refresh/NEWER/players.csv
+python -m unittest discover -s network_scan -p test_scan_changes.py
+~~~
+
 ## Additional coverage and retries
 
 If the default stage sequence finishes below the target, **append** a finer 13x13 stage to the same session:

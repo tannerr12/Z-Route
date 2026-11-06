@@ -81,7 +81,8 @@ class WorldPipelineTests(unittest.TestCase):
                 p.prepare_radar(cfg,args,Path(td))
                 self.assertEqual(events,['startup','vision'],
                                  'Login handler must run before any world-map AI')
-                startup.assert_called_once_with(cfg,max_actions=12)
+                startup.assert_called_once_with(cfg,max_actions=12,
+                                                allow_ai_fallback=False)
                 ai.assert_not_called()
                 self.assertEqual(vision.call_count,1)
                 self.assertTrue(any(c.args[1]=='login_warning_detected'

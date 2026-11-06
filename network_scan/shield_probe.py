@@ -160,10 +160,10 @@ def iter_player_observations(files,server,player_id):
     """Extract complete player detail fields from all known received map
     messages, joining adjacent PCAPNG rotation files to recover splits."""
     previous=None
-    seen_hashes=set()
+    seen_hashes={}
     with TemporaryDirectory(prefix='zroute_shield_probe_') as tempdir:
         joined=Path(tempdir)/'joined.pcapng'
-        for file in files:
+        for index,file in enumerate(files):
             if previous is None:
                 source=file
             else:
@@ -175,8 +175,10 @@ def iter_player_observations(files,server,player_id):
             try:
                 for name,relative,raw in application_messages(source):
                     key=hashlib.sha256(name.encode('ascii')+raw).digest()
-                    if key in seen_hashes:continue
-                    seen_hashes.add(key)
+                    previous_index=seen_hashes.get(key)
+                    if previous_index is not None and index-previous_index<=1:
+                        continue  # only duplicate overlapping adjacent PCAP windows
+                    seen_hashes[key]=index
                     try:
                         root=decode_for_server(raw,server)
                     except (ValueError,TypeError,OSError,EOFError):
@@ -243,8 +245,8 @@ def compare_fields(samples):
                 data=rec['details'].get(key,('<ABSENT>',))
                 observations.append('|'.join(data))
             values[state]=Counter(observations)
-        if values['shielded']==values['unshielded']:
-            continue
+        if set(values['shielded'])==set(values['unshielded']):
+            continue  # frequency of identical map responses is not a shield field
         # Samples can repeat because identical views are sent repeatedly.
         # Field names like timestamp, base level, and username are not
         # assigned meanings or tagged as shields.

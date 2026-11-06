@@ -387,6 +387,42 @@ def nearby(args):
     return matches
 
 
+
+def trail(args):
+    """Show all observed positions in a candidate ID group, not a proven path."""
+    out=args.session or latest_session(ROOT)
+    events=read_csv(out/'entity_sightings.csv')
+    if not events:
+        raise SystemExit('No saved sightings under '+str(out))
+    if not args.group_id:
+        raise SystemExit('Use --group-id from a near result.')
+    matches=[row for row in events
+             if str(row.get('server'))==str(args.server)
+             and str(row.get('type_code'))==str(args.code)
+             and str(row.get('candidate_group_id'))==str(args.group_id)]
+    matches.sort(key=lambda p:(p['seen_at_utc'],p['segment'],
+                                int(p['view_index'])))
+    selected=matches[-args.limit:]
+    print(f'Candidate group S{args.server} type:{args.code} ID:{args.group_id}')
+    print(f'Found {len(matches)} sightings in {out}. '
+          'A candidate ID is NOT guaranteed to identify one moving object.')
+    for row in selected:
+        print(f'  {row["seen_at_utc"]} '
+              f'S{row["server"]} X:{row["x"]} Y:{row["y"]} '
+              f'subtype:{row["subtype"]} '
+              f'shared-in-view:{row["candidate_group_ambiguous"]} '
+              f'({row["segment"]}, view {row["view_index"]})')
+    if not matches:
+        print('No matching sightings. Use near first and copy the candidate-group ID.')
+    elif any(r['candidate_group_ambiguous']=='true' for r in matches):
+        print('WARNING: this ID was associated with multiple positions in a '
+              'single view. It cannot be used as a unique movement path.')
+    else:
+        print('Positions may reflect different sightings, but true movement '
+              'still requires visual confirmation and reliable object identity.')
+
+
+
 def match(args):
     if not args.label.strip():
         raise SystemExit('Visual label cannot be blank.')
@@ -470,6 +506,13 @@ def main():
             cmd.add_argument('--screenshot',type=Path)
             cmd.add_argument('--allow-nearby',action='store_true')
         cmd.set_defaults(fn=nearby if name=='near' else match)
+    trail_cmd=commands.add_parser('trail',help='Review recent positions for a candidate entity ID')
+    trail_cmd.add_argument('--session',type=Path)
+    trail_cmd.add_argument('--server',type=int,default=125)
+    trail_cmd.add_argument('--code',type=int,required=True)
+    trail_cmd.add_argument('--group-id',required=True)
+    trail_cmd.add_argument('--limit',type=int,default=40)
+    trail_cmd.set_defaults(fn=trail)
     args=parser.parse_args()
     if args.command=='watch':
         if not 3<=args.segment_seconds<=120 or args.print_limit<0:

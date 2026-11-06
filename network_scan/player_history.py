@@ -84,6 +84,7 @@ def discovery(root):
     """Distinct raw roster sources. Combined CSV is only a fallback."""
     paths = list((root / 'live').glob('*/players.csv'))
     paths += [p for p in (root / 'full_map' / 'players.csv',) if p.is_file()]
+    paths += list((root / 'map_refresh').glob('*/players.csv'))
     if not paths and (root / 'combined_players.csv').is_file():
         paths = [root / 'combined_players.csv']
     return sorted(set(paths))
@@ -264,6 +265,16 @@ def directory(db, server=None):
             else:
                 names[-1]['last_seen'] = item['observed_at']
                 names[-1]['observations'] += 1
+        rename_history = [
+            dict(server=server_code,player_id=pid,
+                 old_name=names[index-1]['name'],
+                 new_name=names[index]['name'],
+                 last_old_observed_at_utc=names[index-1]['last_seen'],
+                 first_new_observed_at_utc=names[index]['first_seen'],
+                 timestamp_basis=names[index]['timestamp_basis'],
+                 source=names[index]['source'])
+            for index in range(1,len(names))
+        ]
         aliases = list(dict.fromkeys(o['username'] for o in observations))
         sources = sorted(set(o['source'] for o in observations))
         result.append(dict(server=server_code, player_id=pid,
@@ -277,8 +288,39 @@ def directory(db, server=None):
                            last_seen=current['observed_at'],
                            time_basis=current['timestamp_basis'],
                            aliases=aliases, name_events=events,
-                           observed_name_changes=max(0, len(events)-1)))
+                           rename_history=rename_history,
+                           observed_name_changes=len(rename_history)))
     return result
+
+
+
+RENAME_FIELDS = ('server','player_id','old_name','new_name',
+                 'last_old_observed_at_utc','first_new_observed_at_utc',
+                 'timestamp_basis','source')
+
+
+def all_renames(db, server=None):
+    """Derive observed transitions from append-only identity snapshots."""
+    events=[event for person in directory(db,server)
+            for event in person['rename_history']]
+    return sorted(events,key=lambda event:(
+        event['first_new_observed_at_utc'],event['server'],event['player_id']))
+
+
+def export_renames(db, out, server=None):
+    """Export every observed alias transition, not only the latest rename."""
+    out=Path(out)
+    rows=all_renames(db,server)
+    out.parent.mkdir(parents=True,exist_ok=True)
+    temporary=out.with_suffix(out.suffix+'.tmp')
+    with temporary.open('w',newline='',encoding='utf-8-sig') as handle:
+        writer=csv.DictWriter(handle,fieldnames=RENAME_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+    temporary.replace(out)
+    print(f'Exported {len(rows):,} observed name transitions to {out}')
+    return rows
+
 
 
 def export(db, out, server=None):
@@ -299,6 +341,9 @@ def main():
                    help='Additional historical player CSV snapshot (repeatable)')
     p = commands.add_parser('show', help='Print observed names for one stable player ID')
     p.add_argument('--id', required=True, help='server:player_id e.g. 125:12345')
+    p = commands.add_parser('renames', help='Export complete lifetime observed rename history to CSV')
+    p.add_argument('--out', type=Path, default=Path('network_scans/name_changes.csv'))
+    p.add_argument('--server', type=str, default='125')
     p = commands.add_parser('export', help='Export private player directory with name events')
     p.add_argument('--out', type=Path, default=Path('network_scans/player_directory.json'))
     p.add_argument('--server', type=str, default='125')
@@ -321,6 +366,8 @@ def main():
                 print(f'  {event["observed_at"]}: {event["name"]} '
                       f'({event["timestamp_basis"]}; {event["source"]})')
             print('These are observation timestamps, not exact rename times.')
+        elif args.command == 'renames':
+            export_renames(db, args.out, args.server)
         else:
             export(db, args.out, args.server)
 

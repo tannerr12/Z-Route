@@ -2,9 +2,25 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Z-Route | Player Locator</title>
 <style>
 :root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#091321;color:#e9f1fc}*{box-sizing:border-box}body{margin:0;padding:22px}main{max-width:1450px;margin:auto}h1{margin:0;font-size:25px}p{color:#9eb1c8;margin:5px 0 18px}.top,.controls,.status{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.controls{margin:16px 0}.controls input,.controls select,.controls button{background:#15263a;color:#f1f5fa;border:1px solid #40556d;border-radius:9px;padding:11px;font:inherit}.controls input{flex:1;min-width:190px}.controls button,.guild{cursor:pointer}.controls button:hover,.guild:hover{background:#233e57}.layout{display:grid;grid-template-columns:minmax(0,1fr) 245px;gap:14px}.panel{border:1px solid #30465e;background:#102035;border-radius:12px;padding:12px;min-width:0}.map-wrap{position:relative;overflow:hidden;background:#112339;border-radius:8px;cursor:crosshair;touch-action:none}canvas{display:block;width:100%;height:610px}.tooltip{display:none;position:absolute;pointer-events:none;background:#263e55;border:1px solid #8fb4d8;border-radius:8px;padding:9px 12px;white-space:nowrap;box-shadow:0 5px 20px #0009;font-size:13px;z-index:3}.tooltip strong{display:block;margin-bottom:3px}.muted{color:#9eb1c8;font-size:13px}.legend{max-height:480px;overflow:auto}.guild{display:flex;align-items:center;gap:9px;width:100%;padding:9px;border:0;border-radius:7px;background:transparent;color:#e9f1fc;text-align:left;font:inherit}.guild.active{background:#28465d}.swatch{width:11px;height:11px;border-radius:50%;flex:none}.guild-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.guild-count{color:#a9bdd1;font-variant-numeric:tabular-nums}.detail{margin-top:12px;padding:11px;border-radius:8px;background:#1b334b;line-height:1.8}.status{margin-top:10px}.error{color:#ffb4a9}.map-actions{display:flex;gap:7px;margin-bottom:9px}.map-actions button{background:#203a53;color:white;border:1px solid #49627b;border-radius:7px;padding:7px 11px;cursor:pointer}@media(max-width:800px){body{padding:12px}.layout{grid-template-columns:1fr}canvas{height:450px}.legend{max-height:210px}}
+
+/* World-map style base level filter with two independently movable handles. */
+.level-filter{min-width:245px;max-width:325px;flex:1 1 270px;border:1px solid #40556d;background:#102137;border-radius:9px;padding:8px 12px 6px}
+.level-filter legend{color:#cedef3;font-size:13px;font-weight:650;padding:0 4px}
+.level-filter strong{font-variant-numeric:tabular-nums;color:#eaf4ff}
+.range-track{height:30px;position:relative;margin:0 4px}
+.range-track::before{content:"";position:absolute;left:0;right:0;top:12px;height:6px;border-radius:6px;background:linear-gradient(to right,#314358 0 var(--range-start,0%),#a579f5 var(--range-start,0%) var(--range-end,100%),#314358 var(--range-end,100%) 100%)}
+.range-track input[type=range]{appearance:none;-webkit-appearance:none;position:absolute;left:0;top:0;margin:0;width:100%;height:30px;background:transparent;pointer-events:none}
+.range-track input[type=range]::-webkit-slider-runnable-track{background:transparent;border:0;height:6px}
+.range-track input[type=range]::-moz-range-track{background:transparent;border:0;height:6px}
+.range-track input[type=range]::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;pointer-events:auto;width:19px;height:19px;margin-top:-7px;border:2px solid #d7adff;border-radius:50%;background:#6a42c9;cursor:grab;box-shadow:0 0 0 2px #17283d}
+.range-track input[type=range]::-moz-range-thumb{pointer-events:auto;width:15px;height:15px;border:2px solid #d7adff;border-radius:50%;background:#6a42c9;cursor:grab;box-shadow:0 0 0 2px #17283d}
+.range-track input[type=range]:focus-visible::-webkit-slider-thumb{outline:3px solid #ffdf9a;outline-offset:2px}
+.range-track input[type=range]:focus-visible::-moz-range-thumb{outline:3px solid #ffdf9a;outline-offset:2px}
+.level-note{font-size:11px;color:#96acc5;margin:0;line-height:1.3}
+@media(max-width:800px){.level-filter{min-width:100%;max-width:none}}
 </style></head><body><main><nav style="margin-bottom:14px"><a href="./donations.html" style="color:#8cc9ff">Donation Analytics →</a> · <a href="./vs.html" style="color:#8cc9ff">VS Comparison →</a> · <a href="./activity.html" style="color:#8cc9ff">Player Activity →</a></nav>
 <div class="top"><div><h1>Z-Route Player Locator</h1><p>Search players and explore guild positions on an approximate swipe grid.</p></div><span id="source" class="muted">Loading CSV…</span></div>
-<div class="controls"><input id="search" type="search" placeholder="Search username…" aria-label="Search username"><select id="guildFilter" aria-label="Filter guild"><option value="">All guilds</option></select><button id="clear">Clear filters</button></div>
+<div class="controls"><input id="search" type="search" placeholder="Search username…" aria-label="Search username"><select id="guildFilter" aria-label="Filter guild"><option value="">All guilds</option></select><fieldset class="level-filter"><legend>Base level <strong id="levelLabel">Lv 1–30</strong></legend><div class="range-track" id="rangeTrack"><input id="levelMin" type="range" min="1" max="30" value="1" step="1" aria-label="Minimum base level"><input id="levelMax" type="range" min="1" max="30" value="30" step="1" aria-label="Maximum base level"></div><p class="level-note" id="levelNote">All levels; players with unknown levels included.</p></fieldset><button id="clear">Clear filters</button></div>
 <div class="layout"><section class="panel"><div class="map-actions"><button id="zoomIn" title="Zoom in">＋</button><button id="zoomOut" title="Zoom out">－</button><button id="resetView">Reset view</button><span class="muted" style="margin:auto 0 auto auto">Wheel to zoom · Drag to pan</span></div><div id="mapWrap" class="map-wrap"><canvas id="map" aria-label="Player location map"></canvas><div id="tip" class="tooltip"></div></div><div class="status"><span id="count" class="muted">Loading players…</span><span class="muted">150 columns × 60 rows · approximate positions</span></div><div id="detail" class="detail" hidden></div></section>
 <aside class="panel"><strong>Guilds</strong><p class="muted">Click a guild to filter; click again to show all.</p><div id="legend" class="legend"></div></aside></div>
 <p id="message" class="muted" role="status"></p>
@@ -12,6 +28,7 @@
 'use strict';
 const $=id=>document.getElementById(id),canvas=$('map'),ctx=canvas.getContext('2d'),wrap=$('mapWrap'),tip=$('tip');
 let players=[],filtered=[],colors=new Map(),guildCounts=new Map(),hover=null,selected=null;
+let levelBounds={min:1,max:30};
 let scale=1,offsetX=0,offsetY=0,drag=null,viewW=1,viewH=1;
 const palette=['#59c8ff','#b0a2ff','#ff997f','#6fe0ac','#ffd26e','#fa83c0','#8bd4d6','#d3a36f','#c5ec85','#f18fff'];
 function parseCSV(text){
@@ -37,13 +54,32 @@ function normalize(rows){
  if(dir==='down'&&Number.isFinite(view)&&r.view!=='')row=60-view;
  if(!Number.isFinite(col)||!Number.isFinite(row)||col<0||row<0)continue;
  // Scanner columns are zero-based, whereas the map labels are one-based.
- const p={name,guild:(r.guild||'Unknown').trim()||'Unknown',level:r.level||'',col:col+1,row:Math.max(1,Math.min(60,row)),observed:r.observed_at||'',coordinateType:r.coordinate_type||'approximate swipe grid'};
+ const levelText=(r.level||'').trim(),numLevel=levelText!==''?Number(levelText):NaN;
+ const p={name,guild:(r.guild||'Unknown').trim()||'Unknown',level:levelText,numericLevel:Number.isFinite(numLevel)&&Number.isInteger(numLevel)&&numLevel>=1?numLevel:null,col:col+1,row:Math.max(1,Math.min(60,row)),observed:r.observed_at||'',coordinateType:r.coordinate_type||'approximate swipe grid'};
  if(p.col>150)continue;
  const key=name.toLowerCase();if(!byName.has(key)||p.observed>byName.get(key).observed)byName.set(key,p);
  }
  return [...byName.values()];
 }
+function configureLevels(){
+ const known=players.map(p=>p.numericLevel).filter(n=>n!==null);
+ levelBounds={min:1,max:Math.max(30,...known)};
+ for(const id of ['levelMin','levelMax']){$(id).min=levelBounds.min;$(id).max=levelBounds.max}
+ $('levelMin').value=levelBounds.min;$('levelMax').value=levelBounds.max;
+ updateLevelLabel();
+}
+function updateLevelLabel(){
+ const low=Number($('levelMin').value),high=Number($('levelMax').value);
+ const all=low===levelBounds.min&&high===levelBounds.max;
+ $('levelLabel').textContent='Lv '+low+'–'+high;
+ $('levelNote').textContent=all?'All levels; players with unknown levels included.':'Players without a known level are hidden while filtering.';
+ const width=levelBounds.max-levelBounds.min||1;
+ const start=100*(low-levelBounds.min)/width,end=100*(high-levelBounds.min)/width;
+ $('rangeTrack').style.setProperty('--range-start',start+'%');
+ $('rangeTrack').style.setProperty('--range-end',end+'%');
+}
 function populate(){
+ configureLevels();
  guildCounts=new Map();for(const p of players)guildCounts.set(p.guild,(guildCounts.get(p.guild)||0)+1);
  [...guildCounts.keys()].sort((a,b)=>a.localeCompare(b)).forEach(guildColor);
  const options=$('guildFilter');for(const g of [...guildCounts.keys()].sort((a,b)=>a.localeCompare(b))){const o=document.createElement('option');o.value=g;o.textContent=g;options.append(o)}
@@ -61,7 +97,11 @@ function renderLegend(){
 }
 function filter(){
  const q=$('search').value.trim().toLowerCase(),g=$('guildFilter').value;
- filtered=players.filter(p=>(!q||p.name.toLowerCase().includes(q))&&(!g||p.guild===g));
+ const low=Number($('levelMin').value),high=Number($('levelMax').value);
+ const allLevels=low===levelBounds.min&&high===levelBounds.max;
+ filtered=players.filter(p=>(!q||p.name.toLowerCase().includes(q))&&(!g||p.guild===g)&&
+   (allLevels||p.numericLevel!==null&&p.numericLevel>=low&&p.numericLevel<=high));
+ updateLevelLabel();
  $('count').textContent=filtered.length.toLocaleString()+' / '+players.length.toLocaleString()+' players displayed';
  if(selected&&!filtered.includes(selected)){selected=null;$('detail').hidden=true}
  hover=null;tip.style.display='none';renderLegend();draw();
@@ -91,7 +131,16 @@ canvas.addEventListener('pointercancel',()=>{drag=null});
 function zoom(f,x=viewW/2,y=viewH/2){const next=Math.max(1,Math.min(12,scale*f)),ratio=next/scale;offsetX=x-(x-offsetX)*ratio;offsetY=y-(y-offsetY)*ratio;scale=next;draw()}
 canvas.addEventListener('wheel',e=>{e.preventDefault();const p=pointer(e);zoom(e.deltaY<0?1.18:1/1.18,p.x,p.y)},{passive:false});
 $('zoomIn').onclick=()=>zoom(1.4);$('zoomOut').onclick=()=>zoom(1/1.4);$('resetView').onclick=()=>{scale=1;offsetX=offsetY=0;draw()};
-$('search').addEventListener('input',filter);$('guildFilter').addEventListener('change',filter);$('clear').onclick=()=>{$('search').value='';$('guildFilter').value='';filter()};
+$('search').addEventListener('input',filter);$('guildFilter').addEventListener('change',filter);
+for(const id of ['levelMin','levelMax'])$(id).addEventListener('input',()=>{
+ const min=Number($('levelMin').value),max=Number($('levelMax').value);
+ if(min>max){if(id==='levelMin')$('levelMax').value=min;else $('levelMin').value=max}
+ filter();
+});
+$('clear').onclick=()=>{
+ $('search').value='';$('guildFilter').value='';
+ $('levelMin').value=levelBounds.min;$('levelMax').value=levelBounds.max;filter()
+};
 window.addEventListener('resize',draw);
 async function load(){try{const response=await fetch('./data/players.csv',{cache:'no-store'});if(!response.ok)throw Error('HTTP '+response.status);players=normalize(parseCSV(await response.text()));$('source').textContent='CSV data · '+players.length.toLocaleString()+' players';$('message').textContent='Locations are estimated from scanner swipes, not exact in-game coordinates.';populate()}catch(e){$('source').textContent='CSV unavailable';$('message').className='error';$('message').textContent='Unable to load data/players.csv: '+e.message;draw()}}
 load();

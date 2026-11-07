@@ -123,16 +123,18 @@ def fast_scan(args):
                 unique_players=len(players),decode_errors=errors,
                 status='MAP_RESPONSE' if confirmed else 'UNCONFIRMED',
                 updated_at=datetime.now(timezone.utc).isoformat()))
-            state['completed'].extend(p['target_id'] for p in sent)
+            if confirmed:
+                state['completed'].extend(p['target_id'] for p in sent)
             save_json(state_file,state)
             unconfirmed=0 if confirmed else unconfirmed+1
             print(f'[fast] Batch {batch_id}: {len(views)} decoded views, '
                   f'+{len(players)-count_before} new, {len(players)} total; '
-                  f'{len(finished)+len(state["completed"])} attempted (batch-level validation)',flush=True)
+                  f'{len(state["completed"])} confirmed-batch taps, '
+                  f'{len(sent)} taps in this batch (no per-tap validation)',flush=True)
             if unconfirmed>=3:
                 print('[fast] STOP: three consecutive batches with no decoded map responses. '
                       'Inspect PCAPs, adapter, zoom and map before resuming.',flush=True)
-                return
+                raise RuntimeError('Three batches had no decoded map response')
         except (OSError,RuntimeError,subprocess.TimeoutExpired) as exc:
             # Unknown ADB tap delivery must never be retried automatically.
             print(f'[fast] STOP: {exc}; capture and checkpoint retained. '

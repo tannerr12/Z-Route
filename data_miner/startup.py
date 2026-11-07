@@ -247,8 +247,21 @@ def promotion_content_visible(image):
     # evidence than generic commercial vocabulary. The Monthly Pass
     # panel has a large "Monthly Pass" title, but often contains no
     # other OCR-visible words from the generic purchase vocabulary.
-    if 'monthlypass' in collapsed:
-        print('Confirmed promotional overlay text: Monthly Pass',flush=True)
+    known_offer_titles={
+        'monthlypass':'Monthly Pass',
+        'herogrowth':'Hero Growth',
+        'fighterparts':'Fighter Parts',
+    }
+    for title,display in known_offer_titles.items():
+        if title in collapsed:
+            print(f'Confirmed promotional overlay text: {display}',flush=True)
+            return True
+    # A CAD price together with a promotional heading is strong
+    # independent evidence of a purchase overlay. Price alone is not.
+    if ('cad' in words and
+            (('hero' in words and 'growth' in words)
+             or ('fighter' in words and 'parts' in words))):
+        print('Confirmed purchase-offer title with CAD price',flush=True)
         return True
     # Additional strong paired labels, not isolated city UI terms.
     if ({'privileges','claim'}<=words

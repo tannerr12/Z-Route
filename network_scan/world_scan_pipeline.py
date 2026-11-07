@@ -399,6 +399,19 @@ def baseline(out,chosen=None):
 
 
 def run_scan(args,folder):
+    if args.fast_snake:
+        from fast_snake_scan import fast_scan
+        state=SimpleNamespace(roi=list(args.roi),stages=args.stages,
+            pattern=args.pattern,out=folder,
+            history_db=ROOT/'player_history.sqlite3',
+            interface=args.interface,dumpcap=args.dumpcap,
+            adb=None,serial=None,max_clicks=args.max_clicks,
+            fast_interval=args.fast_interval,fast_batch=args.fast_batch)
+        save_status(folder,'fast_serpentine_scanning',
+                    grid=args.stages[0],click_interval=args.fast_interval,
+                    batch_size=args.fast_batch)
+        fast_scan(state)
+        return
     from full_map_scan import scan
     state=SimpleNamespace(
         roi=list(args.roi),stages=args.stages,pattern=args.pattern,
@@ -502,10 +515,17 @@ def cli():
         a.add_argument('--startup-only',action='store_true',
                        help='Reuse Player Activity login confirmation and ad closing only; skip map and scan')
         a.add_argument('--pattern',choices=('spread','spiral','snake','checkerboard'),default='snake')
-        a.add_argument('--stages',type=str,default='4,7,10')
+        a.add_argument('--stages',type=str,default='20')
         a.add_argument('--max-clicks',type=int,default=0,
                        help='Limit network-scan clicks for pilot; 0 scans all')
         a.add_argument('--seconds',type=int,default=3)
+        a.add_argument('--legacy-scan',dest='fast_snake',action='store_false',
+                       help='Use older one-capture-per-click scanner instead of fast batched snake')
+        a.add_argument('--fast-interval',type=float,default=.7,
+                       help='Target time between minimap taps (0.5 to under 1 second)')
+        a.add_argument('--fast-batch',type=int,default=10,
+                       help='Tap count per continuous Wireshark capture (2 to 20)')
+        a.set_defaults(fast_snake=True)
         a.add_argument('--retries',type=int,default=2)
         a.add_argument('--goal',type=int,default=9700)
         a.add_argument('--server',type=int,default=125)
@@ -534,6 +554,10 @@ def cli():
         p.error('Startup/click limit invalid')
     if not 3<=args.seconds<=30 or not 1<=args.retries<=5:
         p.error('Capture interval/retries invalid')
+    if args.fast_snake and (args.pattern!='snake' or len(args.stages)!=1):
+        p.error('Fast serpentine requires --pattern snake and one --stages grid (e.g. 20)')
+    if args.fast_snake and (not .5<=args.fast_interval<1 or not 2<=args.fast_batch<=20):
+        p.error('Fast interval must be 0.5..<1 seconds and batch size 2..20')
     if args.goal<1 or args.server<1:
         p.error('Invalid goal/server')
     if args.command=='inspect':

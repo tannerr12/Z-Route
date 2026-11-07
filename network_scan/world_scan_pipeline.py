@@ -192,8 +192,18 @@ def prepare_radar(cfg,args,folder):
     save_screen(cfg,folder,'initial',image)
     save_status(folder,'startup_checks_no_ollama')
     print('Reusing login/ad handling, Ollama DISABLED for this pipeline.',flush=True)
-    actions=run_ai_startup(cfg,max_actions=args.max_startup_actions,
-                           allow_ai_fallback=False)
+    try:
+        actions=run_ai_startup(cfg,max_actions=args.max_startup_actions,
+                               allow_ai_fallback=False)
+    except (RuntimeError,TimeoutError) as exc:
+        # Preserve the actual ambiguous screen instead of only the login
+        # screenshot. No speculative top-right click is allowed.
+        try:
+            save_screen(cfg,folder,'startup_stopped_screenshot',read_screen(cfg))
+        except (OSError,RuntimeError) as capture_error:
+            print(f'[pipeline] Could not save blocked screen: {capture_error}',
+                  flush=True)
+        raise
     save_status(folder,'city_ready',startup_actions=actions)
     image=read_screen(cfg)
     save_screen(cfg,folder,'city_after_popups',image)

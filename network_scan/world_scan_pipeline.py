@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
+from contextlib import contextmanager
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -183,6 +185,59 @@ def verify_radar(cfg,args,folder,label):
     return image,ready
 
 
+
+@contextmanager
+def initial_world_capture(args, folder):
+    """Capture the first world load before the Leave City tap."""
+    from live_watch import resolve_interface
+    from scan import inspect, save_csv, BASE_FIELDS
+    from full_map_scan import player_key
+    from player_history import connection, ingest_records
+
+    output=folder/'initial_world_load.pcapng'
+    device=resolve_interface(args.dumpcap,args.interface)
+    command=[args.dumpcap,'-i',device,'-f','tcp port 9929',
+             '-a','duration:15','-w',str(output)]
+    with (folder/'dumpcap.log').open('a',encoding='utf-8') as log:
+        proc=subprocess.Popen(command,stdout=subprocess.DEVNULL,stderr=log)
+        try:
+            time.sleep(.5)
+            if proc.poll() is not None:
+                raise RuntimeError('Initial Wireshark capture failed to start; see dumpcap.log')
+            save_status(folder,'initial_capture_active',initial_capture=str(output))
+            print('[capture] Wireshark active BEFORE Leave City tap',flush=True)
+            yield
+            proc.wait(timeout=20)
+            if proc.returncode!=0:
+                raise RuntimeError('Initial Wireshark capture failed; see dumpcap.log')
+            views,failures=inspect(output)
+            players={}
+            for view,bases in views:
+                for player in bases:
+                    key=player_key(player)
+                    if key:
+                        players[key]=player
+            if players:
+                with connection(ROOT/'player_history.sqlite3') as history:
+                    ingest_records(history,players.values(),str(output),
+                                   observed_at=timestamp())
+                save_csv(folder/'players.csv',BASE_FIELDS,list(players.values()))
+            save_status(folder,'initial_capture_saved',
+                        initial_capture=str(output),
+                        initial_map_views=len(views),
+                        initial_unique_bases=len(players),
+                        initial_decode_errors=failures)
+            print(f'[capture] Initial world load: {len(views)} decoded map views, '
+                  f'{len(players)} unique bases. Saved {output}',flush=True)
+        finally:
+            if proc.poll() is None:
+                proc.terminate()
+                try:proc.wait(timeout=6)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=5)
+
+
 def prepare_radar(cfg,args,folder):
     """Handle login/ads, leave city, zoom once, then use the fixed minimap ROI."""
     import cv2
@@ -228,60 +283,61 @@ def prepare_radar(cfg,args,folder):
           'This is NOT the ad X in the top-right.',flush=True)
     save_status(folder,'leave_city_target_verified',
                 map_tap=list(point),emulator_size=[w,h])
-    one_tap(cfg,image,point,'Leave City (bottom-right)')
-    save_status(folder,'leave_city_tapped',map_tap=list(point))
-    time.sleep(1.1)
-    after=read_screen(cfg)
-    save_screen(cfg,folder,'after_leave_city',after)
-    # A world map can contain gold X decorations and text OCR that falsely
-    # resembles a promo or Leave City. Those generic detectors are intended
-    # for city STARTUP only, not for deciding if a map transition succeeded.
-    if popup_visible(after):
-        raise RuntimeError('Login warning visible after Leave City; map not ready')
-    if image.shape!=after.shape:
-        raise RuntimeError('Emulator resolution changed after Leave City; cannot verify')
-    # This only validates that the screen materially changed. It is not
-    # sufficient to assert the radar is visible or scanning is safe.
-    delta=float(sum(cv2.mean(cv2.absdiff(
-        cv2.resize(image,(120,180)),cv2.resize(after,(120,180))))[:3])/3)
-    print(f'[pipeline] City-to-world screen change: {delta:.2f}',flush=True)
-    if delta<6:
-        raise RuntimeError('Leave City tap did not visibly change the screen')
-    save_status(folder,'world_screen_changed',screen_change=round(delta,2))
-    if args.map_only:
-        save_status(folder,'map_only_complete')
-        print('LEAVE CITY COMPLETE. World screen saved. No zoom or scan performed.',
-              flush=True)
-        return
+    with initial_world_capture(args,folder):
+        one_tap(cfg,image,point,'Leave City (bottom-right)')
+        save_status(folder,'leave_city_tapped',map_tap=list(point))
+        time.sleep(1.1)
+        after=read_screen(cfg)
+        save_screen(cfg,folder,'after_leave_city',after)
+        # A world map can contain gold X decorations and text OCR that falsely
+        # resembles a promo or Leave City. Those generic detectors are intended
+        # for city STARTUP only, not for deciding if a map transition succeeded.
+        if popup_visible(after):
+            raise RuntimeError('Login warning visible after Leave City; map not ready')
+        if image.shape!=after.shape:
+            raise RuntimeError('Emulator resolution changed after Leave City; cannot verify')
+        # This only validates that the screen materially changed. It is not
+        # sufficient to assert the radar is visible or scanning is safe.
+        delta=float(sum(cv2.mean(cv2.absdiff(
+            cv2.resize(image,(120,180)),cv2.resize(after,(120,180))))[:3])/3)
+        print(f'[pipeline] City-to-world screen change: {delta:.2f}',flush=True)
+        if delta<6:
+            raise RuntimeError('Leave City tap did not visibly change the screen')
+        save_status(folder,'world_screen_changed',screen_change=round(delta,2))
+        if args.map_only:
+            save_status(folder,'map_only_complete')
+            print('LEAVE CITY COMPLETE. World screen saved. No zoom or scan performed.',
+                  flush=True)
+            return
 
-    # The radar/minimap is at a known fixed ROI on this BlueStacks setup.
-    # Do not require a template, OCR, or any post-zoom radar check.
-    # Exactly one verified zoom hold is sent; network responses validate
-    # subsequent clicks. Keep a diagnostic screenshot for inspection.
-    if args.zoom_method=='bluestacks':
-        from bluestacks_zoom import zoom_out_ctrl_minus
-        print(f'[pipeline] Zoom out once: Ctrl+- held {args.zoom_hold:.1f}s',flush=True)
-        zoom_out_ctrl_minus(args.zoom_hold)
-    elif args.zoom_method=='tap':
-        point=args.zoom_tap or (cfg.get('ui',{}).get('world_map',{}) or {}).get('zoom_out_tap')
-        if point is None:
-            raise RuntimeError('Zoom tap not calibrated; pass --zoom-tap X Y')
-        one_tap(cfg,after,point,'Zoom out once')
-    elif args.zoom_method=='keyevent':
-        from scanner import adb
-        if args.zoom_keyevent is None or not 1<=args.zoom_keyevent<=300:
-            raise ValueError('Set a verified --zoom-keyevent between 1 and 300')
-        adb(cfg,'shell','input','keyevent',str(args.zoom_keyevent))
-    else:
-        raise ValueError('Unknown zoom method: '+str(args.zoom_method))
-    time.sleep(args.zoom_delay)
-    zoomed=read_screen(cfg)
-    save_screen(cfg,folder,'after_zoom',zoomed)
-    save_status(folder,'zoom_complete_no_radar_check',
-                zoom_hold=args.zoom_hold,zoom_method=args.zoom_method,
-                radar_roi=list(args.roi))
-    print('[pipeline] Zoom complete. Using fixed minimap ROI; '
-          'no radar image/template check.',flush=True)
+        # The radar/minimap is at a known fixed ROI on this BlueStacks setup.
+        # Do not require a template, OCR, or any post-zoom radar check.
+        # Exactly one verified zoom hold is sent; network responses validate
+        # subsequent clicks. Keep a diagnostic screenshot for inspection.
+        if args.zoom_method=='bluestacks':
+            from bluestacks_zoom import zoom_out_ctrl_minus
+            print(f'[pipeline] Zoom out once: Ctrl+- held {args.zoom_hold:.1f}s',flush=True)
+            zoom_out_ctrl_minus(args.zoom_hold)
+        elif args.zoom_method=='tap':
+            point=args.zoom_tap or (cfg.get('ui',{}).get('world_map',{}) or {}).get('zoom_out_tap')
+            if point is None:
+                raise RuntimeError('Zoom tap not calibrated; pass --zoom-tap X Y')
+            one_tap(cfg,after,point,'Zoom out once')
+        elif args.zoom_method=='keyevent':
+            from scanner import adb
+            if args.zoom_keyevent is None or not 1<=args.zoom_keyevent<=300:
+                raise ValueError('Set a verified --zoom-keyevent between 1 and 300')
+            adb(cfg,'shell','input','keyevent',str(args.zoom_keyevent))
+        else:
+            raise ValueError('Unknown zoom method: '+str(args.zoom_method))
+        time.sleep(args.zoom_delay)
+        zoomed=read_screen(cfg)
+        save_screen(cfg,folder,'after_zoom',zoomed)
+        save_status(folder,'zoom_complete_no_radar_check',
+                    zoom_hold=args.zoom_hold,zoom_method=args.zoom_method,
+                    radar_roi=list(args.roi))
+        print('[pipeline] Zoom complete. Using fixed minimap ROI; '
+              'no radar image/template check.',flush=True)
 
 
 def zoom_probe(cfg,args,folder):

@@ -448,6 +448,8 @@ def cli():
                        help='Zoom holds in zoom-only probe (exactly 1 for BlueStacks)')
         a.add_argument('--radar-template',type=Path,
                        help='Local cropped radar UI reference PNG for OpenCV matching')
+        a.add_argument('--radar-only',action='store_true',
+                       help='Inspect an already open world map: read-only radar verification twice, no taps or zoom')
         a.add_argument('--radar-threshold',type=float,default=.86)
         a.add_argument('--prepare-only',action='store_true',
                        help='Stop immediately after radar verified; do not network-scan')
@@ -507,6 +509,27 @@ def cli():
     from pattern_benchmark import ensure_adb_device
     ensure_adb_device(SimpleNamespace(adb=cfg['adb_path'],serial=cfg['adb_serial']))
     try:
+        if args.command=='inspect' and args.radar_only:
+            if not args.radar_template:
+                raise ValueError('Provide --radar-template PATH for read-only radar inspection')
+            image=read_screen(cfg)
+            save_screen(cfg,folder,'radar_inspect_first',image)
+            first,score=radar_template_match(image,args.radar_template,
+                                             args.roi,args.radar_threshold)
+            print(f'[radar] first check {score:.3f} (threshold {args.radar_threshold:.3f})',flush=True)
+            if not first:
+                raise RuntimeError('Radar reference did not match the open world-map screenshot')
+            time.sleep(.5)
+            image2=read_screen(cfg)
+            save_screen(cfg,folder,'radar_inspect_second',image2)
+            second,score2=radar_template_match(image2,args.radar_template,
+                                               args.roi,args.radar_threshold)
+            print(f'[radar] second check {score2:.3f} (threshold {args.radar_threshold:.3f})',flush=True)
+            if not second:
+                raise RuntimeError('Radar reference did not match the second screenshot')
+            save_status(folder,'radar_inspection_passed',scores=[round(score,3),round(score2,3)])
+            print('RADAR INSPECTION PASSED: no clicks, zoom, or network scanning.',flush=True)
+            return
         if args.command=='inspect':
             from data_miner.startup import popup_visible,promo_close_visible,city_label_visible
             image=read_screen(cfg)

@@ -103,6 +103,24 @@ class StartupFlowTests(unittest.TestCase):
                           return_value='Monthly\\nPass'):
             self.assertTrue(startup.promotion_content_visible(frame))
 
+    def test_hero_growth_offer_is_detected(self):
+        frame=np.zeros((192,108,3),dtype=np.uint8)
+        with patch.object(startup.pytesseract,'image_to_string',
+                          return_value='Hero Growth\\nStrongest Defensive Hero\\nCAD 6.99'):
+            self.assertTrue(startup.promotion_content_visible(frame))
+
+    def test_fighter_parts_offer_title_is_detected(self):
+        frame=np.zeros((192,108,3),dtype=np.uint8)
+        with patch.object(startup.pytesseract,'image_to_string',
+                          return_value='Fighter Parts'):
+            self.assertTrue(startup.promotion_content_visible(frame))
+
+    def test_generic_city_hero_text_not_an_offer(self):
+        frame=np.zeros((192,108,3),dtype=np.uint8)
+        with patch.object(startup.pytesseract,'image_to_string',
+                          return_value='Hero Levels Fighter Alliance City'):
+            self.assertFalse(startup.promotion_content_visible(frame))
+
     def test_city_words_do_not_count_as_promotion(self):
         frame=np.zeros((192,108,3),dtype=np.uint8)
         with patch.object(startup.pytesseract,'image_to_string',

@@ -22,6 +22,7 @@ class StartupFlowTests(unittest.TestCase):
               patch.object(startup,'city_label_visible',
                            side_effect=[False,False,False,False,False,False,False,False,True]),
               patch.object(startup,'leave_city_button_point',return_value=None),
+              patch.object(startup,'promotion_content_visible',return_value=True),
               patch.object(startup,'promo_close_point',
                            side_effect=[(70,12)]*8),
               patch.object(startup,'close_verified_promo') as close,
@@ -74,6 +75,20 @@ class StartupFlowTests(unittest.TestCase):
               patch.object(startup,'close_verified_promo') as close,
               patch.object(startup.time,'sleep')):
             self.assertEqual(startup.run_ai_startup({},allow_ai_fallback=False),0)
+            close.assert_not_called()
+
+    def test_decorative_x_not_enough_even_when_ocr_misses_city(self):
+        frame=np.zeros((120,90,3),dtype=np.uint8)
+        with (patch.object(startup,'screenshot',return_value=frame),
+              patch.object(startup,'popup_visible',return_value=False),
+              patch.object(startup,'city_label_visible',return_value=False),
+              patch.object(startup,'leave_city_button_point',return_value=None),
+              patch.object(startup,'promo_close_point',return_value=(83,8)),
+              patch.object(startup,'promotion_content_visible',return_value=False),
+              patch.object(startup,'close_verified_promo') as close,
+              patch.object(startup.time,'sleep')):
+            with self.assertRaisesRegex(RuntimeError,'Ambiguous top-right X'):
+                startup.run_ai_startup({},allow_ai_fallback=False)
             close.assert_not_called()
 
     def test_city_detected_without_promotions_needs_no_ai(self):

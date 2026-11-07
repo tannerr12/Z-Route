@@ -110,6 +110,14 @@ def summary(record, players, route_points, goal):
           f'({len(players)/goal*100:.1f}% of target). '
           f'Completed {len(finished)}/{len(route_points)} clicks; '
           f'{len(reviews)} review; {len(centers)} unique map centers.')
+    missing = max(0, len(route_points) - len(finished) - len(reviews))
+    print(f'Coverage: {len(finished):,} confirmed / {len(route_points):,} planned '
+          f'({len(finished)/max(1,len(route_points))*100:.1f}%); '
+          f'{missing:,} not attempted; {len(reviews):,} need review. '
+          'Unique-ID target is not proof of full map coverage.')
+    if len(players)>=goal:
+        print(f'Roster milestone >= {goal:,} reached; route still continues '
+              'unless --stop-at-goal was explicitly requested.')
     if record['entries']:
         total_seconds = sum(float(p['seconds']) for p in record['entries'])
         if total_seconds > 0:
@@ -379,7 +387,7 @@ def main():
     run.add_argument('--retry-extra', type=int, default=3,
                      help='Add seconds on each retry (default +3)')
     run.add_argument('--retries', type=int, default=2)
-    run.add_argument('--goal', type=int, default=9500)
+    run.add_argument('--goal', type=int, default=9700)
     run.add_argument('--stop-at-goal', action='store_true',
                      help='Opt in to early stop at goal (not complete coverage proof)')
     run.add_argument('--retry-review', action='store_true',
@@ -391,7 +399,7 @@ def main():
     run.set_defaults(fn=scan)
     rep = commands.add_parser('report', help='Report saved unique IDs and scan gaps')
     rep.add_argument('--out', type=Path, default=Path('network_scans/full_map'))
-    rep.add_argument('--goal', type=int, default=9500)
+    rep.add_argument('--goal', type=int, default=9700)
     rep.set_defaults(fn=report)
     args = parser.parse_args()
     args.fn(args)

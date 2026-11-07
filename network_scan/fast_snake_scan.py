@@ -35,7 +35,9 @@ def fast_scan(args):
         raise ValueError('Fast settings: interval 0.5..0.99 seconds; batch 2..20 taps')
     args.out.mkdir(parents=True,exist_ok=True)
     n=args.stages[0]
-    all_points=ordered(targets(n,n,args.roi,.07),'snake')
+    # Use the full calibrated minimap ROI. Grid-cell centers remain inside
+    # the border (2.5% inset for a 20x20 grid), unlike the old 7% inset.
+    all_points=ordered(targets(n,n,args.roi,0.0),'snake')
     points=[dict(number=i+1, target_id=f'{n}x{n}_{p["id"]}',
                  tap_x=p['x'],tap_y=p['y']) for i,p in enumerate(all_points)]
     plan={'schema':1,'roi':list(args.roi),'grid':n,'pattern':'snake','points':points}

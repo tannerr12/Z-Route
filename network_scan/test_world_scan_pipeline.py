@@ -208,24 +208,30 @@ class WorldPipelineTests(unittest.TestCase):
                     p.prepare_radar({},args,Path(td))
                 tap.assert_not_called()
 
-    def test_no_radar_reference_stops_before_zoom_or_scan(self):
+    def test_no_radar_template_required_after_one_zoom(self):
         args=SimpleNamespace(
-            roi=self.roi,max_startup_actions=12,
-            map_tap=None,map_only=False,radar_template=None)
+            roi=self.roi,max_startup_actions=12,map_tap=None,map_only=False,
+            radar_template=None,zoom_method='bluestacks',zoom_hold=2.0,
+            zoom_delay=.6)
         with tempfile.TemporaryDirectory() as td:
             with (patch('data_miner.startup.run_ai_startup',return_value=5),
                   patch('data_miner.startup.popup_visible',return_value=False),
                   patch('data_miner.startup.promo_close_visible',return_value=False),
                   patch('data_miner.startup.city_label_visible',return_value=False),
+                  patch('bluestacks_zoom.zoom_out_ctrl_minus') as zoom,
+                  patch.object(p,'radar_template_match',
+                               side_effect=AssertionError('Radar matching must not run')),
                   patch.object(p,'read_screen',side_effect=[
-                      self.image,self.image,self.map_image]),
+                      self.image,self.image,self.map_image,self.map_image]),
                   patch.object(p,'save_screen'),
-                  patch.object(p,'save_status'),
+                  patch.object(p,'save_status') as status,
                   patch.object(p,'one_tap') as tap,
                   patch('time.sleep')):
-                with self.assertRaisesRegex(RuntimeError,'calibrate the fixed radar'):
-                    p.prepare_radar({},args,Path(td))
+                p.prepare_radar({},args,Path(td))
+                zoom.assert_called_once_with(2.0)
                 tap.assert_called_once()
+                self.assertTrue(any(x.args[1]=='zoom_complete_no_radar_check'
+                                    for x in status.call_args_list))
 
 
 if __name__=='__main__':

@@ -14,15 +14,16 @@ class StartupFlowTests(unittest.TestCase):
 
     def test_login_and_four_ads_close_without_ollama(self):
         # Login warning, four sequential offers, then unobstructed home city.
-        frames=[np.full((120,90,3),i*40,dtype=np.uint8)
-                for i in range(6)]
+        frames=[np.full((120,90,3),i*30,dtype=np.uint8)
+                for i in range(10)]
         with (patch.object(startup,'screenshot',side_effect=frames),
               patch.object(startup,'popup_visible',
                            side_effect=[True,False,False,False,False,False]),
               patch.object(startup,'city_label_visible',
-                           side_effect=[False,False,False,False,True]),
+                           side_effect=[False,False,False,False,False,False,False,False,False,True]),
+              patch.object(startup,'leave_city_button_point',return_value=None),
               patch.object(startup,'promo_close_point',
-                           side_effect=[(70,12)]*4),
+                           side_effect=[(70,12)]*8),
               patch.object(startup,'close_verified_promo') as close,
               patch.object(startup,'tap_scaled') as confirm,
               patch.object(startup,'wait_for_next_overlay'),
@@ -47,6 +48,33 @@ class StartupFlowTests(unittest.TestCase):
             promo.assert_not_called()
             close.assert_not_called()
             expensive.assert_not_called()
+
+    def test_city_locator_blocks_false_promo_close_when_label_ocr_misses(self):
+        frame=np.zeros((120,90,3),dtype=np.uint8)
+        with (patch.object(startup,'screenshot',return_value=frame),
+              patch.object(startup,'popup_visible',return_value=False),
+              patch.object(startup,'city_label_visible',return_value=False),
+              patch.object(startup,'leave_city_button_point',return_value=(85,112)),
+              patch.object(startup,'promo_close_point',
+                           return_value=(83,8)),
+              patch.object(startup,'close_verified_promo') as close,
+              patch('data_miner.vision.classify_screen') as expensive):
+            self.assertEqual(startup.run_ai_startup({},allow_ai_fallback=False),0)
+            close.assert_not_called()
+            expensive.assert_not_called()
+
+    def test_second_frame_city_check_blocks_false_promo_close(self):
+        frame=np.zeros((120,90,3),dtype=np.uint8)
+        with (patch.object(startup,'screenshot',return_value=frame),
+              patch.object(startup,'popup_visible',return_value=False),
+              patch.object(startup,'city_label_visible',
+                           side_effect=[False,False,True]),
+              patch.object(startup,'leave_city_button_point',return_value=None),
+              patch.object(startup,'promo_close_point',return_value=(83,8)),
+              patch.object(startup,'close_verified_promo') as close,
+              patch.object(startup.time,'sleep')):
+            self.assertEqual(startup.run_ai_startup({},allow_ai_fallback=False),0)
+            close.assert_not_called()
 
     def test_city_detected_without_promotions_needs_no_ai(self):
         frame=np.zeros((120,90,3),dtype=np.uint8)

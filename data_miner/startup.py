@@ -341,6 +341,27 @@ def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75,
             image = confirm_image
             point = confirm_point
             if not promotion_content_visible(image):
+                # After a verified chain of offers, the unobstructed
+                # home city still has a gold X in this corner. The city
+                # button OCR may miss it, so use the observed transition
+                # from several closed offers as a conservative fallback.
+                # Require another screenshot with no recognizable offer.
+                if promotions_closed >= 3:
+                    time.sleep(.5)
+                    settled=screenshot(cfg)
+                    if popup_visible(settled):
+                        raise RuntimeError(
+                            'Login warning reappeared; no top-right tap')
+                    if (city_label_visible(settled)
+                            or leave_city_button_point(settled) is not None):
+                        print('City confirmed after promotions on settled frame',
+                              flush=True)
+                        return actions
+                    if not promotion_content_visible(settled):
+                        print('After 3+ closed offers, no promotional content '
+                              'on two settled frames; treating top-right X '
+                              'as decorative city UI (no tap)',flush=True)
+                        return actions
                 raise RuntimeError(
                     'Ambiguous top-right X: cannot verify a promotional '
                     'overlay independently of its close icon. '

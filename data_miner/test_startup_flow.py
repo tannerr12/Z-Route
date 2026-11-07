@@ -91,6 +91,23 @@ class StartupFlowTests(unittest.TestCase):
                 startup.run_ai_startup({},allow_ai_fallback=False)
             close.assert_not_called()
 
+    def test_three_promos_then_city_with_missed_leave_city_ocr(self):
+        frames=[np.full((192,108,3),i*24,dtype=np.uint8)
+                for i in range(9)]
+        with (patch.object(startup,'screenshot',side_effect=frames),
+              patch.object(startup,'popup_visible',return_value=False),
+              patch.object(startup,'city_label_visible',return_value=False),
+              patch.object(startup,'leave_city_button_point',return_value=None),
+              patch.object(startup,'promo_close_point',return_value=(98,22)),
+              patch.object(startup,'promotion_content_visible',
+                           side_effect=[True,True,True,False,False]),
+              patch.object(startup,'close_verified_promo') as close,
+              patch.object(startup,'wait_for_next_overlay'),
+              patch.object(startup.time,'sleep')):
+            self.assertEqual(
+                startup.run_ai_startup({},allow_ai_fallback=False),3)
+            self.assertEqual(close.call_count,3)
+
     def test_monthly_pass_title_is_independent_promo_evidence(self):
         frame=np.zeros((192,108,3),dtype=np.uint8)
         with patch.object(startup.pytesseract,'image_to_string',

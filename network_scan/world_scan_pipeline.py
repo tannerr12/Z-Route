@@ -521,8 +521,8 @@ def cli():
         a.add_argument('--seconds',type=int,default=3)
         a.add_argument('--legacy-scan',dest='fast_snake',action='store_false',
                        help='Use older one-capture-per-click scanner instead of fast batched snake')
-        a.add_argument('--fast-interval',type=float,default=.35,
-                       help='Target time between minimap taps (0.2 to under 1 second); default 0.35')
+        a.add_argument('--fast-interval',type=float,default=.28,
+                       help='Target time between minimap taps (0.2 to under 1 second); default 0.28')
         a.add_argument('--fast-batch',type=int,default=10,
                        help='Checkpoint print/save frequency (2 to 40); no capture pause')
         a.set_defaults(fast_snake=True)

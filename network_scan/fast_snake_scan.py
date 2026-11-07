@@ -36,10 +36,21 @@ def fast_scan(args):
         raise ValueError('Fast settings: interval 0.2..0.99s; checkpoint 2..40 taps')
     args.out.mkdir(parents=True,exist_ok=True)
     n=args.stages[0]
+    # Extend the outer rows/columns to within 1% of each calibrated radar edge.
+    # Standard targets() places clicks at cell centers (2.5% in for 20x20).
+    # Preserve deterministic row/column IDs and serpentine click order.
+    l,t,r,b=args.roi
+    edge_margin=0.01
     grid=ordered(targets(n,n,args.roi,0.0),'snake')
+    for p in grid:
+        p['x']=round(l+(r-l)*(edge_margin+(1-2*edge_margin)*p['col']/(n-1)))
+        p['y']=round(t+(b-t)*(edge_margin+(1-2*edge_margin)*p['row']/(n-1)))
+        if not (l < p['x'] < r and t < p['y'] < b):
+            raise RuntimeError('Calculated radar tap outside calibrated ROI')
     points=[dict(number=i+1,target_id=f'{n}x{n}_{p["id"]}',
                  tap_x=p['x'],tap_y=p['y']) for i,p in enumerate(grid)]
-    plan={'schema':1,'roi':list(args.roi),'grid':n,'pattern':'snake','points':points}
+    plan={'schema':1,'roi':list(args.roi),'grid':n,'pattern':'snake',
+          'edge_margin':edge_margin,'points':points}
     plan_file=args.out/'fast_snake_route.json'
     if plan_file.exists():
         if json.loads(plan_file.read_text(encoding='utf-8'))!=plan:

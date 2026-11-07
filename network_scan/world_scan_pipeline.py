@@ -184,7 +184,7 @@ def verify_radar(cfg,args,folder,label):
 
 
 def prepare_radar(cfg,args,folder):
-    """Use Player Activity startup checks; fixed Leave City tap; local radar check."""
+    """Handle login/ads, leave city, zoom once, then use the fixed minimap ROI."""
     import cv2
     from data_miner.startup import (run_ai_startup,popup_visible,
                                    promo_close_visible,city_label_visible)
@@ -239,59 +239,34 @@ def prepare_radar(cfg,args,folder):
               flush=True)
         return
 
-    # Radar recognition is a light-weight calibrated template match, NOT AI.
-    # Do not zoom on unknown screens or begin the network scan without it.
-    if not args.radar_template:
-        save_status(folder,'radar_template_needed')
-        raise RuntimeError('World map opened. To scan unattended without Ollama, '
-                           'calibrate the fixed radar UI template via --radar-template. '
-                           'No zoom or scan attempted.')
-    if not args.radar_template.is_file():
-        save_status(folder,'radar_template_missing',
-                    template=str(args.radar_template))
-        raise RuntimeError(
-            f'Radar template file does not exist: {args.radar_template}. '
-            'This is a missing PNG, not a failed radar recognition. '
-            'No additional zoom actions or map clicks were attempted.')
-    image=after
-    for step in range(args.max_zoom_actions+1):
-        ready,score=radar_template_match(
-            image,args.radar_template,args.roi,args.radar_threshold)
-        print(f'[radar] check {step}: template score={score:.3f}',flush=True)
-        if ready:
-            repeat=read_screen(cfg)
-            second,score2=radar_template_match(
-                repeat,args.radar_template,args.roi,args.radar_threshold)
-            if second:
-                save_screen(cfg,folder,'radar_verified',repeat)
-                save_status(folder,'radar_verified',zoom_actions=step,
-                            radar_score=round(score2,3))
-                return
-        if step==args.max_zoom_actions:
-            break
-        if args.zoom_method=='bluestacks':
-            from bluestacks_zoom import zoom_out_ctrl_minus
-            zoom_out_ctrl_minus(args.zoom_hold)
-        else:
-            point=args.zoom_tap or (cfg.get('ui',{}).get('world_map',{}) or {}).get('zoom_out_tap')
-            if args.zoom_method=='tap':
-                if point is None:
-                    raise RuntimeError('Zoom tap not calibrated; pass --zoom-tap X Y')
-                one_tap(cfg,image,point,f'Zoom out {step+1}')
-            elif args.zoom_method=='keyevent':
-                from scanner import adb
-                if args.zoom_keyevent is None or not 1<=args.zoom_keyevent<=300:
-                    raise ValueError('Set a verified --zoom-keyevent between 1 and 300')
-                adb(cfg,'shell','input','keyevent',str(args.zoom_keyevent))
-            else:
-                raise ValueError('Unknown zoom method: '+str(args.zoom_method))
-        time.sleep(args.zoom_delay)
-        image=read_screen(cfg)
-        if popup_visible(image) or promo_close_visible(image):
-            save_screen(cfg,folder,'unexpected_overlay',image)
-            raise RuntimeError('Unexpected popup during zoom; stopping safely')
-    save_screen(cfg,folder,'radar_not_verified',image)
-    raise RuntimeError('Radar not verified within bounded zoom actions; scan not started')
+    # The radar/minimap is at a known fixed ROI on this BlueStacks setup.
+    # Do not require a template, OCR, or any post-zoom radar check.
+    # Exactly one verified zoom hold is sent; network responses validate
+    # subsequent clicks. Keep a diagnostic screenshot for inspection.
+    if args.zoom_method=='bluestacks':
+        from bluestacks_zoom import zoom_out_ctrl_minus
+        print(f'[pipeline] Zoom out once: Ctrl+- held {args.zoom_hold:.1f}s',flush=True)
+        zoom_out_ctrl_minus(args.zoom_hold)
+    elif args.zoom_method=='tap':
+        point=args.zoom_tap or (cfg.get('ui',{}).get('world_map',{}) or {}).get('zoom_out_tap')
+        if point is None:
+            raise RuntimeError('Zoom tap not calibrated; pass --zoom-tap X Y')
+        one_tap(cfg,after,point,'Zoom out once')
+    elif args.zoom_method=='keyevent':
+        from scanner import adb
+        if args.zoom_keyevent is None or not 1<=args.zoom_keyevent<=300:
+            raise ValueError('Set a verified --zoom-keyevent between 1 and 300')
+        adb(cfg,'shell','input','keyevent',str(args.zoom_keyevent))
+    else:
+        raise ValueError('Unknown zoom method: '+str(args.zoom_method))
+    time.sleep(args.zoom_delay)
+    zoomed=read_screen(cfg)
+    save_screen(cfg,folder,'after_zoom',zoomed)
+    save_status(folder,'zoom_complete_no_radar_check',
+                zoom_hold=args.zoom_hold,zoom_method=args.zoom_method,
+                radar_roi=list(args.roi))
+    print('[pipeline] Zoom complete. Using fixed minimap ROI; '
+          'no radar image/template check.',flush=True)
 
 
 def zoom_probe(cfg,args,folder):
@@ -432,9 +407,9 @@ def cli():
                        help='Verified Android keycode mapped to zoom-out, if no button exists')
         a.add_argument('--zoom-method',choices=('bluestacks','tap','keyevent'),
                        default='bluestacks',
-                       help='When radar template is configured: zoom via BlueStacks Ctrl+-, tapped control, or Android keycode')
+                       help='Zoom via BlueStacks Ctrl+-, tapped control, or Android keycode')
         a.add_argument('--max-zoom-actions',type=int,default=1,
-                       help='Maximum radar zoom actions; exactly 1 for BlueStacks')
+                       help='Legacy zoom limit; BlueStacks always performs one hold')
         a.add_argument('--zoom-delay',type=float,default=.6)
         a.add_argument('--zoom-hold',type=float,default=2.0,
                        help='Continuous BlueStacks Ctrl+- key hold, 2–5 seconds (default 2)')
@@ -452,7 +427,7 @@ def cli():
                        help='Inspect an already open world map: read-only radar verification twice, no taps or zoom')
         a.add_argument('--radar-threshold',type=float,default=.86)
         a.add_argument('--prepare-only',action='store_true',
-                       help='Stop immediately after radar verified; do not network-scan')
+                       help='Stop after Leave City and the one zoom hold; do not network-scan')
         a.add_argument('--startup-only',action='store_true',
                        help='Reuse Player Activity login confirmation and ad closing only; skip map and scan')
         a.add_argument('--pattern',choices=('spread','spiral','snake','checkerboard'),default='spread')
@@ -479,7 +454,7 @@ def cli():
     if args.zoom_steps!=1:
         p.error('--zoom-steps must be exactly 1 for this BlueStacks setup')
     if args.zoom_method=='bluestacks' and args.max_zoom_actions!=1:
-        p.error('BlueStacks radar zoom requires exactly one hold; use --max-zoom-actions 1')
+        p.error('BlueStacks zoom requires exactly one hold; use --max-zoom-actions 1')
     if args.max_zoom_actions<1 or args.max_zoom_actions>30 or not .2<=args.zoom_delay<=4:
         p.error('Zoom limits invalid')
     if not .6<=args.radar_threshold<=.99:
@@ -500,7 +475,7 @@ def cli():
     cfg.setdefault('adb_serial','127.0.0.1:5555')
     if args.command=='run' and not args.execute:
         print('PREVIEW ONLY: no input to game. To navigate, add --execute.')
-        print('Ollama-free: fixed bottom-right Leave City; radar requires cropped OpenCV template.')
+        print('Ollama-free: confirm, dismiss ads, Leave City, zoom once, then scan fixed minimap ROI.')
         print(f'Zoom uses one continuous Ctrl+- hold for {args.zoom_hold:.1f}s, not repeated key taps.')
         print('Start: confirm login -> dismiss promotions -> Leave City -> zoom to radar')
         print('Then: passive scan '+str(args.stages)+' '+args.pattern+
@@ -560,7 +535,7 @@ def cli():
             return
         if args.prepare_only:
             save_status(folder,'prepared_no_scan')
-            print('RADAR READY. No network scanning requested.',flush=True)
+            print('ZOOM COMPLETE. No network scanning requested.',flush=True)
             return
         run_scan(args,folder)
         report_changes(args,folder)

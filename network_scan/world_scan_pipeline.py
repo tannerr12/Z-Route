@@ -364,8 +364,25 @@ def run_scan(args,folder):
     good=sum(entry.get('status') in ('OK','OVERLAP','EMPTY') for entry in entries)
     if good==0:
         raise RuntimeError('No confirmed decoded map captures. Examine dumpcap.log and captured PCAPs.')
+    from full_map_scan import load_players
+    route_path=folder/'route.json'
+    planned=(len(json.loads(route_path.read_text(encoding='utf-8'))['points'])
+             if route_path.is_file() else 0)
+    latest={row['target_id']:row for row in entries}
+    completed=sum(row.get('status') in ('OK','OVERLAP','EMPTY')
+                  for row in latest.values())
+    review=sum(row.get('status') not in ('OK','OVERLAP','EMPTY')
+               for row in latest.values())
+    count=len(load_players(folder/'players.csv'))
+    remaining=max(0,planned-completed-review)
+    print(f'[scan] {count:,} / {args.goal:,} unique bases | '
+          f'{completed:,}/{planned:,} confirmed minimap positions | '
+          f'{remaining:,} not attempted | {review:,} review',flush=True)
     save_status(folder,'network_scan_recorded',
-                successful_clicks=good,all_click_results=len(entries),
+                successful_clicks=completed,all_click_results=len(entries),
+                unique_bases=count,goal_bases=args.goal,
+                planned_positions=planned,confirmed_positions=completed,
+                positions_to_review=review,positions_not_attempted=remaining,
                 roster=str(folder/'players.csv'))
 
 
@@ -432,7 +449,7 @@ def cli():
                        help='Limit network-scan clicks for pilot; 0 scans all')
         a.add_argument('--seconds',type=int,default=4)
         a.add_argument('--retries',type=int,default=2)
-        a.add_argument('--goal',type=int,default=9500)
+        a.add_argument('--goal',type=int,default=9700)
         a.add_argument('--server',type=int,default=125)
         a.add_argument('--interface',default='Wi-Fi')
         a.add_argument('--dumpcap',default=r'C:\Program Files\Wireshark\dumpcap.exe')

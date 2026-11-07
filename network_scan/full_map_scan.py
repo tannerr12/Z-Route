@@ -269,6 +269,7 @@ def scan(args):
     captures.mkdir(exist_ok=True)
     print('KEEP MINIMAP OPEN and ZOOM FIXED. Ctrl+C stops after saving the last click.')
     clicks_run = 0
+    consecutive_unconfirmed = 0
     for p in pending:
         if args.stop_at_goal and len(players) >= args.goal:
             print(f'Goal of ~{args.goal:,} reached; stopping by request. '
@@ -333,9 +334,22 @@ def scan(args):
         state['entries'].append(entry)
         write_outputs(args.out, state, players)
         clicks_run += 1
+        # A misaligned map or dead capture interface must not generate
+        # hundreds of blind minimap clicks. Keep checkpoint + evidence.
+        if status in ('OK','OVERLAP','EMPTY'):
+            consecutive_unconfirmed = 0
+        else:
+            consecutive_unconfirmed += 1
         print(f'  +{additions} NEW | {len(players):,} UNIQUE / ~{args.goal:,} '
               f'({len(players)/args.goal*100:.1f}%) | '
               f'{result["views"]} views | {status}', flush=True)
+        if consecutive_unconfirmed >= 3:
+            print('STOPPED: 3 consecutive minimap targets returned no '
+                  'confirmed map response. Check zoom, ROI, ADB, and dumpcap. '
+                  'The checkpoint and captures are saved; do not continue '
+                  'blindly.',flush=True)
+            summary(state, players, points, args.goal)
+            return
         if clicks_run % 10 == 0:
             summary(state, players, points, args.goal)
     print('Scan run ended. Progress and captures saved in:', args.out)

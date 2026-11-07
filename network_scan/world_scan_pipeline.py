@@ -521,10 +521,10 @@ def cli():
         a.add_argument('--seconds',type=int,default=3)
         a.add_argument('--legacy-scan',dest='fast_snake',action='store_false',
                        help='Use older one-capture-per-click scanner instead of fast batched snake')
-        a.add_argument('--fast-interval',type=float,default=.7,
-                       help='Target time between minimap taps (0.5 to under 1 second)')
+        a.add_argument('--fast-interval',type=float,default=.35,
+                       help='Target time between minimap taps (0.2 to under 1 second); default 0.35')
         a.add_argument('--fast-batch',type=int,default=10,
-                       help='Tap count per continuous Wireshark capture (2 to 20)')
+                       help='Checkpoint print/save frequency (2 to 40); no capture pause')
         a.set_defaults(fast_snake=True)
         a.add_argument('--retries',type=int,default=2)
         a.add_argument('--goal',type=int,default=9700)
@@ -556,8 +556,8 @@ def cli():
         p.error('Capture interval/retries invalid')
     if args.fast_snake and (args.pattern!='snake' or len(args.stages)!=1):
         p.error('Fast serpentine requires --pattern snake and one --stages grid (e.g. 20)')
-    if args.fast_snake and (not .5<=args.fast_interval<1 or not 2<=args.fast_batch<=20):
-        p.error('Fast interval must be 0.5..<1 seconds and batch size 2..20')
+    if args.fast_snake and (not .2<=args.fast_interval<1 or not 2<=args.fast_batch<=40):
+        p.error('Fast interval must be 0.2..<1 seconds and checkpoint size 2..40')
     if args.goal<1 or args.server<1:
         p.error('Invalid goal/server')
     if args.command=='inspect':

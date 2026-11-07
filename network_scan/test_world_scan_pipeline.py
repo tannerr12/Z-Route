@@ -31,8 +31,8 @@ class WorldPipelineTests(unittest.TestCase):
     def test_local_template_requires_real_radar_reference(self):
         with tempfile.TemporaryDirectory() as td:
             path=Path(td)/'radar.png'
-            self.assertEqual(p.radar_template_match(
-                self.image,path,self.roi),(False,0.0))
+            with self.assertRaisesRegex(FileNotFoundError,'Radar reference PNG not found'):
+                p.radar_template_match(self.image,path,self.roi)
             rng=np.random.default_rng(7)
             radar=rng.integers(0,256,(22,22),dtype=np.uint8)
             screen=np.zeros((192,108,3),dtype=np.uint8)

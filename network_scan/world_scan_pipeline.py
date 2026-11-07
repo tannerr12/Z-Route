@@ -515,14 +515,14 @@ def cli():
         a.add_argument('--startup-only',action='store_true',
                        help='Reuse Player Activity login confirmation and ad closing only; skip map and scan')
         a.add_argument('--pattern',choices=('spread','spiral','snake','checkerboard'),default='snake')
-        a.add_argument('--stages',type=str,default='20')
+        a.add_argument('--stages',type=str,default='15')
         a.add_argument('--max-clicks',type=int,default=0,
                        help='Limit network-scan clicks for pilot; 0 scans all')
         a.add_argument('--seconds',type=int,default=3)
         a.add_argument('--legacy-scan',dest='fast_snake',action='store_false',
                        help='Use older one-capture-per-click scanner instead of fast batched snake')
-        a.add_argument('--fast-interval',type=float,default=.28,
-                       help='Target time between minimap taps (0.2 to under 1 second); default 0.28')
+        a.add_argument('--fast-interval',type=float,default=.3,
+                       help='Target time between minimap taps (0.2 to under 1 second); default 0.30')
         a.add_argument('--fast-batch',type=int,default=10,
                        help='Checkpoint print/save frequency (2 to 40); no capture pause')
         a.set_defaults(fast_snake=True)

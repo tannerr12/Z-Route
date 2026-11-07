@@ -249,10 +249,37 @@ def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75,
                   flush=True)
             return actions
 
-        # Process the actual visible promo *before* using AI. There may be
-        # four, five, or more sequential offers; never assume exactly three.
+        # A decorative gold X on HOME CITY can look exactly like a promo X.
+        # Verify suspected promo on a second frame, checking the bottom-right
+        # Leave City button with both OCR methods before any top-right tap.
         point = promo_close_point(image)
         if point is not None:
+            # A second, spatial OCR locator often succeeds when the full
+            # bottom-right label OCR misses individual frames.
+            if leave_city_button_point(image) is not None:
+                print("Leave City button located; skipping top-right promo X",
+                      flush=True)
+                return actions
+            time.sleep(.35)
+            confirm_image = screenshot(cfg)
+            if (city_label_visible(confirm_image)
+                    or leave_city_button_point(confirm_image) is not None):
+                print("City confirmed on repeat screenshot; no top-right tap",
+                      flush=True)
+                return actions
+            confirm_point = promo_close_point(confirm_image)
+            if confirm_point is None:
+                # Animating/transitional image: do not click stale coordinates.
+                print("Promo X did not persist on second screenshot; rechecking",
+                      flush=True)
+                continue
+            if abs(confirm_point[0]-point[0])>35 or abs(confirm_point[1]-point[1])>35:
+                print("Promo close target moved between frames; rechecking",
+                      flush=True)
+                continue
+            # The second frame is the one whose target we will click.
+            image = confirm_image
+            point = confirm_point
             if last_tap_image is not None:
                 before = cv2.resize(last_tap_image, (128, 128))
                 after = cv2.resize(image, (128, 128))

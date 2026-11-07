@@ -204,9 +204,31 @@ class WorldPipelineTests(unittest.TestCase):
                   patch.object(p,'save_screen'),
                   patch.object(p,'save_status'),
                   patch.object(p,'one_tap') as tap):
-                with self.assertRaisesRegex(RuntimeError,'Login/promo still visible'):
+                with self.assertRaisesRegex(RuntimeError,'Login warning still visible'):
                     p.prepare_radar({},args,Path(td))
                 tap.assert_not_called()
+
+    def test_city_handoff_ignores_decorative_top_right_x_even_when_ocr_misses(self):
+        args=SimpleNamespace(roi=self.roi,max_startup_actions=12,
+                             map_tap=None,map_only=True)
+        with tempfile.TemporaryDirectory() as td:
+            with (patch('data_miner.startup.run_ai_startup',return_value=3),
+                  patch('data_miner.startup.popup_visible',return_value=False),
+                  patch('data_miner.startup.city_label_visible',return_value=False),
+                  patch('data_miner.startup.promotion_content_visible',
+                        return_value=False) as promo_text,
+                  patch('data_miner.startup.promo_close_visible',
+                        side_effect=AssertionError('Decorative X must not gate city')),
+                  patch.object(p,'read_screen',
+                               side_effect=[self.image,self.image,self.map_image]),
+                  patch.object(p,'save_screen'),
+                  patch.object(p,'save_status'),
+                  patch.object(p,'one_tap') as tap,
+                  patch('time.sleep')):
+                p.prepare_radar({},args,Path(td))
+                tap.assert_called_once()
+                self.assertEqual(tap.call_args.args[2],(98,183))
+                promo_text.assert_called_once()
 
     def test_no_radar_template_required_after_one_zoom(self):
         args=SimpleNamespace(

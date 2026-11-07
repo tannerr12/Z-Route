@@ -6,7 +6,7 @@ The 16-click pilot produced 1,109 unique player IDs. A retrospective comparison 
 
 The scanner uses progressive center-out grids of **4x4, 7x7, then 10x10** points, with duplicate/nearby click coordinates omitted. Its goal is roughly 9,700 unique bases. Reaching that number is **not proof of geographic completeness**; the program keeps scanning by default rather than stopping at the threshold.
 
-## No-Ollama startup → Leave City → radar → network scanner
+## No-Ollama startup → Leave City → fixed zoom → network scanner
 
 The world-scanning pipeline **does not run Ollama**. It uses the
 Player Activity login warning and promotional-offer routines (local
@@ -56,33 +56,29 @@ python network_scan/world_scan_pipeline.py run --execute --zoom-only --zoom-step
 The script saves `zoom_before.png` and `zoom_after_1.png`, then stops.
 It does not repeat login/ads, click the radar, run a map scan, or load Ollama.
 
-**Radar is a separate calibration.** We have an existing calibrated
-minimap click ROI `800,25,1060,270` on the 1080x1920
-emulator screenshot, but no stable visual reference for detecting the
-radar's appearance. To avoid another expensive model, the pipeline uses
-OpenCV template matching against a **user-cropped PNG of a stationary
-radar UI feature**, such as a distinctive border/icon that does not
-change with the terrain or player dots. Store that crop locally, outside
-git, e.g. `network_scans/radar_icon.png`, and pass it with
-`--radar-template`. The zoom-out control also needs one
-verified calibration via `--zoom-tap X Y` or
-`--zoom-keyevent CODE`. By default, the full pipeline now supports
-`--zoom-method bluestacks`, using the same held Ctrl+- action as
-the zoom-only probe (default 3 seconds per hold, adjustable by `--zoom-hold`). If the shortcut fails or is remapped, select
-`--zoom-method tap` or `--zoom-method keyevent` instead.
-No scan begins unless the radar template matches twice.
+**No radar template is needed for normal scanning.** The radar occupies
+the known, calibrated minimap ROI `800,25,1060,270` in the 1080x1920
+BlueStacks screenshot. After login confirmation, ad dismissal, Leave City,
+and exactly one 2-second Ctrl+- hold, the scanner saves `after_zoom.png`
+and immediately starts the network scan. It does **not** try to
+recognize the radar, require `radar_icon.png`, or invoke Ollama.
 
-After those calibrations, try radar navigation without scanning:
+Quick preparation test, stopping after the zoom:
 
 ~~~powershell
-python network_scan/world_scan_pipeline.py run --execute --prepare-only --radar-template network_scans/radar_icon.png
+python network_scan/world_scan_pipeline.py run --execute --prepare-only
 ~~~
 
-Then perform the small first capture:
+Full end-to-end run starting from the login Confirm screen:
 
 ~~~powershell
-python network_scan/world_scan_pipeline.py run --execute --max-clicks 4 --radar-template network_scans/radar_icon.png
+python network_scan/world_scan_pipeline.py run --execute --zoom-steps 1 --zoom-hold 2 --goal 9700 --stages 4,7,10 --pattern spread --retries 3 --seconds 4
 ~~~
+
+Each new full run gets its own timestamped `network_scans/map_refresh/`
+folder, avoiding route calibration collisions. Network-capture results
+and screenshots remain available for diagnosis if the minimap clicks
+fail to return expected map packets.
 
 The scanner preserves player IDs and name observations in the shared,
 private `network_scans/player_history.sqlite3` before
@@ -90,8 +86,7 @@ checkpointing each minimap click. Each session's screenshots and
 network captures stay under its own timestamped folder. The network
 decoder and scan route do not require Ollama.
 
-**Safety:** if the map does not visibly change, the radar match is
-unavailable/unstable, a promo remains, the zoom control is uncalibrated,
+**Safety:** if the map does not visibly change, a promo remains, the zoom control is uncalibrated,
 or ADB fails, the runner stops and preserves its diagnostics. A
 calibrated radar crop is not the entire changing minimap; do not use
 a full radar image with moving markers as the reference.

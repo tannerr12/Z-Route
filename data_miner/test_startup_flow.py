@@ -91,6 +91,24 @@ class StartupFlowTests(unittest.TestCase):
                 startup.run_ai_startup({},allow_ai_fallback=False)
             close.assert_not_called()
 
+    def test_monthly_pass_title_is_independent_promo_evidence(self):
+        frame=np.zeros((192,108,3),dtype=np.uint8)
+        with patch.object(startup.pytesseract,'image_to_string',
+                          return_value='Monthly Pass\\nPRIVILEGES\\nCAD 34.99'):
+            self.assertTrue(startup.promotion_content_visible(frame))
+
+    def test_monthly_pass_title_alone_is_recognized(self):
+        frame=np.zeros((192,108,3),dtype=np.uint8)
+        with patch.object(startup.pytesseract,'image_to_string',
+                          return_value='Monthly\\nPass'):
+            self.assertTrue(startup.promotion_content_visible(frame))
+
+    def test_city_words_do_not_count_as_promotion(self):
+        frame=np.zeros((192,108,3),dtype=np.uint8)
+        with patch.object(startup.pytesseract,'image_to_string',
+                          return_value='Leave City Alliance Research Buildings'):
+            self.assertFalse(startup.promotion_content_visible(frame))
+
     def test_city_detected_without_promotions_needs_no_ai(self):
         frame=np.zeros((120,90,3),dtype=np.uint8)
         with (patch.object(startup,'screenshot',return_value=frame),

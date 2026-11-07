@@ -242,6 +242,19 @@ def promotion_content_visible(image):
         return False
     import re
     words=set(re.findall(r'[a-z]+',raw))
+    collapsed=''.join(re.findall(r'[a-z]+',raw))
+    # Known promotional headings from actual screenshots are stronger
+    # evidence than generic commercial vocabulary. The Monthly Pass
+    # panel has a large "Monthly Pass" title, but often contains no
+    # other OCR-visible words from the generic purchase vocabulary.
+    if 'monthlypass' in collapsed:
+        print('Confirmed promotional overlay text: Monthly Pass',flush=True)
+        return True
+    # Additional strong paired labels, not isolated city UI terms.
+    if ({'privileges','claim'}<=words
+            or {'daily','claim'}<=words and 'cad' in words):
+        print('Confirmed promotional offer panel labels',flush=True)
+        return True
     # A single UI word such as "daily" or "free" is not evidence.
     signals={'purchase','offer','limited','bundle','discount','exclusive',
              'package','sale','special','recharge','value','price',

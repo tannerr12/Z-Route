@@ -146,7 +146,11 @@ def radar_template_match(image,template_path,roi=MINIMAP_ROI,threshold=.86):
     import cv2
     template_path=Path(template_path)
     if not template_path.is_file():
-        return False,0.0
+        raise FileNotFoundError(
+            f'Radar reference PNG not found: {template_path}. '
+            'The radar may be visible in BlueStacks, but the scanner '
+            'needs a cropped stationary UI reference. '
+            'Use the saved radar_not_verified.png to calibrate one.')
     template=cv2.imread(str(template_path),cv2.IMREAD_GRAYSCALE)
     if template is None or template.size==0:
         raise ValueError(f'Radar reference unreadable: {template_path}')
@@ -242,6 +246,13 @@ def prepare_radar(cfg,args,folder):
         raise RuntimeError('World map opened. To scan unattended without Ollama, '
                            'calibrate the fixed radar UI template via --radar-template. '
                            'No zoom or scan attempted.')
+    if not args.radar_template.is_file():
+        save_status(folder,'radar_template_missing',
+                    template=str(args.radar_template))
+        raise RuntimeError(
+            f'Radar template file does not exist: {args.radar_template}. '
+            'This is a missing PNG, not a failed radar recognition. '
+            'No additional zoom actions or map clicks were attempted.')
     image=after
     for step in range(args.max_zoom_actions+1):
         ready,score=radar_template_match(
@@ -323,8 +334,7 @@ def zoom_probe(cfg,args,folder):
         if diff<3:
             print('[zoom] Little visible change after this hold. '
                   'Check BlueStacks Game controls > Zoom mapping/Override. '
-                  'Proceeding with the second explicitly calibrated hold.',
-                  flush=True)
+                  'No additional holds will be sent.',flush=True)
         before=after
     save_status(folder,'zoom_probe_complete')
     print('ZOOM PROBE COMPLETE: check zoom_before.png and zoom_after_*.png. '

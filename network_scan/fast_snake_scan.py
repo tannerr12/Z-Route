@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Fast, dense, top-left serpentine minimap sweep with batched passive captures.
+"""Continuous Wireshark capture + rapid, dense top-left serpentine radar taps.
 
-Each batch is recorded BEFORE the first tap. Tap spacing is nominally 0.70s;
-ADB can make physical intervals longer. A decoded batch validates traffic, NOT
-each individual tapped location. All PCAPs and attempted taps are retained.
+All minimap taps are attempted without pause between groups. Capture runs in a
+single dumpcap process, rotating PCAPNG segments for recoverable evidence.
+A tap is NOT proof a new map view loaded. Saved checkpoints distinguish attempted
+taps from confirmed decoded responses.
 """
 from __future__ import annotations
 
@@ -14,50 +15,49 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from full_map_scan import load_players, player_key
-from live_watch import resolve_interface, traffic_stats
+from live_watch import decode_with_predecessor, resolve_interface, traffic_stats, view_signature
 from pattern_benchmark import (adb_run, ensure_adb_device, load_adb_settings,
                                ordered, targets, verify_device)
 from player_history import connection, ingest_records
-from scan import BASE_FIELDS, inspect, save_csv
+from scan import BASE_FIELDS, save_csv
 
 
 def save_json(path, obj):
-    temp=path.with_suffix(path.suffix+'.tmp')
-    temp.write_text(json.dumps(obj,indent=2,ensure_ascii=False),encoding='utf-8')
-    temp.replace(path)
+    tmp=path.with_suffix(path.suffix+'.tmp')
+    tmp.write_text(json.dumps(obj,indent=2,ensure_ascii=False),encoding='utf-8')
+    tmp.replace(path)
 
 
 def fast_scan(args):
-    """Scan one dense grid. Resume using --out and the same exact configuration."""
+    """One 20x20 serpentine sweep; resume attempts with same output folder."""
     if args.pattern!='snake' or len(args.stages)!=1:
-        raise ValueError('Fast sweep requires --pattern snake and one --stages grid size')
-    if not .5<=args.fast_interval<1 or not 2<=args.fast_batch<=20:
-        raise ValueError('Fast settings: interval 0.5..0.99 seconds; batch 2..20 taps')
+        raise ValueError('Fast sweep requires snake and a single grid size')
+    if not .2<=args.fast_interval<1 or not 2<=args.fast_batch<=40:
+        raise ValueError('Fast settings: interval 0.2..0.99s; checkpoint 2..40 taps')
     args.out.mkdir(parents=True,exist_ok=True)
     n=args.stages[0]
-    # Use the full calibrated minimap ROI. Grid-cell centers remain inside
-    # the border (2.5% inset for a 20x20 grid), unlike the old 7% inset.
-    all_points=ordered(targets(n,n,args.roi,0.0),'snake')
-    points=[dict(number=i+1, target_id=f'{n}x{n}_{p["id"]}',
-                 tap_x=p['x'],tap_y=p['y']) for i,p in enumerate(all_points)]
+    grid=ordered(targets(n,n,args.roi,0.0),'snake')
+    points=[dict(number=i+1,target_id=f'{n}x{n}_{p["id"]}',
+                 tap_x=p['x'],tap_y=p['y']) for i,p in enumerate(grid)]
     plan={'schema':1,'roi':list(args.roi),'grid':n,'pattern':'snake','points':points}
     plan_file=args.out/'fast_snake_route.json'
     if plan_file.exists():
-        old=json.loads(plan_file.read_text(encoding='utf-8'))
-        if old!=plan:
-            raise RuntimeError('Existing fast-snake output uses a different route; choose new --out')
+        if json.loads(plan_file.read_text(encoding='utf-8'))!=plan:
+            raise RuntimeError('Route differs from saved session; use a new --out folder')
     else:
         save_json(plan_file,plan)
     state_file=args.out/'fast_snake_checkpoint.json'
     state=(json.loads(state_file.read_text(encoding='utf-8'))
-           if state_file.exists() else {'schema':1,'completed':[],'batches':[]})
-    finished=set(state['completed'])
-    pending=[p for p in points if p['target_id'] not in finished]
+           if state_file.exists() else {'schema':2,'attempted':[],'capture_sessions':[]})
+    # Prior session format called attempts "completed"; do not repeat them blindly.
+    attempted=set(state.get('attempted',[])) | set(state.get('completed',[]))
+    pending=[p for p in points if p['target_id'] not in attempted]
     if args.max_clicks:
         pending=pending[:args.max_clicks]
     if not pending:
-        print('[fast] No pending minimap taps.',flush=True)
+        print('[fast] No pending radar clicks; review saved captures for coverage.',flush=True)
         return
+
     load_adb_settings(args)
     ensure_adb_device(args)
     verify_device(args.adb,args.serial,args.roi)
@@ -65,90 +65,117 @@ def fast_scan(args):
     captures=args.out/'captures'
     captures.mkdir(exist_ok=True)
     players=load_players(args.out/'players.csv')
-    unconfirmed=0
-    print(f'[fast] Dense {n}x{n} grid, top-left serpentine; '
-          f'{len(pending)} remaining taps; nominal spacing {args.fast_interval:.2f}s',flush=True)
-    for start in range(0,len(pending),args.fast_batch):
-        group=pending[start:start+args.fast_batch]
-        batch_id=len(state['batches'])+1
-        capture=captures/f'fast_snake_{batch_id:04d}.pcapng'
-        # A small initial margin plus a bounded period after the last input.
-        duration=max(4, int(len(group)*args.fast_interval+4.5))
-        cmd=[args.dumpcap,'-i',device,'-f','tcp port 9929',
-             '-a',f'duration:{duration}','-w',str(capture)]
-        sent=[]
-        proc=None
-        log_file=args.out/'dumpcap.log'
-        try:
-            with log_file.open('a',encoding='utf-8') as log:
-                proc=subprocess.Popen(cmd,stdout=subprocess.DEVNULL,stderr=log)
-                time.sleep(.45)
+    session=datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S_%f')
+    prefix='continuous_'+session
+    pcappath=captures/(prefix+'.pcapng')
+    # Rotating files keep closed capture chunks readable if interrupted.
+    cmd=[args.dumpcap,'-i',device,'-f','tcp port 9929',
+         '-b','duration:10','-w',str(pcappath)]
+    proc=None
+    sent=[]
+    failure=None
+    started=time.monotonic()
+    print(f'[fast] {n}x{n} top-left serpentine, {len(pending)} taps; '
+          f'continuous capture; nominal interval {args.fast_interval:.2f}s; '
+          f'checkpoint every {args.fast_batch} taps',flush=True)
+    try:
+        with (args.out/'dumpcap.log').open('a',encoding='utf-8') as log:
+            proc=subprocess.Popen(cmd,stdout=subprocess.DEVNULL,stderr=log)
+            time.sleep(.5)
+            if proc.poll() is not None:
+                raise RuntimeError('Wireshark capture did not start; see dumpcap.log')
+            deadline=time.monotonic()
+            for p in pending:
                 if proc.poll() is not None:
-                    raise RuntimeError('dumpcap exited before taps; see dumpcap.log')
-                deadline=time.monotonic()
-                for p in group:
-                    if proc.poll() is not None:
-                        raise RuntimeError('dumpcap stopped during taps; refusing unrecorded clicks')
-                    adb_run(args.adb,args.serial,'shell','input','tap',
-                            str(p['tap_x']),str(p['tap_y']),timeout=5)
-                    sent.append(p)
-                    print(f'[fast] Tap {p["number"]}/{len(points)} '
-                          f'({p["tap_x"]},{p["tap_y"]})',flush=True)
-                    deadline+=args.fast_interval
-                    time.sleep(max(0,deadline-time.monotonic()))
-                proc.wait(timeout=duration+15)
-                if proc.returncode!=0:
-                    raise RuntimeError('dumpcap failed; inspect dumpcap.log')
-            views,errors=inspect(capture)
-            traffic=traffic_stats(capture)
-            observed={}
-            for view,bases in views:
+                    raise RuntimeError('Wireshark stopped; refusing further unrecorded taps')
+                # Never automatically retry an ambiguous ADB tap.
+                adb_run(args.adb,args.serial,'shell','input','tap',
+                        str(p['tap_x']),str(p['tap_y']),timeout=5)
+                sent.append(p)
+                state.setdefault('attempted',[]).append(p['target_id'])
+                if len(sent)%args.fast_batch==0:
+                    state['last_tap_utc']=datetime.now(timezone.utc).isoformat()
+                    save_json(state_file,state)
+                    print(f'[fast] {len(sent)}/{len(pending)} tapped; '
+                          'capture still running (no batch pause)',flush=True)
+                deadline+=args.fast_interval
+                time.sleep(max(0,deadline-time.monotonic()))
+            # Allow late map responses to arrive before terminating capture.
+            time.sleep(1.2)
+    except (KeyboardInterrupt,OSError,RuntimeError) as exc:
+        failure=exc
+        print(f'[fast] Tap sweep interrupted: {exc}; retaining recorded traffic',flush=True)
+    finally:
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            try:proc.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+        state['last_tap_utc']=datetime.now(timezone.utc).isoformat()
+        save_json(state_file,state)
+
+    files=sorted(captures.glob(prefix+'*.pcapng'),
+                 key=lambda p:(p.stat().st_mtime_ns,p.name))
+    if not files:
+        raise RuntimeError('No PCAPNG files created; check dumpcap.log')
+    views_seen=set()
+    views_total=0
+    decode_errors=0
+    incoming=0
+    records=[]
+    # Decode only after the sweep: CPU/disk decoding never blocks radar taps.
+    for i,file in enumerate(files):
+        if file.stat().st_size<32:
+            continue
+        try:
+            decoded,errors=decode_with_predecessor(
+                file,files[i-1] if i else None,args.out)
+            stats=traffic_stats(file)
+            incoming+=stats['incoming_packets']
+            decode_errors+=errors if isinstance(errors,int) else errors.get('decode_error',0)
+            added=0
+            for view,bases in decoded:
+                sig=view_signature(view,bases)
+                if sig in views_seen:
+                    continue
+                views_seen.add(sig)
+                views_total+=1
+                batch_players={}
                 for player in bases:
                     key=player_key(player)
                     if key:
-                        observed[key]=player
-            # History must be durable before checkpointing completed attempts.
-            if observed:
-                with connection(getattr(args,'history_db',Path('network_scans/player_history.sqlite3'))) as db:
-                    ingest_records(db,observed.values(),str(capture),
-                                   observed_at=datetime.now(timezone.utc).isoformat())
-            count_before=len(players)
-            players.update(observed)
+                        batch_players[key]=player
+                if batch_players:
+                    with connection(getattr(args,'history_db',
+                                    Path('network_scans/player_history.sqlite3'))) as db:
+                        ingest_records(db,batch_players.values(),str(file),
+                                       observed_at=datetime.now(timezone.utc).isoformat())
+                    before=len(players)
+                    players.update(batch_players)
+                    added+=len(players)-before
             save_csv(args.out/'players.csv',BASE_FIELDS,
                      sorted(players.values(),key=lambda p:player_key(p) or ''))
-            confirmed=bool(views)
-            state['batches'].append(dict(batch=batch_id,
-                target_ids=[p['target_id'] for p in sent],
-                capture=str(capture),map_views=len(views),
-                incoming_packets=traffic['incoming_packets'],
-                new_players=len(players)-count_before,
-                unique_players=len(players),decode_errors=errors,
-                status='MAP_RESPONSE' if confirmed else 'UNCONFIRMED',
-                updated_at=datetime.now(timezone.utc).isoformat()))
-            if confirmed:
-                state['completed'].extend(p['target_id'] for p in sent)
-            save_json(state_file,state)
-            unconfirmed=0 if confirmed else unconfirmed+1
-            print(f'[fast] Batch {batch_id}: {len(views)} decoded views, '
-                  f'+{len(players)-count_before} new, {len(players)} total; '
-                  f'{len(state["completed"])} confirmed-batch taps, '
-                  f'{len(sent)} taps in this batch (no per-tap validation)',flush=True)
-            if unconfirmed>=3:
-                print('[fast] STOP: three consecutive batches with no decoded map responses. '
-                      'Inspect PCAPs, adapter, zoom and map before resuming.',flush=True)
-                raise RuntimeError('Three batches had no decoded map response')
-        except (OSError,RuntimeError,subprocess.TimeoutExpired) as exc:
-            # Unknown ADB tap delivery must never be retried automatically.
-            print(f'[fast] STOP: {exc}; capture and checkpoint retained. '
-                  'Do not assume the last tap was delivered.',flush=True)
-            raise RuntimeError('Fast sweep stopped; inspect last batch before resuming') from exc
-        finally:
-            if proc is not None and proc.poll() is None:
-                proc.terminate()
-                try:proc.wait(timeout=6)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait(timeout=5)
-    print(f'[fast] Finished attempted sweep: {len(points)} planned, '
-          f'{len(state["completed"])} tapped, {len(players)} unique bases. '
-          'Batch response confirmation is not geographic coverage proof.',flush=True)
+            records.append({'file':str(file),'decoded_views':len(decoded),
+                            'new_players':added,'incoming_packets':stats['incoming_packets']})
+        except (OSError,ValueError,EOFError,IndexError,KeyError) as exc:
+            records.append({'file':str(file),'error':str(exc)})
+            print(f'[fast] WARNING: cannot decode {file.name}: {exc}',flush=True)
+    state.setdefault('capture_sessions',[]).append({
+        'prefix':prefix,'attempted_taps':len(sent),'files':records,
+        'decoded_unique_views':views_total,'incoming_packets':incoming,
+        'decode_errors':decode_errors,'player_count':len(players),
+        'duration_seconds':round(time.monotonic()-started,2),
+        'finished_at_utc':datetime.now(timezone.utc).isoformat()})
+    save_json(state_file,state)
+    print(f'[fast] {len(sent)} taps, {len(files)} capture segments, '
+          f'{views_total} unique decoded views, {len(players)} total bases; '
+          f'{round(time.monotonic()-started,1)}s including decoding.',flush=True)
+    if views_total==0:
+        raise RuntimeError('No decoded map views; taps were attempted, not verified. '
+                           'Review capture logs and map before another run.')
+    if failure is not None:
+        raise RuntimeError(f'Sweep interrupted after {len(sent)} taps; '
+                           'saved capture and attempts for review') from failure
+    print('[fast] Swept radar; individual taps and geographic completeness '
+          'are not confirmed by batch network responses.',flush=True)

@@ -218,6 +218,38 @@ def leave_city_button_point(image):
     return x,y
 
 
+def promotion_content_visible(image):
+    """Independent OCR evidence of an offer, not merely a gold top-right X.
+
+    A gold X exists in city UI, so it cannot authorize a tap by itself.
+    Require multiple purchase/offer words from the main body of the screen.
+    False negatives stop safely; false positives do not authorize
+    clicking if the Leave City label was found.
+    """
+    height,width=image.shape[:2]
+    region=image[int(height*.16):int(height*.80),
+                 int(width*.08):int(width*.91)]
+    if region.size==0:
+        return False
+    gray=cv2.cvtColor(region,cv2.COLOR_BGR2GRAY)
+    gray=cv2.resize(gray,None,fx=1.3,fy=1.3,
+                    interpolation=cv2.INTER_LINEAR)
+    try:
+        raw=pytesseract.image_to_string(
+            gray,config='--psm 11',timeout=5).casefold()
+    except (OSError,RuntimeError) as exc:
+        print(f'Promotion text OCR unavailable: {exc}',flush=True)
+        return False
+    import re
+    words=set(re.findall(r'[a-z]+',raw))
+    # A single UI word such as "daily" or "free" is not evidence.
+    signals={'purchase','offer','limited','bundle','discount','exclusive',
+             'package','sale','special','recharge','value','price',
+             'bonus','gifts','claim','unlock','rewards','shop','buy',
+             'packs','pack','gift','premium','deal','deals'}
+    return len(words & signals)>=2
+
+
 def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75,
                    allow_ai_fallback=True):
     """Reuse Player Activity's local login + popup flow; only ask AI as fallback.
@@ -278,8 +310,16 @@ def run_ai_startup(cfg, max_actions=12, confidence_threshold=0.75,
                       flush=True)
                 continue
             # The second frame is the one whose target we will click.
+            # Two stable X detections are STILL not sufficient on the
+            # home city; require separate evidence of an actual offer.
             image = confirm_image
             point = confirm_point
+            if not promotion_content_visible(image):
+                raise RuntimeError(
+                    'Ambiguous top-right X: cannot verify a promotional '
+                    'overlay independently of its close icon. '
+                    'Refusing to tap city UI; inspect the screenshot. '
+                    'Leave City OCR may have missed the city button.')
             if last_tap_image is not None:
                 before = cv2.resize(last_tap_image, (128, 128))
                 after = cv2.resize(image, (128, 128))

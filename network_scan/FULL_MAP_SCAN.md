@@ -1,10 +1,10 @@
-# Progressive minimap scan — goal of ~9,500 bases
+# Progressive minimap scan — working roster target of ~9,700 bases
 
 This experimental command is independent of the original screenshot scanner and benchmark. It navigates using the calibrated BlueStacks minimap and **passively captures** TCP port 9929 via Wireshark dumpcap. It does not forge or send direct game-server messages.
 
 The 16-click pilot produced 1,109 unique player IDs. A retrospective comparison showed that a center-out spiral found more IDs in its early clicks than other tested routes. That result does not establish the best full-map route, but justifies a larger pilot.
 
-The scanner uses progressive center-out grids of **4x4, 7x7, then 10x10** points, with duplicate/nearby click coordinates omitted. Its goal is roughly 9,500 unique bases. Reaching that number is **not proof of geographic completeness**; the program keeps scanning by default rather than stopping at the threshold.
+The scanner uses progressive center-out grids of **4x4, 7x7, then 10x10** points, with duplicate/nearby click coordinates omitted. Its goal is roughly 9,700 unique bases. Reaching that number is **not proof of geographic completeness**; the program keeps scanning by default rather than stopping at the threshold.
 
 ## No-Ollama startup → Leave City → radar → network scanner
 
@@ -102,6 +102,56 @@ Offline tests:
 python -m unittest discover -s network_scan -p test_world_scan_pipeline.py
 python -m unittest discover -s data_miner -p test_startup_flow.py
 ~~~
+
+## Coverage validation and reaching the ~9,700-base target
+
+The scanner reports **two different measures**, which must not be
+conflated: (1) unique `server:player_id` base records, compared with
+our working target of **9,700**, and (2) how many planned minimap
+positions have actually returned a confirmed map response. Crossing
+9,700 does not prove that the whole map was visited; do not automatically
+stop at that milestone. The default full scan keeps traversing the
+planned route. Missing targets and retry-needed captures must be
+reported separately, not treated as absent players.
+
+**First test, only after the radar is visibly open and clicking it
+doesn't reset zoom:**
+
+~~~powershell
+python network_scan/full_map_scan.py run --execute --max-clicks 4 --goal 9700 --interface "Wi-Fi" --dumpcap "C:\Program Files\Wireshark\dumpcap.exe"
+python network_scan/full_map_scan.py report --goal 9700
+~~~
+
+This uses `network_scans/full_map` as the same resumable session on
+subsequent commands; `checkpoint.json`, `players.csv`,
+`steps.csv`, and the PCAPNG files are saved there. The scan will
+not navigate from the city or zoom in this mode: **radar must already
+be on-screen**. Run only four clicks first, review captured map
+responses, and make sure a minimap tap preserves the zoom.
+
+After the small pilot is successful:
+
+~~~powershell
+python network_scan/full_map_scan.py run --execute --goal 9700 --interface "Wi-Fi" --dumpcap "C:\Program Files\Wireshark\dumpcap.exe"
+~~~
+
+To retry reviewed targets, after checking the reason they failed:
+
+~~~powershell
+python network_scan/full_map_scan.py run --execute --retry-review --goal 9700 --interface "Wi-Fi" --dumpcap "C:\Program Files\Wireshark\dumpcap.exe"
+~~~
+
+This uses the exact same folder/checkpoint, so it does not discard
+completed targets. It continues to collect history in
+`network_scans/player_history.sqlite3`. The latest `players.csv`
+contains one record per stable identity in that scan. Use
+`network_scan/compare_player_sessions.py` to compare against the
+earlier live-watcher roster and find IDs missed by each session.
+
+**Warning:** a zoom reset after a minimap tap invalidates the existing
+pixel ROI and route; do not run the full scan until that behavior is
+resolved. The current end-to-end pipeline also requires a calibrated
+local radar template before it will scan unattended.
 
 ## Setup and four-click speed pilot
 

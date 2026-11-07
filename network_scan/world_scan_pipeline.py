@@ -501,11 +501,11 @@ def cli():
                        help='Stop after Leave City and the one zoom hold; do not network-scan')
         a.add_argument('--startup-only',action='store_true',
                        help='Reuse Player Activity login confirmation and ad closing only; skip map and scan')
-        a.add_argument('--pattern',choices=('spread','spiral','snake','checkerboard'),default='spread')
+        a.add_argument('--pattern',choices=('spread','spiral','snake','checkerboard'),default='snake')
         a.add_argument('--stages',type=str,default='4,7,10')
         a.add_argument('--max-clicks',type=int,default=0,
                        help='Limit network-scan clicks for pilot; 0 scans all')
-        a.add_argument('--seconds',type=int,default=4)
+        a.add_argument('--seconds',type=int,default=3)
         a.add_argument('--retries',type=int,default=2)
         a.add_argument('--goal',type=int,default=9700)
         a.add_argument('--server',type=int,default=125)

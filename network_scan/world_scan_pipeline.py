@@ -187,7 +187,7 @@ def prepare_radar(cfg,args,folder):
     """Handle login/ads, leave city, zoom once, then use the fixed minimap ROI."""
     import cv2
     from data_miner.startup import (run_ai_startup,popup_visible,
-                                   promo_close_visible,city_label_visible)
+                                   city_label_visible,promotion_content_visible)
     image=read_screen(cfg)
     save_screen(cfg,folder,'initial',image)
     save_status(folder,'startup_checks_no_ollama')
@@ -207,9 +207,14 @@ def prepare_radar(cfg,args,folder):
     save_status(folder,'city_ready',startup_actions=actions)
     image=read_screen(cfg)
     save_screen(cfg,folder,'city_after_popups',image)
-    if popup_visible(image) or (promo_close_visible(image)
-                                and not city_label_visible(image)):
-        raise RuntimeError('Login/promo still visible; refusing to click Leave City')
+    # A gold top-right X is part of the city UI and MUST NOT be used
+    # as a reason to reject the verified startup handoff. Check for
+    # actual promotional content instead of reusing the X detector.
+    if popup_visible(image):
+        raise RuntimeError('Login warning still visible; refusing Leave City')
+    if not city_label_visible(image) and promotion_content_visible(image):
+        save_screen(cfg,folder,'unexpected_offer_before_leave_city',image)
+        raise RuntimeError('Promotional offer remains; refusing Leave City')
     # The startup routine already requires a city confirmation; the tap itself
     # is fixed, avoiding another OCR pass or full-scene model inference.
     # Never use a possibly stale config.json map_button_tap: earlier

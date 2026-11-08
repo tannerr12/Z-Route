@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Z-Route | Alliance Performance Review</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#091321;color:#e9f1fc}*{box-sizing:border-box}body{margin:0;padding:22px}main{max-width:1550px;margin:auto}h1{margin:0}a{color:#8cc9ff}nav{line-height:2}header,.tools,.cards,.actions{display:flex;gap:14px;align-items:center;flex-wrap:wrap}header{justify-content:space-between}.panel{background:#102035;border:1px solid #30465e;border-radius:12px;padding:17px;margin:16px 0}.tools label{display:flex;align-items:center;gap:7px;flex-wrap:wrap}select,input,button{background:#172d45;color:#eef7ff;border:1px solid #42617d;border-radius:8px;padding:9px;font:inherit}button{cursor:pointer}button:hover{border-color:#7bc4ff}.cards .panel{flex:1;min-width:175px;margin:0}.cards strong{display:block;font-size:29px;margin-top:5px}.cards small,.muted{color:#9eb1c8}.warning{color:#ffbc7a}.bad{color:#ff8585}.good{color:#7be4ac}.quiet{color:#9eb1c8}.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;white-space:nowrap}td,th{border-bottom:1px solid #31465c;padding:9px 10px;text-align:right}th{font-size:13px;color:#b3c9df}td:first-child,th:first-child{text-align:left;position:sticky;left:0;background:#102035;z-index:1}.dot{display:inline-block;min-width:24px;text-align:center;font-weight:750}.pill{font-size:12px;border:1px solid #47617a;border-radius:30px;padding:3px 7px}.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.summary .panel{margin:0}ul{padding-left:23px}li{margin:7px 0}#dataNotice{font-weight:600}@media(max-width:640px){body{padding:12px}.cards .panel{min-width:135px}h1{font-size:23px}}
+@media print{body{background:white;color:black}nav,.tools,.actions{display:none}.panel,td:first-child{background:white;color:black}table{font-size:10px}}
+</style></head><body><main>
+<header><div><h1>Alliance Performance Review</h1><p class="muted">Management-style review · member donations + individual VS days · Monday UTC reset</p></div><nav><a href="./index.html">Map</a> · <a href="./donations.html">Donations</a> · <a href="./vs.html">VS Analytics</a></nav></header>
+<section class="panel tools"><label>Guild <select id="guild"></select></label><label>Week starting <select id="week"></select></label><label>Donation minimum <input id="donGoal" type="number" min="0" value="25200" step="100"></label><label>Daily VS goal <input id="vsGoal" type="number" min="0" value="1000000" step="10000"></label><label>Show <select id="filter"><option value="all">All recorded players</option><option value="review">Needs review</option><option value="don">Low donations</option><option value="vs">VS concerns</option><option value="missing">Missing records</option></select></label><label>Search <input id="search" placeholder="Player name"></label></section>
+<p id="status" role="status">Loading published records…</p><p class="warning" id="dataNotice"></p>
+<section class="cards">
+<div class="panel"><small>Players for review</small><strong id="review">—</strong></div>
+<div class="panel"><small>Below donation goal</small><strong id="lowDon">—</strong></div>
+<div class="panel"><small>VS concerns</small><strong id="vsIssues">—</strong></div>
+<div class="panel"><small>Members observed</small><strong id="total">—</strong></div>
+<div class="panel"><small>Join date / shield / Frenzy</small><strong id="coverage">—</strong></div>
+</section>
+<section class="panel"><h2>Individual performance matrix</h2><p class="muted">✓ meets goal · ▼ below goal · — no record. Missing is not zero. The VS threshold applies <b>per day</b>, not to a weekly total. A current week is provisional.</p><div class="scroll"><table><thead><tr><th>Player</th><th>Donations</th><th>Donation flag</th><th>Join date</th><th>Shield list</th><th>Frenzy</th><th>MON</th><th>TUE</th><th>WED</th><th>THU</th><th>FRI</th><th>SAT</th><th>Recorded VS total</th><th>VS days below</th><th>VS days missing</th><th>Review</th></tr></thead><tbody id="rows"></tbody></table></div></section>
+<section class="summary"><div class="panel"><h2>VS underperformance by day</h2><ul id="underDays"></ul></div><div class="panel"><h2>Missing VS records by day</h2><ul id="missingDays"></ul></div><div class="panel"><h2>Recommended actions</h2><ol id="actions"></ol></div></section>
+<section class="panel actions"><button id="download">Export review CSV</button><button id="print">Print review</button><span class="muted">Optional management metadata: data/review/&lt;guild&gt;/members.csv (username,joined_at,no_shield,frenzy). Unknown data is displayed as —.</span></section>
+</main><script>
+'use strict';
+const $=id=>document.getElementById(id),DAYS=['MON','TUE','WED','THU','FRI','SAT'],fmt=n=>Number(n).toLocaleString('en-CA');
+const state={guilds:[],don:[],vs:[],members:[],weeks:[],current:[]};
+function csv(text){let rows=[],row=[],cell='',quote=false;for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quote&&text[i+1]==='"'){cell+='"';i++}else quote=!quote}else if(c===','&&!quote){row.push(cell);cell=''}else if((c==='\n'||c==='\r')&&!quote){if(c==='\r'&&text[i+1]==='\n')i++;row.push(cell);if(row.some(x=>x.trim()))rows.push(row);row=[];cell=''}else cell+=c}row.push(cell);if(row.some(x=>x.trim()))rows.push(row);let head=(rows.shift()||[]).map((x,i)=>i?x.trim():x.replace(/^\uFEFF/,'').trim());return rows.map(r=>Object.fromEntries(head.map((k,i)=>[k,r[i]||''])))}
+const key=s=>String(s||'').trim().toLocaleLowerCase();
+const validNum=s=>s!==undefined&&String(s).trim()!==''&&Number.isSafeInteger(Number(s))&&Number(s)>=0;
+function validWeek(s){if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return false;const d=new Date(s+'T00:00:00Z');return !Number.isNaN(+d)&&d.toISOString().slice(0,10)===s&&d.getUTCDay()===1}
+async function getCSV(path,optional=false){try{const r=await fetch(path+'?v=review1',{cache:'no-store'});if(!r.ok)throw Error(r.status);return csv(await r.text())}catch(e){if(optional)return [];throw Error(path+': '+e.message)}}
+function value(s){if(s==='true'||s==='1'||s==='yes')return true;if(s==='false'||s==='0'||s==='no')return false;return null}
+function build(){const w=$('week').value,donGoal=Math.max(0,Number($('donGoal').value)||0),vsGoal=Math.max(0,Number($('vsGoal').value)||0);
+ const map=new Map();function row(name){const id=key(name);if(!map.has(id))map.set(id,{name:name.trim(),don:null,vs:new Map(),meta:null});return map.get(id)}
+ for(const d of state.don.filter(x=>x.week_start===w&&x.username&&validNum(x.points))){const m=row(d.username);m.don=Number(d.points);m.name=d.username.trim()}
+ for(const v of state.vs.filter(x=>x.week_start===w&&DAYS.includes(v.day)&&v.username&&validNum(v.points))){const m=row(v.username);m.vs.set(v.day,Number(v.points))}
+ const meta=new Map(state.members.filter(m=>m.username).map(m=>[key(m.username),m]));
+ for(const [id,m] of map){m.meta=meta.get(id)||null;m.lowDon=m.don!==null&&m.don<donGoal;m.below=DAYS.filter(d=>m.vs.has(d)&&m.vs.get(d)<vsGoal);m.missing=DAYS.filter(d=>!m.vs.has(d));m.vsIssues=m.below.length>0||m.missing.length>0;m.review=m.lowDon||m.vsIssues}
+ state.current=[...map.values()].sort((a,b)=>Number(b.review)-Number(a.review)||a.name.localeCompare(b.name));
+ const r=state.current;
+ $('review').textContent=fmt(r.filter(x=>x.review).length);$('lowDon').textContent=fmt(r.filter(x=>x.lowDon).length);
+ $('vsIssues').textContent=fmt(r.filter(x=>x.vsIssues).length);$('total').textContent=fmt(r.length);
+ $('coverage').textContent=fmt(r.filter(x=>x.meta).length)+' / '+fmt(r.length);
+ const end=new Date(w+'T00:00:00Z');end.setUTCDate(end.getUTCDate()+7);
+ const demo=[...state.don,...state.vs].some(x=>String(x.evidence||'').toUpperCase().includes('DEMO'));
+ $('dataNotice').textContent=(demo?'DEMO records present — figures are not verified management results. ':'')+
+ (end>new Date()?'Current week: flags are provisional; future unrecorded days are not performance failures. ':'')+
+ (!state.members.length?'No join/shield/Frenzy metadata available. ':'')+
+ 'Only members present in VS or donation files are included; unknown alliance members cannot be counted.';
+ const filter=$('filter').value,search=key($('search').value),body=$('rows');body.replaceChildren();
+ function cell(tr,text,cls){const td=document.createElement('td');td.textContent=text;td.className=cls||'';tr.append(td)}
+ for(const m of r.filter(x=>key(x.name).includes(search)).filter(x=>filter==='all'||filter==='review'&&x.review||filter==='don'&&x.lowDon||filter==='vs'&&x.vsIssues||filter==='missing'&&(x.don===null||x.missing.length))){const tr=document.createElement('tr'),joined=m.meta?.joined_at||'—',shield=m.meta?value(key(m.meta.no_shield)):null,frenzy=m.meta?value(key(m.meta.frenzy)):null;
+ cell(tr,m.name);cell(tr,m.don===null?'—':fmt(m.don));cell(tr,m.don===null?'Missing':m.lowDon?'▼ Low':'✓ OK',m.lowDon?'bad':m.don===null?'quiet':'good');cell(tr,joined);
+ cell(tr,shield===null?'—':shield?'On list':'Not listed',shield?'bad':'quiet');cell(tr,frenzy===null?'—':frenzy?'✓ Yes':'✕ No',frenzy===false?'bad':'quiet');
+ for(const day of DAYS){const v=m.vs.get(day);cell(tr,v===undefined?'—':(v>=vsGoal?'✓ ':'▼ ')+fmt(v),v===undefined?'quiet':v>=vsGoal?'good':'bad')}
+ const total=[...m.vs.values()].reduce((a,b)=>a+b,0);cell(tr,m.vs.size?fmt(total):'—');cell(tr,String(m.below.length),m.below.length?'bad':'');cell(tr,String(m.missing.length),m.missing.length?'warning':'');
+ cell(tr,m.review?'Needs review':'No score flags',m.review?'bad':'good');body.append(tr)}
+ function bullets(id,predicate){const list=$(id);list.replaceChildren();for(const d of DAYS){const hits=r.filter(x=>predicate(x,d)).map(x=>x.name);const li=document.createElement('li');li.textContent=d+': '+(hits.length?hits.length+' players · '+hits.slice(0,12).join(', ')+(hits.length>12?'…':''):'none');list.append(li)}}
+ bullets('underDays',(m,d)=>m.below.includes(d));bullets('missingDays',(m,d)=>m.missing.includes(d));
+ const actions=$('actions');actions.replaceChildren();for(const str of [
+ 'Review repeated daily VS scores below '+fmt(vsGoal)+' ('+r.filter(m=>m.below.length>=2).length+' members).',
+ 'Follow up on incomplete leaderboard records; missing values are not proof of non-participation.',
+ 'Check '+r.filter(m=>m.lowDon).length+' recorded members below '+fmt(donGoal)+' donations.',
+ 'Request join-date, No Shield and Frenzy tracking for management’s complete review.']){const li=document.createElement('li');li.textContent=str;actions.append(li)}
+ $('status').textContent=$('guild').value+' · week '+w+' UTC · '+fmt(r.length)+' distinct recorded members';
+}
+async function loadGuild(){const g=$('guild').value;if(!g)return;$('status').textContent='Loading '+g+'…';try{const path=encodeURIComponent(g);const [don,vs,metadata]=await Promise.all([
+ getCSV('./data/donations/'+path+'/donations.csv',true),
+ getCSV('./data/vs/'+path+'/rankings.csv',true),
+ getCSV('./data/review/'+path+'/members.csv',true)]);
+ state.don=don.filter(r=>validWeek(r.week_start));state.vs=vs.filter(r=>validWeek(r.week_start));state.members=metadata;
+ state.weeks=[...new Set([...state.don,...state.vs].map(x=>x.week_start))].sort().reverse();
+ const prior=$('week').value;$('week').replaceChildren(...state.weeks.map(w=>new Option(w,w)));if(state.weeks.includes(prior))$('week').value=prior;
+ if(state.weeks.length)build();else {$('status').textContent='No VS or donation weeks published for '+g;state.current=[];document.querySelector('#rows').replaceChildren()}
+}catch(e){$('status').textContent='Review failed: '+e.message}}
+async function init(){try{const paths=['./data/donations/guilds.json','./data/vs/guilds.json'];const results=await Promise.all(paths.map(async p=>{try{const r=await fetch(p,{cache:'no-store'});if(!r.ok)return [];return (await r.json()).guilds||[]}catch{return []}}));const groups=new Map();for(const list of results)for(const x of list)if(x.name&&/^[A-Za-z0-9_-]+$/.test(x.folder)&&key(x.name)===key(x.folder))groups.set(x.name,x.folder);state.guilds=[...groups.keys()].sort();$('guild').replaceChildren(...state.guilds.map(x=>new Option(x,x)));if(state.guilds.includes('D3AD'))$('guild').value='D3AD';if(state.guilds.length)loadGuild();else $('status').textContent='No published guild manifests found'}catch(e){$('status').textContent=e.message}}
+$('guild').addEventListener('change',loadGuild);['week','donGoal','vsGoal','filter','search'].forEach(id=>$(id).addEventListener('input',build));
+$('print').addEventListener('click',()=>window.print());
+$('download').addEventListener('click',()=>{const header=['player','donations','donation_low',...DAYS,'vs_below_days','vs_missing_days','review'];const lines=[header.join(',')];const quote=v=>'"'+String(v??'').replaceAll('"','""')+'"';for(const m of state.current){lines.push([m.name,m.don??'',m.lowDon,...DAYS.map(d=>m.vs.get(d)??''),m.below.join('|'),m.missing.join('|'),m.review].map(quote).join(','))}const blob=new Blob([lines.join('\r\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='zroute-review-'+($('guild').value||'guild')+'-'+($('week').value||'week')+'.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)});
+init();
+</script></body></html>

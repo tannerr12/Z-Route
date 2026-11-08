@@ -29,11 +29,14 @@ function validWeek(s){if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return false;const d=new
 async function getCSV(path,optional=false){try{const r=await fetch(path+'?v=review1',{cache:'no-store'});if(!r.ok)throw Error(r.status);return csv(await r.text())}catch(e){if(optional)return [];throw Error(path+': '+e.message)}}
 function value(s){if(s==='true'||s==='1'||s==='yes')return true;if(s==='false'||s==='0'||s==='no')return false;return null}
 function build(){const w=$('week').value,donGoal=Math.max(0,Number($('donGoal').value)||0),vsGoal=Math.max(0,Number($('vsGoal').value)||0);
+ const now=new Date(),start=new Date(w+'T00:00:00Z');
+ // The current week's future VS days cannot be missing yet.
+ const activeDays=DAYS.filter((d,i)=>new Date(start.getTime()+i*86400000)<=now);
  const map=new Map();function row(name){const id=key(name);if(!map.has(id))map.set(id,{name:name.trim(),don:null,vs:new Map(),meta:null});return map.get(id)}
  for(const d of state.don.filter(x=>x.week_start===w&&x.username&&validNum(x.points))){const m=row(d.username);m.don=Number(d.points);m.name=d.username.trim()}
  for(const v of state.vs.filter(x=>x.week_start===w&&DAYS.includes(v.day)&&v.username&&validNum(v.points))){const m=row(v.username);m.vs.set(v.day,Number(v.points))}
  const meta=new Map(state.members.filter(m=>m.username).map(m=>[key(m.username),m]));
- for(const [id,m] of map){m.meta=meta.get(id)||null;m.lowDon=m.don!==null&&m.don<donGoal;m.below=DAYS.filter(d=>m.vs.has(d)&&m.vs.get(d)<vsGoal);m.missing=DAYS.filter(d=>!m.vs.has(d));m.vsIssues=m.below.length>0||m.missing.length>0;m.review=m.lowDon||m.vsIssues}
+ for(const [id,m] of map){m.meta=meta.get(id)||null;m.lowDon=m.don!==null&&m.don<donGoal;m.below=DAYS.filter(d=>m.vs.has(d)&&m.vs.get(d)<vsGoal);m.missing=activeDays.filter(d=>!m.vs.has(d));m.vsIssues=m.below.length>0||m.missing.length>0;m.review=m.lowDon||m.vsIssues}
  state.current=[...map.values()].sort((a,b)=>Number(b.review)-Number(a.review)||a.name.localeCompare(b.name));
  const r=state.current;
  $('review').textContent=fmt(r.filter(x=>x.review).length);$('lowDon').textContent=fmt(r.filter(x=>x.lowDon).length);
@@ -42,7 +45,7 @@ function build(){const w=$('week').value,donGoal=Math.max(0,Number($('donGoal').
  const end=new Date(w+'T00:00:00Z');end.setUTCDate(end.getUTCDate()+7);
  const demo=[...state.don,...state.vs].some(x=>String(x.evidence||'').toUpperCase().includes('DEMO'));
  $('dataNotice').textContent=(demo?'DEMO records present — figures are not verified management results. ':'')+
- (end>new Date()?'Current week: flags are provisional; future unrecorded days are not performance failures. ':'')+
+ (end>new Date()?'Current week: flags are provisional; future unrecorded days are excluded. ':'')+
  (!state.members.length?'No join/shield/Frenzy metadata available. ':'')+
  'Only members present in VS or donation files are included; unknown alliance members cannot be counted.';
  const filter=$('filter').value,search=key($('search').value),body=$('rows');body.replaceChildren();

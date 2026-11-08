@@ -341,8 +341,8 @@ async function load(){
   if(!response.ok)throw Error('Server directory HTTP '+response.status);
   const registry=await response.json();
   availableServers=(Array.isArray(registry.servers)?registry.servers:[]).filter(item=>
-   item&&/^\\d+$/.test(String(item.id))&&typeof item.data==='string'&&
-   /^data\\/(?:world-players\\.csv|servers\\/\\d+\\/world-players\\.csv)$/.test(item.data)
+   item&&/^\d+$/.test(String(item.id))&&typeof item.data==='string'&&
+   /^data\/(?:world-players\.csv|servers\/\d+\/world-players\.csv)$/.test(item.data)
   ).map(item=>({id:String(item.id),data:item.data}));
   if(!availableServers.length)throw Error('No servers registered');
   availableServers.sort((a,b)=>Number(a.id)-Number(b.id));

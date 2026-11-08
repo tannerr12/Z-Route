@@ -24,7 +24,7 @@
 .bubble-filters{display:flex;align-items:stretch;flex-wrap:wrap;gap:5px;padding:4px;border:1px solid #40556d;border-radius:10px;background:#102137}.controls .bubble-option{display:flex;align-items:center;justify-content:center;gap:5px;min-height:43px;padding:6px 9px;border:1px solid transparent;border-radius:7px;background:transparent;font-size:13px;cursor:pointer;white-space:nowrap}.bubble-option svg{width:25px;height:25px;flex:none;color:#b8d1e9}.controls .bubble-option.active{border-color:#87caff;background:#254762;color:#fff;box-shadow:inset 0 0 0 1px #4d92bb}.controls .bubble-option:focus-visible{outline:2px solid #bce7ff;outline-offset:1px}@media(max-width:650px){.bubble-filters{width:100%}.controls .bubble-option{flex:1}}
 </style></head><body><main><nav style="margin-bottom:14px"><a href="./donations.html" style="color:#8cc9ff">Donation Analytics →</a> · <a href="./vs.html" style="color:#8cc9ff">VS Comparison →</a> · <a href="./activity.html" style="color:#8cc9ff">Player Activity →</a></nav>
 <div class="top"><div><h1>Z-Route Player Locator</h1><p>Search players and explore their last recorded exact game-world coordinates.</p></div><span id="source" class="muted">Loading CSV…</span></div>
-<div class="controls"><input id="search" type="search" placeholder="Search current or past username…" aria-label="Search current or past username"><select id="guildFilter" aria-label="Filter guild"><option value="">All guilds</option></select><div class="bubble-filters" id="bubbleFilters" role="group" aria-label="Filter by bubble status"><button class="bubble-option active" type="button" data-shield="" aria-pressed="true">All</button><button class="bubble-option" type="button" data-shield="shielded" aria-pressed="false" title="Last observed bubbled (not real-time)"><svg viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13" fill="#4ebcff22" stroke="#6cd5ff" stroke-width="1.8"/><path d="M7 11V7h3v3h4V7h3v3h4V7h3v4h-2v13H5V11z" fill="currentColor" opacity=".9"/><path d="M12 24v-7a3 3 0 0 1 6 0v7" fill="#102035"/><path d="M5 14h19" stroke="#102035" stroke-width="1.2"/></svg><span>Bubbled</span></button><button class="bubble-option" type="button" data-shield="unshielded" aria-pressed="false" title="Last observed not bubbled (not real-time)"><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M7 11V7h3v3h4V7h3v3h4V7h3v4h-2v13H5V11z" fill="currentColor" opacity=".9"/><path d="M12 24v-7a3 3 0 0 1 6 0v7" fill="#102035"/><path d="M5 14h19" stroke="#102035" stroke-width="1.2"/></svg><span>Not bubbled</span></button></div><label class="history-check" for="renamedOnly"><input id="renamedOnly" type="checkbox">Renamed only</label><fieldset class="level-filter"><legend>Base level <strong id="levelLabel">Lv 1–30</strong></legend><div class="range-track" id="rangeTrack"><input id="levelMin" type="range" min="1" max="30" value="1" step="1" aria-label="Minimum base level"><input id="levelMax" type="range" min="1" max="30" value="30" step="1" aria-label="Maximum base level"></div><p class="level-note" id="levelNote">All levels; players with unknown levels included.</p></fieldset><button id="clear">Clear filters</button></div>
+<div class="controls"><label for="serverFilter" class="muted">Server <select id="serverFilter" aria-label="Select server"><option value="125">125</option></select></label><input id="search" type="search" placeholder="Search current or past username…" aria-label="Search current or past username"><select id="guildFilter" aria-label="Filter guild"><option value="">All guilds</option></select><div class="bubble-filters" id="bubbleFilters" role="group" aria-label="Filter by bubble status"><button class="bubble-option active" type="button" data-shield="" aria-pressed="true">All</button><button class="bubble-option" type="button" data-shield="shielded" aria-pressed="false" title="Last observed bubbled (not real-time)"><svg viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13" fill="#4ebcff22" stroke="#6cd5ff" stroke-width="1.8"/><path d="M7 11V7h3v3h4V7h3v3h4V7h3v4h-2v13H5V11z" fill="currentColor" opacity=".9"/><path d="M12 24v-7a3 3 0 0 1 6 0v7" fill="#102035"/><path d="M5 14h19" stroke="#102035" stroke-width="1.2"/></svg><span>Bubbled</span></button><button class="bubble-option" type="button" data-shield="unshielded" aria-pressed="false" title="Last observed not bubbled (not real-time)"><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M7 11V7h3v3h4V7h3v3h4V7h3v4h-2v13H5V11z" fill="currentColor" opacity=".9"/><path d="M12 24v-7a3 3 0 0 1 6 0v7" fill="#102035"/><path d="M5 14h19" stroke="#102035" stroke-width="1.2"/></svg><span>Not bubbled</span></button></div><label class="history-check" for="renamedOnly"><input id="renamedOnly" type="checkbox">Renamed only</label><fieldset class="level-filter"><legend>Base level <strong id="levelLabel">Lv 1–30</strong></legend><div class="range-track" id="rangeTrack"><input id="levelMin" type="range" min="1" max="30" value="1" step="1" aria-label="Minimum base level"><input id="levelMax" type="range" min="1" max="30" value="30" step="1" aria-label="Maximum base level"></div><p class="level-note" id="levelNote">All levels; players with unknown levels included.</p></fieldset><button id="clear">Clear filters</button></div>
 <div class="layout"><section class="panel"><div class="map-actions"><button id="zoomIn" title="Zoom in">＋</button><button id="zoomOut" title="Zoom out">－</button><button id="resetView">Reset view</button><span class="muted" style="margin:auto 0 auto auto">Wheel to zoom · Drag to pan</span></div><div id="mapWrap" class="map-wrap"><canvas id="map" aria-label="Player location map"></canvas><div id="tip" class="tooltip"></div></div><div class="status"><span id="count" class="muted">Loading players…</span><span id="worldExtent" class="muted">Exact world X/Y · observed extent</span></div><div id="detail" class="detail" hidden></div></section>
 <aside class="panel"><strong>Guilds</strong><p class="muted">Search by alliance tag or name. Select a guild to filter the map.</p><input id="guildSearch" type="search" placeholder="Find guild (e.g. D3AD)…" aria-label="Search guilds" autocomplete="off" style="width:100%;background:#15263a;color:#f1f5fa;border:1px solid #40556d;border-radius:9px;padding:10px;margin:0 0 9px"><div id="guildMatchCount" class="muted" aria-live="polite"></div><div id="legend" class="legend"></div><hr style="border:0;border-top:1px solid #30465e;margin:14px 0"><strong>Players</strong><p class="muted">Search above, then select a player to view history.</p><div id="playerResults" class="legend" style="max-height:420px"></div></aside></div>
 <p id="message" class="muted" role="status"></p>
@@ -32,6 +32,7 @@
 'use strict';
 const $=id=>document.getElementById(id),canvas=$('map'),ctx=canvas.getContext('2d'),wrap=$('mapWrap'),tip=$('tip');
 let players=[],filtered=[],colors=new Map(),guildCounts=new Map(),hover=null,selected=null,shieldFilter='';
+let availableServers=[],loadSequence=0;
 let levelBounds={min:1,max:30};
 let worldBounds={minX:0,maxX:1000,minY:0,maxY:1000},worldServer='125';
 let scale=1,offsetX=0,offsetY=0,drag=null,viewW=1,viewH=1;
@@ -140,7 +141,7 @@ function populate(){
  configureLevels();
  guildCounts=new Map();for(const p of players)guildCounts.set(p.guild,(guildCounts.get(p.guild)||0)+1);
  [...guildCounts.keys()].sort((a,b)=>a.localeCompare(b)).forEach(guildColor);
- const options=$('guildFilter');for(const g of [...guildCounts.keys()].sort((a,b)=>a.localeCompare(b))){const o=document.createElement('option');o.value=g;o.textContent=g;options.append(o)}
+ const options=$('guildFilter');options.replaceChildren(new Option('All guilds',''));for(const g of [...guildCounts.keys()].sort((a,b)=>a.localeCompare(b))){const o=document.createElement('option');o.value=g;o.textContent=g;options.append(o)}
  renderLegend();filter();
 }
 function renderLegend(){
@@ -289,21 +290,74 @@ $('clear').onclick=()=>{
  $('levelMin').value=levelBounds.min;$('levelMax').value=levelBounds.max;filter()
 };
 window.addEventListener('resize',draw);
-async function load(){try{
- const response=await fetch('./data/world-players.csv',{cache:'no-store'});
- if(!response.ok)throw Error('HTTP '+response.status);
- players=normalize(parseCSV(await response.text()));
- if(!players.length)throw Error('No valid network world X/Y records in data/world-players.csv');
- const seed=players.length<=30;
- $('source').textContent='S'+players[0].server+' · '+players.length.toLocaleString()+' exact X/Y bases · '+players.filter(p=>p.renameCount>0).length.toLocaleString()+' with observed renames';
- $('message').textContent=(seed?'Partial coordinate sample. Export your complete network roster to populate the full map. ':'')+
- 'Positions are last recorded exact game-world X/Y (not live); the map is scaled to observed coordinates, not proven world boundaries.';
- populate()
+async function loadServer(){
+ const serial=++loadSequence,server=$('serverFilter').value;
+ const entry=availableServers.find(item=>item.id===server);
+ if(!entry)return;
+ // Reset state immediately, so an unavailable server cannot display S125 players.
+ players=[];filtered=[];guildCounts=new Map();colors=new Map();selected=null;hover=null;
+ $('detail').hidden=true;$('legend').replaceChildren();$('playerResults').replaceChildren();
+ $('guildFilter').replaceChildren(new Option('All guilds',''));
+ $('guildSearch').value='';$('search').value='';$('renamedOnly').checked=false;
+ shieldFilter='';
+ document.querySelectorAll('.bubble-option').forEach(b=>{
+  const active=b.dataset.shield==='';b.classList.toggle('active',active);
+  b.setAttribute('aria-pressed',String(active));
+ });
+ scale=1;offsetX=0;offsetY=0;
+ $('source').textContent='Loading S'+server+'…';$('count').textContent='Loading players…';
+ draw();
+ try{
+  const response=await fetch('./'+entry.data,{cache:'no-store'});
+  if(!response.ok)throw Error('HTTP '+response.status);
+  const loaded=normalize(parseCSV(await response.text()));
+  if(serial!==loadSequence)return;
+  // Validate ALL records, never silently display a mixed-server roster.
+  if(!loaded.length)throw Error('No valid network map records for S'+server);
+  if(loaded.some(p=>p.server!==server))throw Error('Published roster contains unexpected server IDs');
+  players=loaded;
+  const seed=players.length<=30;
+  $('source').textContent='S'+server+' · '+players.length.toLocaleString()+' exact X/Y bases · '+players.filter(p=>p.renameCount>0).length.toLocaleString()+' with observed renames';
+  $('message').className='muted';
+  $('message').textContent=(seed?'Partial sample for this server. ':'')+
+    'Positions and bubble states are last recorded observations, not live. Each server has its own map and player history.';
+  populate();
+  const url=new URL(window.location.href);url.searchParams.set('server',server);
+  window.history.replaceState(null,'',url);
  }catch(e){
- $('source').textContent='World-coordinate CSV unavailable';
- $('message').className='error';
- $('message').textContent='Exact world map needs data/world-players.csv from network_scan/export_world_map.py: '+e.message;
- draw()
- }}
+  if(serial!==loadSequence)return;
+  $('source').textContent='S'+server+' · map unavailable';
+  $('message').className='error';
+  $('message').textContent='Unable to load Server '+server+' map: '+e.message;
+  $('count').textContent='0 players';
+  $('worldExtent').textContent='No map loaded';
+  $('guildMatchCount').textContent='0 guilds';
+  draw();
+ }
+}
+async function load(){
+ try{
+  const response=await fetch('./data/servers.json',{cache:'no-store'});
+  if(!response.ok)throw Error('Server directory HTTP '+response.status);
+  const registry=await response.json();
+  availableServers=(Array.isArray(registry.servers)?registry.servers:[]).filter(item=>
+   item&&/^\\d+$/.test(String(item.id))&&typeof item.data==='string'&&
+   /^data\\/(?:world-players\\.csv|servers\\/\\d+\\/world-players\\.csv)$/.test(item.data)
+  ).map(item=>({id:String(item.id),data:item.data}));
+  if(!availableServers.length)throw Error('No servers registered');
+  availableServers.sort((a,b)=>Number(a.id)-Number(b.id));
+  const wanted=new URLSearchParams(window.location.search).get('server');
+  const fallback=String(registry.default_server||availableServers[0].id);
+  const choice=availableServers.find(e=>e.id===wanted)||availableServers.find(e=>e.id===fallback)||availableServers[0];
+  $('serverFilter').replaceChildren(...availableServers.map(e=>new Option('Server '+e.id,e.id)));
+  $('serverFilter').value=choice.id;
+  await loadServer();
+ }catch(e){
+  $('source').textContent='Server directory unavailable';
+  $('message').className='error';
+  $('message').textContent='Could not load server registry: '+e.message;
+ }
+}
+$('serverFilter').addEventListener('change',loadServer);
 load();
 </script></body></html>

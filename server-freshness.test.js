@@ -18,8 +18,8 @@ test('missing, ambiguous, and future timestamps are unknown',()=>{
 test('per-server snapshots remain isolated and CSV overrides stale metadata',()=>{
  const servers=[{id:'115',last_scan_at_utc:'2026-11-08T17:11:12Z'},
                 {id:'125',last_scan_at_utc:'2026-11-09T04:50:24Z'}];
- const observed=observedFromRows([{roster_snapshot_at_utc:'2026-11-09T05:00:00Z'}]);
- reconcile(servers[1],observed);
+ const observed=observedFromRows([{roster_snapshot_at_utc:'2026-11-09T05:00:00Z'}],NOW);
+ reconcile(servers[1],observed,NOW);
  assert.equal(servers[0].last_scan_at_utc,'2026-11-08T17:11:12Z');
  assert.equal(servers[1].last_scan_at_utc,'2026-11-09T05:00:00Z');
 });

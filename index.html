@@ -60,8 +60,9 @@ function mapStat(raw){
 function statText(value){return value===null?'Unknown':value.toLocaleString()}
 function statDate(raw){return raw?' · observed around '+raw:' · observation time unavailable'}
 function statDelta(value){
- const n=mapStat(value);
- if(n===null)return '';
+ if(value===null||value===undefined||String(value).trim()==='')return 'unknown';
+ const n=Number(String(value).trim());
+ if(!Number.isSafeInteger(n))return 'unknown';
  return (n>0?'+':'')+n.toLocaleString();
 }
 function normalize(rows){
@@ -339,7 +340,7 @@ async function loadServer(){
   if(loaded.some(p=>p.server!==server))throw Error('Published roster contains unexpected server IDs');
   players=loaded;
   const seed=players.length<=30;
-  $('source').textContent='S'+server+' · '+players.length.toLocaleString()+' exact X/Y bases · '+players.filter(p=>p.renameCount>0).length.toLocaleString()+' with observed renames';
+  $('source').textContent='S'+server+' · '+players.length.toLocaleString()+' exact X/Y bases · '+players.filter(p=>p.power!==null).length.toLocaleString()+' with power · '+players.filter(p=>p.kills!==null).length.toLocaleString()+' with kills · '+players.filter(p=>p.renameCount>0).length.toLocaleString()+' with observed renames';
   $('message').className='muted';
   $('message').textContent=(seed?'Partial sample for this server. ':'')+
     'Positions, power, kills and bubble states are last recorded observations, not live. Older exports may not have power or kills. Each server has its own map and player history.';

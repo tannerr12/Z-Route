@@ -50,6 +50,20 @@ function parseCSV(text){
 }
 function hash(s){let h=2166136261;for(const c of s.toLowerCase()){h=Math.imul(h^c.charCodeAt(0),16777619)}return h>>>0}
 function guildColor(g){if(!colors.has(g)){const used=new Set(colors.values());let color=palette[hash(g)%palette.length];if(used.has(color)){for(const c of palette)if(!used.has(c)){color=c;break}}if(used.has(color)){const hue=hash(g)%360;color='hsl('+hue+' 76% 69%)'}colors.set(g,color)}return colors.get(g)}
+// A blank or missing stat means unknown, not zero. Guard legacy CSVs and
+// malformed integers without affecting location filtering.
+function mapStat(raw){
+ if(raw===null||raw===undefined||String(raw).trim()==='')return null;
+ const n=Number(String(raw).trim());
+ return Number.isSafeInteger(n)&&n>=0?n:null;
+}
+function statText(value){return value===null?'Unknown':value.toLocaleString()}
+function statDate(raw){return raw?' · observed around '+raw:' · observation time unavailable'}
+function statDelta(value){
+ const n=mapStat(value);
+ if(n===null)return '';
+ return (n>0?'+':'')+n.toLocaleString();
+}
 function normalize(rows){
  // ONLY game-server world X/Y. The older swipe-grid cols/rows are deliberately ignored.
  const byId=new Map();
@@ -70,6 +84,8 @@ function normalize(rows){
   const p={name,id:pid,server,x,y,aliases,renameHistory,renameCount,
    guild:(r.alliance_tag||r.alliance_name||'Unknown').trim()||'Unknown',
    level:levelText,numericLevel:Number.isInteger(numLevel)&&numLevel>=1?numLevel:null,
+   power:mapStat(r.power),kills:mapStat(r.kills),
+   powerObserved:r.power_observed_at_utc||'',killsObserved:r.kills_observed_at_utc||'',
    history:jsonArray(r.player_history_json).filter(e=>e&&typeof e==='object'),
    // Bubble filters use historical observations, not real-time shielding.
    observed,shield:(['shielded','unshielded'].includes((r.recorded_shield_status||r.shield_status||'').trim().toLowerCase())?
@@ -182,7 +198,7 @@ function renderPlayerResults(){
   const button=document.createElement('button');button.className='guild';
   const state=p.shield==='shielded'?'🛡':p.shield==='unshielded'?'○':'?';
   button.textContent=state+' '+p.name+' · '+p.guild+' · Lv '+(p.level||'?');
-  button.title='Show player history for '+p.name;
+  button.title='Show player history for '+p.name+' · Power '+statText(p.power)+' · Kills '+statText(p.kills);
   button.onclick=()=>detail(p);
   el.append(button);
  }
@@ -219,6 +235,10 @@ function detail(p){
  selected=p;const el=$('detail');el.replaceChildren();
  const title=document.createElement('strong');title.textContent=p.name;
  const info=document.createElement('div');info.textContent=p.guild+' · Level '+(p.level||'unknown')+' · S'+p.server+' X:'+p.x+' Y:'+p.y+' · Player ID '+p.id;
+ const stats=document.createElement('div');stats.style.marginTop='7px';
+ stats.textContent='Power: '+statText(p.power)+' · Kills: '+statText(p.kills);
+ const statsObserved=document.createElement('div');statsObserved.className='muted';
+ statsObserved.textContent='Power'+statDate(p.powerObserved)+' · Kills'+statDate(p.killsObserved)+' (last recorded values, not live)';
  const shield=document.createElement('div');
  shield.textContent='Last recorded bubble state: '+(p.shield==='shielded'?'Bubbled':p.shield==='unshielded'?'Not bubbled':'Unknown')+
    (p.shieldObserved?' · observed around '+p.shieldObserved:'')+
@@ -249,15 +269,17 @@ function detail(p){
   row.textContent=(event.observed_at||'Unknown time')+' · '+changed+
     ' · '+(event.username||'?')+' · '+(event.alliance_tag||'no guild')+
     ' · Lv '+(event.base_level||'?')+' · X:'+(event.x??'?')+' Y:'+(event.y??'?')+
-    pastBubble;
+    pastBubble+
+    (event.fields?.includes('power')?' · Power change '+statDelta(event.power_delta):'')+
+    (event.fields?.includes('kills')?' · Kills change '+statDelta(event.kills_delta):'');
   activity.append(row);
  }
  const date=document.createElement('div');date.className='muted';
  date.textContent=p.observed?'Roster snapshot: '+p.observed+' (not an individual sighting timestamp)':'Snapshot time unavailable';
- el.append(title,info,shield,history,activity,date);el.hidden=false;draw()
+ el.append(title,info,stats,statsObserved,shield,history,activity,date);el.hidden=false;draw()
 }
 function pointer(e){const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top}}
-canvas.addEventListener('pointermove',e=>{const v=pointer(e);if(drag){if(Math.hypot(v.x-drag.startX,v.y-drag.startY)>3)drag.moved=true;offsetX=v.x-drag.x+drag.ox;offsetY=v.y-drag.y+drag.oy;draw();return}const p=nearest(v.x,v.y);if(hover!==p){hover=p;draw()}if(!p){tip.style.display='none';return}tip.replaceChildren();const a=document.createElement('strong');a.textContent=p.name;const b=document.createElement('span');b.textContent=p.guild+' · S'+p.server+' X:'+p.x+' Y:'+p.y+' · Lv '+(p.level||'?')+(p.renameCount?' · '+p.renameCount+' observed renames':'');tip.append(a,b);tip.style.display='block';tip.style.left=Math.max(4,Math.min(wrap.clientWidth-tip.offsetWidth-4,v.x+13))+'px';tip.style.top=Math.max(4,v.y-54)+'px'});
+canvas.addEventListener('pointermove',e=>{const v=pointer(e);if(drag){if(Math.hypot(v.x-drag.startX,v.y-drag.startY)>3)drag.moved=true;offsetX=v.x-drag.x+drag.ox;offsetY=v.y-drag.y+drag.oy;draw();return}const p=nearest(v.x,v.y);if(hover!==p){hover=p;draw()}if(!p){tip.style.display='none';return}tip.replaceChildren();const a=document.createElement('strong');a.textContent=p.name;const b=document.createElement('span');b.textContent=p.guild+' · S'+p.server+' X:'+p.x+' Y:'+p.y+' · Lv '+(p.level||'?')+(p.renameCount?' · '+p.renameCount+' observed renames':'');const stats=document.createElement('div');stats.textContent='Power '+statText(p.power)+' · Kills '+statText(p.kills);tip.append(a,b,stats);tip.style.display='block';tip.style.left=Math.max(4,Math.min(wrap.clientWidth-tip.offsetWidth-4,v.x+13))+'px';tip.style.top=Math.max(4,v.y-54)+'px'});
 canvas.addEventListener('pointerleave',()=>{if(!drag){hover=null;tip.style.display='none';draw()}});
 canvas.addEventListener('pointerdown',e=>{const v=pointer(e);drag={x:v.x,y:v.y,startX:v.x,startY:v.y,ox:offsetX,oy:offsetY,moved:false};canvas.setPointerCapture(e.pointerId);tip.style.display='none'});
 canvas.addEventListener('pointerup',e=>{if(!drag)return;const moved=drag.moved;drag=null;if(!moved){const v=pointer(e),p=nearest(v.x,v.y);if(p)detail(p)}});
@@ -320,7 +342,7 @@ async function loadServer(){
   $('source').textContent='S'+server+' · '+players.length.toLocaleString()+' exact X/Y bases · '+players.filter(p=>p.renameCount>0).length.toLocaleString()+' with observed renames';
   $('message').className='muted';
   $('message').textContent=(seed?'Partial sample for this server. ':'')+
-    'Positions and bubble states are last recorded observations, not live. Each server has its own map and player history.';
+    'Positions, power, kills and bubble states are last recorded observations, not live. Older exports may not have power or kills. Each server has its own map and player history.';
   populate();
   const url=new URL(window.location.href);url.searchParams.set('server',server);
   window.history.replaceState(null,'',url);

@@ -182,7 +182,8 @@ function populate(){
  guildCounts=new Map();for(const p of players)guildCounts.set(p.guild,(guildCounts.get(p.guild)||0)+1);
  guildPowerRanking=ZRouteGuildPower.rank(players,worldServer);
  const ordered=[...guildCounts.keys()].sort(orderGuilds);
- ordered.forEach(guildColor);
+ // Keep guild colors stable across scans even when power rankings change.
+ [...guildCounts.keys()].sort((a,b)=>a.localeCompare(b)).forEach(guildColor);
  const options=$('guildFilter');options.replaceChildren(new Option('All guilds',''));
  for(const g of ordered){
   const o=document.createElement('option'),record=guildRankingFor(g);

@@ -4,12 +4,16 @@
     {
       "id": "115",
       "label": "Server 115",
-      "data": "data/servers/115/world-players.csv"
+      "data": "data/servers/115/world-players.csv",
+      "last_scan_at_utc": "2026-11-08T17:11:12+00:00",
+      "scan_timestamp_basis": "roster_file_mtime_approximate"
     },
     {
       "id": "125",
       "label": "Server 125",
-      "data": "data/servers/125/world-players.csv"
+      "data": "data/servers/125/world-players.csv",
+      "last_scan_at_utc": "2026-11-09T04:50:24+00:00",
+      "scan_timestamp_basis": "roster_file_mtime_approximate"
     }
   ]
 }

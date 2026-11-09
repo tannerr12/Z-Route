@@ -27,10 +27,17 @@ th{font-size:13px;color:#b9d0e7}td{font-size:14px}tr:hover{background:#20384f}
 .chip{display:inline-block;border:1px solid #48647d;padding:3px 7px;margin:2px;border-radius:999px;font-size:12px}
 #status{min-height:20px}.table-wrap{overflow-x:auto}.small{font-size:12px;color:#a8bdd4}
 @media(max-width:700px){body{padding:12px}.filters>*{flex:1 1 150px}}
+.scan-summary{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 16px}
+.scan-entry{display:flex;gap:7px;align-items:baseline;flex-wrap:wrap;padding:8px 10px;border:1px solid #30465e;border-radius:8px;background:#102035;font-size:12px;color:#becfe2}
+.scan-entry.selected{border-color:#7caacd;color:#e8f2ff}
+.scan-entry[data-freshness="stale"]{border-color:#b48b58}
+.scan-entry[data-freshness="stale"] span{color:#f0c18d}
+.scan-entry strong{color:#e9f1fc}
 </style></head><body><main>
 <nav><a href="./index.html">World Map</a> · <a href="./activity.html">Player Activity</a> · <a href="./donations.html">Donations</a> · <a href="./vs.html">VS</a></nav>
 <h1>Recruitment Activity</h1>
 <p>Find potential alliance recruits with <strong>observed changes in the last seven days</strong>. This is historical scan evidence—not real-time login status or proof of in-game activity without a recorded change.</p>
+<div id="scanSummary" class="scan-summary" aria-label="Last scanned time for each server"></div>
 <div class="panel"><div class="filters">
 <label>Server <select id="server"><option value="125">125</option></select></label>
 <label>Search name / known alias / ID <input id="search" type="search" placeholder="Player name"></label>
@@ -59,7 +66,7 @@ th{font-size:13px;color:#b9d0e7}td{font-size:14px}tr:hover{background:#20384f}
 <div class="stat"><span class="muted">Players in roster</span><b id="total">—</b></div>
 <div class="stat"><span class="muted">With observed changes in window</span><b id="active">—</b></div>
 <div class="stat"><span class="muted">Matching recruitment filters</span><b id="matches">—</b></div>
-<div class="stat"><span class="muted">Last roster capture</span><b id="snapshot" style="font-size:15px">—</b></div>
+<div class="stat"><span class="muted">Last scan snapshot (approx.)</span><b id="snapshot" style="font-size:13px">—</b></div>
 </div>
 <section class="panel">
 <p class="muted" id="status" role="status">Loading roster…</p>
@@ -69,10 +76,18 @@ th{font-size:13px;color:#b9d0e7}td{font-size:14px}tr:hover{background:#20384f}
 <p class="muted">Signals are derived from recorded changes to the same server + player ID, not from appearance in a single scan. No observed change is <em>not</em> proof of inactivity. Renames, movement and alliance changes may occur between scans; timestamps mark when differences were observed. Bubble status may be stale. History exported by the scanner can be incomplete, so results reflect available evidence only.</p>
 </main>
 <script src="./recruitment-activity.js?v=20261109-power-kills-multiselect-2"></script>
+<script src="./server-freshness.js?v=20261109-1"></script>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
 let entries=[], seq=0, servers=[];
+function refreshServerFreshness(){
+ const server=$('server').value,entry=servers.find(s=>s.id===server);
+ ZRouteFreshness.render($('scanSummary'),servers,server);
+ const stamp=ZRouteFreshness.describe(entry?.last_scan_at_utc);
+ $('snapshot').textContent=stamp.known?stamp.display+' · '+stamp.age+' · '+stamp.status:'Unknown';
+}
+setInterval(refreshServerFreshness,60000);
 const labels={guild:'Alliance',rename:'Rename',move:'Movement',shield:'Bubble',power:'Power',kills:'Kills'};
 function parseCSV(text){
  const rows=[];let row=[],field='',quoted=false;
@@ -137,8 +152,7 @@ function render(){
  $('total').textContent=entries.length.toLocaleString();
  $('active').textContent=entries.filter(p=>summarize(p).types.length).length.toLocaleString();
  $('matches').textContent=list.length.toLocaleString();
- const snapshots=entries.map(p=>Date.parse(p.snapshot)).filter(Number.isFinite);
- $('snapshot').textContent=snapshots.length?new Date(Math.max(...snapshots)).toLocaleString():'Unknown';
+ refreshServerFreshness();
  const body=$('results');body.replaceChildren();
  for(const p of list.slice(0,250)){
   const tr=document.createElement('tr'), cells=[
@@ -168,7 +182,7 @@ function exportCSV(){
 }
 async function loadServer(){
  const id=++seq,server=$('server').value,entry=servers.find(s=>s.id===server);
- entries=[];$('status').textContent='Loading Server '+server+'…';$('results').replaceChildren();
+ entries=[];$('status').textContent='Loading Server '+server+'…';$('results').replaceChildren();refreshServerFreshness();
  try{
   if(!entry)throw Error('No roster registered');
   const response=await fetch('./'+entry.data,{cache:'no-store'});
@@ -178,6 +192,7 @@ async function loadServer(){
   if(rows.length&&!['server','player_id','username','player_history_json','coordinate_source'].every(k=>Object.hasOwn(rows[0],k)))throw Error('Roster lacks required history columns');
   const unique=new Map();
   for(const r of rows){if(r.server!==server)throw Error('Mixed-server roster');const p=parsePlayer(r);if(p)unique.set(p.id,p)}
+  ZRouteFreshness.reconcile(entry,ZRouteFreshness.observedFromRows(rows));
   entries=[...unique.values()];render();
  }catch(error){if(id!==seq)return;entries=[];render();$('status').textContent='Unable to load roster: '+error.message}
 }
@@ -186,10 +201,12 @@ async function load(){
   const resp=await fetch('./data/servers.json',{cache:'no-store'});
   if(!resp.ok)throw Error('Server list HTTP '+resp.status);
   const directory=await resp.json();
-  servers=(Array.isArray(directory.servers)?directory.servers:[]).filter(s=>s&&/^\d+$/.test(String(s.id))&&/^data\/(?:world-players\.csv|servers\/\d+\/world-players\.csv)$/.test(s.data)).map(s=>({id:String(s.id),data:s.data}));
+  servers=(Array.isArray(directory.servers)?directory.servers:[]).filter(s=>s&&/^\d+$/.test(String(s.id))&&/^data\/(?:world-players\.csv|servers\/\d+\/world-players\.csv)$/.test(s.data)).map(s=>({id:String(s.id),data:s.data,
+   last_scan_at_utc:s.last_scan_at_utc||'',scan_timestamp_basis:s.scan_timestamp_basis||''}));
   if(!servers.length)throw Error('No servers');
   $('server').replaceChildren(...servers.map(s=>new Option('Server '+s.id,s.id)));
   $('server').value=servers.some(s=>s.id==='125')?'125':servers[0].id;
+  refreshServerFreshness();
   loadServer();
  }catch(e){$('status').textContent='Unable to load server registry: '+e.message}
 }

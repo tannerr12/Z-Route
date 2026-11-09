@@ -26,6 +26,13 @@ table{width:100%;border-collapse:collapse;min-width:850px}th,td{padding:12px 9px
 th{font-size:13px;color:#b9d0e7}td{font-size:14px}tr:hover{background:#20384f}
 .chip{display:inline-block;border:1px solid #48647d;padding:3px 7px;margin:2px;border-radius:999px;font-size:12px}
 #status{min-height:20px}.table-wrap{overflow-x:auto}.small{font-size:12px;color:#a8bdd4}
+.sortable-table th[data-sort-key]{padding:0}
+.sort-heading{display:inline-flex;align-items:center;justify-content:space-between;gap:7px;width:100%;padding:12px 9px;background:transparent;border:0;border-radius:0;color:inherit;font:inherit;text-align:left;white-space:nowrap;cursor:pointer}
+.sort-heading:hover{background:#294258;color:#fff}
+.sort-heading:focus-visible{outline:2px solid #9bd1ff;outline-offset:-2px}
+.sort-indicator{color:#8ea8c2;font-size:13px}
+th[aria-sort="ascending"] .sort-indicator,th[aria-sort="descending"] .sort-indicator{color:#9bd1ff}
+
 @media(max-width:700px){body{padding:12px}.filters>*{flex:1 1 150px}}
 .scan-summary{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 16px}
 .scan-entry{display:flex;gap:7px;align-items:baseline;flex-wrap:wrap;padding:8px 10px;border:1px solid #30465e;border-radius:8px;background:#102035;font-size:12px;color:#becfe2}
@@ -75,7 +82,7 @@ th{font-size:13px;color:#b9d0e7}td{font-size:14px}tr:hover{background:#20384f}
 <details class="guild-rankings" id="guildRankings">
 <summary>Guild power rankings for this server</summary>
 <p class="muted" id="guildRankingNote">Loading ranking…</p>
-<div class="table-wrap"><table><thead><tr><th>Rank</th><th>Guild</th><th>Total known power</th><th>Power measured</th></tr></thead><tbody id="guildRankingRows"></tbody></table></div>
+<div class="table-wrap"><table id="guildRankingTable" class="sortable-table"><thead><tr><th scope="col" data-sort-key="rank" aria-sort="ascending"><button type="button" class="sort-heading" data-sort-key="rank">Rank <span class="sort-indicator" aria-hidden="true">↑</span></button></th><th scope="col" data-sort-key="guildName" aria-sort="none"><button type="button" class="sort-heading" data-sort-key="guildName">Guild <span class="sort-indicator" aria-hidden="true">↕</span></button></th><th scope="col" data-sort-key="guildPower" aria-sort="none"><button type="button" class="sort-heading" data-sort-key="guildPower">Total known power <span class="sort-indicator" aria-hidden="true">↕</span></button></th><th scope="col" data-sort-key="guildCoverage" aria-sort="none"><button type="button" class="sort-heading" data-sort-key="guildCoverage">Power measured <span class="sort-indicator" aria-hidden="true">↕</span></button></th></tr></thead><tbody id="guildRankingRows"></tbody></table></div>
 </details>
 <div class="stats">
 <div class="stat"><span class="muted">Players in roster</span><b id="total">—</b></div>
@@ -85,7 +92,8 @@ th{font-size:13px;color:#b9d0e7}td{font-size:14px}tr:hover{background:#20384f}
 </div>
 <section class="panel">
 <p class="muted" id="status" role="status">Loading roster…</p>
-<div class="table-wrap"><table><thead><tr><th>Player</th><th>Alliance</th><th>Level</th><th>Power</th><th>Kills</th><th>Observed signals</th><th>Last observed change</th><th>World location</th><th>Recorded bubble</th></tr></thead><tbody id="results"></tbody></table></div>
+<p class="small">Click a column heading to sort; click again to reverse. CSV export follows the displayed order.</p>
+<div class="table-wrap"><table id="resultsTable" class="sortable-table"><thead><tr><th scope="col" data-sort-key="player" aria-sort="none"><button type="button" class="sort-heading" data-sort-key="player">Player <span class="sort-indicator" aria-hidden="true">↕</span></button></th><th scope="col" data-sort-key="alliance" aria-sort="none"><button type="button" class="sort-heading" data-sort-key="alliance">Alliance <span class="sort-indicator" aria-hidden="true">↕</span></button></th><th scope="col" data-sort-key="level" aria-sort="none"><button type="button" class="sort-heading" data-sort-key="level">Level <span class="sort-indicator" aria-hidden="true">↕</span></button></th><th scope="col" data-sort-key="power" aria-sort="none"><button type="button" class="sort-heading" data-sort-key="power">Power <span class="sort-indicator" aria-hidden="true">↕</span></button></th><th scope="col" data-sort-key="kills" aria-sort="none"><button type="button" class="sort-heading" data-sort-key="kills">Kills <span class="sort-indicator" aria-hidden="true">↕</span></button></th><th scope="col" data-sort-key="signals" aria-sort="none"><button type="button" class="sort-heading" data-sort-key="signals">Observed signals <span class="sort-indicator" aria-hidden="true">↕</span></button></th><th scope="col" data-sort-key="lastChange" aria-sort="descending"><button type="button" class="sort-heading" data-sort-key="lastChange">Last observed change <span class="sort-indicator" aria-hidden="true">↓</span></button></th><th scope="col" data-sort-key="location" aria-sort="none"><button type="button" class="sort-heading" data-sort-key="location">World location <span class="sort-indicator" aria-hidden="true">↕</span></button></th><th scope="col" data-sort-key="shield" aria-sort="none"><button type="button" class="sort-heading" data-sort-key="shield">Recorded bubble <span class="sort-indicator" aria-hidden="true">↕</span></button></th></tr></thead><tbody id="results"></tbody></table></div>
 <p class="small" id="remaining"></p>
 </section>
 <p class="muted">Signals are derived from recorded changes to the same server + player ID, not from appearance in a single scan. No observed change is <em>not</em> proof of inactivity. Renames, movement and alliance changes may occur between scans; timestamps mark when differences were observed. Bubble status may be stale. History exported by the scanner can be incomplete, so results reflect available evidence only.</p>
@@ -93,10 +101,27 @@ th{font-size:13px;color:#b9d0e7}td{font-size:14px}tr:hover{background:#20384f}
 <script src="./recruitment-activity.js?v=20261109-power-kills-multiselect-2"></script>
 <script src="./server-freshness.js?v=20261109-1"></script>
 <script src="./guild-power.js?v=20261109-1"></script>
+<script src="./table-sort.js?v=20261109-sort1"></script>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
 let entries=[], seq=0, servers=[];
+let playerSort={key:'lastChange',direction:'desc'};
+let guildSort={key:'rank',direction:'asc'};
+function updateSortHeadings(tableId,current){
+ const fields=tableId==='resultsTable'?ZRouteTableSort.PLAYER_FIELDS:ZRouteTableSort.GUILD_FIELDS;
+ for(const th of $(tableId).querySelectorAll('th[data-sort-key]')){
+  const key=th.dataset.sortKey,active=key===current.key;
+  const state=active?(current.direction==='asc'?'ascending':'descending'):'none';
+  th.setAttribute('aria-sort',state);
+  const btn=th.querySelector('button[data-sort-key]');
+  if(!btn)continue;
+  btn.querySelector('.sort-indicator').textContent=active?(current.direction==='asc'?'↑':'↓'):'↕';
+  const next=ZRouteTableSort.nextSort(current,key,fields);
+  btn.title='Sort '+btn.textContent.replace(/[↕↑↓]/g,'').trim()+' '+(next.direction==='asc'?'ascending':'descending');
+ }
+}
+
 let guildRanking={ranked:[],unranked:[],byKey:new Map()};
 function topGuildCount(){
  const n=Number($('excludeTopGuilds').value);
@@ -120,21 +145,17 @@ function renderGuildRanking(){
    ' guilds with unknown totals. The list uses all roster players, independent of recruitment filters.';
  }
  const body=$('guildRankingRows');body.replaceChildren();
- const make=(tag,text)=>{const element=document.createElement(tag);element.textContent=text;return element};
- for(const g of all){
-  const tr=document.createElement('tr');
+ const make=(tag,value)=>{const element=document.createElement(tag);element.textContent=value;return element};
+ const rows=ZRouteTableSort.sortGuilds([...all,...guildRanking.unranked],guildSort);
+ for(const g of rows){
+  const tr=document.createElement('tr'),ranked=g.rank!==null;
   if(excluded.has(g.key))tr.className='is-excluded';
-  tr.append(make('td','#'+g.rank),make('td',g.name),
-    make('td',g.totalPower.toLocaleString()),
+  tr.append(make('td',ranked?'#'+g.rank:'—'),make('td',g.name),
+    make('td',ranked?g.totalPower.toLocaleString():'Unknown'),
     make('td',g.knownMembers+'/'+g.members+' players'));
   body.append(tr);
  }
- for(const g of guildRanking.unranked){
-  const tr=document.createElement('tr');
-  tr.append(make('td','—'),make('td',g.name),make('td','Unknown'),
-    make('td','0/'+g.members+' players'));
-  body.append(tr);
- }
+ updateSortHeadings('guildRankingTable',guildSort);
 }
 function refreshServerFreshness(){
  const server=$('server').value,entry=servers.find(s=>s.id===server);
@@ -191,7 +212,7 @@ function ranked(){
  const query=$('search').value.trim().toLowerCase(),alliance=$('alliance').value,selected=selectedActivity(),min=Number($('level').value)||1;
  const minPower=Math.max(0,Number($('minPower').value)||0),minKills=Math.max(0,Number($('minKills').value)||0);
  const excludedGuilds=ZRouteGuildPower.excludedTop(guildRanking,topGuildCount());
- return entries.map(p=>({...p,signal:summarize(p)})).filter(p=>
+ return ZRouteTableSort.sortPlayers(entries.map(p=>({...p,signal:summarize(p)})).filter(p=>
   (!query||[p.name,p.id,...p.aliases].some(v=>String(v).toLowerCase().includes(query))) &&
   (alliance===''||alliance==='unallied'&&!p.alliance||p.alliance.toLowerCase()===alliance.toLowerCase()) &&
   (!$('excludeD3AD').checked||p.alliance.toLowerCase()!=='d3ad') &&
@@ -202,7 +223,7 @@ function ranked(){
   (typeof ZRouteRecruitment.matchesSelected==='function' ?
    ZRouteRecruitment.matchesSelected(p.signal.types,selected) :
    (selected.has('none')&&!p.signal.types.length || p.signal.types.some(t=>selected.has(t))))
- ).sort((a,b)=>Date.parse(b.signal.lastChangeAt||0)-Date.parse(a.signal.lastChangeAt||0)||b.signal.types.length-a.signal.types.length||b.level-a.level||a.name.localeCompare(b.name));
+ ),playerSort);
 }
 function render(){
  renderGuildRanking();
@@ -211,6 +232,7 @@ function render(){
  $('active').textContent=entries.filter(p=>summarize(p).types.length).length.toLocaleString();
  $('matches').textContent=list.length.toLocaleString();
  refreshServerFreshness();
+ updateSortHeadings('resultsTable',playerSort);
  const body=$('results');body.replaceChildren();
  for(const p of list.slice(0,250)){
   const tr=document.createElement('tr'), cells=[
@@ -282,10 +304,24 @@ $('activityClear').addEventListener('click',()=>{
  updateActivitySummary();render();
 });
 updateActivitySummary();
+$('resultsTable').querySelector('thead').addEventListener('click',event=>{
+ const button=event.target.closest('button[data-sort-key]');
+ if(!button)return;
+ playerSort=ZRouteTableSort.nextSort(playerSort,button.dataset.sortKey,ZRouteTableSort.PLAYER_FIELDS);
+ render();
+});
+$('guildRankingTable').querySelector('thead').addEventListener('click',event=>{
+ const button=event.target.closest('button[data-sort-key]');
+ if(!button)return;
+ guildSort=ZRouteTableSort.nextSort(guildSort,button.dataset.sortKey,ZRouteTableSort.GUILD_FIELDS);
+ renderGuildRanking();
+});
 $('server').addEventListener('change',loadServer);
 $('reset').addEventListener('click',()=>{
  $('search').value='';$('alliance').value='';$('level').value='1';$('minPower').value='0';$('minKills').value='0';$('excludeTopGuilds').value='0';$('window').value='7';$('excludeD3AD').checked=true;
  activityCheckboxes().forEach(c=>c.checked=true);
+ playerSort={key:'lastChange',direction:'desc'};
+ guildSort={key:'rank',direction:'asc'};
  $('activitySelect').open=false;updateActivitySummary();render();
 });
 $('export').addEventListener('click',exportCSV);

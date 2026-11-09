@@ -47,15 +47,15 @@ function render(container,servers,selected,now=Date.now()){
   container.append(item);
  }
 }
-function observedFromRows(rows){
+function observedFromRows(rows,now=Date.now()){
  // Rows of a single-server published roster have the same snapshot time.
  const raw=Array.isArray(rows)&&rows.length?rows[0].roster_snapshot_at_utc:'';
- return parseTime(raw)!==null?raw:null;
+ return parseTime(raw,now)!==null?raw:null;
 }
-function reconcile(server,observed){
+function reconcile(server,observed,now=Date.now()){
  // The loaded CSV is the authoritative file for the selected server,
  // so avoid displaying a newer registry time for older CSV content.
- if(server&&parseTime(observed)!==null)server.last_scan_at_utc=observed;
+ if(server&&parseTime(observed,now)!==null)server.last_scan_at_utc=observed;
 }
 const api={parseTime,ageLabel,describe,render,observedFromRows,reconcile};
 if(typeof module==='object'&&module.exports)module.exports=api;

@@ -33,6 +33,14 @@ th{font-size:13px;color:#b9d0e7}td{font-size:14px}tr:hover{background:#20384f}
 .scan-entry[data-freshness="stale"]{border-color:#b48b58}
 .scan-entry[data-freshness="stale"] span{color:#f0c18d}
 .scan-entry strong{color:#e9f1fc}
+.guild-rankings{margin:12px 0;border:1px solid #30465e;border-radius:10px;padding:12px;background:#102035}
+.guild-rankings summary{cursor:pointer;font-weight:650}
+.guild-rankings p{margin:8px 0}
+.guild-rankings .table-wrap{max-height:370px;overflow:auto;margin-top:10px}
+.guild-rankings table{min-width:600px}
+.guild-rankings tr.is-excluded{background:#273444}
+.guild-rankings th{position:sticky;top:0;background:#102035}
+.guild-filter-description{width:100%;font-size:12px;color:#abc9e3}
 </style></head><body><main>
 <nav><a href="./index.html">World Map</a> · <a href="./activity.html">Player Activity</a> · <a href="./donations.html">Donations</a> · <a href="./vs.html">VS</a></nav>
 <h1>Recruitment Activity</h1>
@@ -58,10 +66,17 @@ th{font-size:13px;color:#b9d0e7}td{font-size:14px}tr:hover{background:#20384f}
 <label>Minimum level <input id="level" type="number" min="1" max="50" value="1" style="width:110px"></label>
 <label>Minimum power <input id="minPower" type="number" min="0" value="0" style="width:135px"></label>
 <label>Minimum kills <input id="minKills" type="number" min="0" value="0" style="width:135px"></label>
+<label>Exclude top guilds <input id="excludeTopGuilds" type="number" min="0" max="10000" step="1" value="0" style="width:135px" aria-describedby="guildExclusionSummary"></label>
 <label>Window <select id="window"><option value="7">Last 7 days</option><option value="3">Last 3 days</option><option value="1">Last 24 hours</option><option value="14">Last 14 days</option></select></label>
 <label><span>Options</span><span><input id="excludeD3AD" type="checkbox" checked> Exclude D3AD</span></label>
 <button id="reset" type="button">Reset</button><button id="export" type="button">Export filtered CSV</button>
+<div class="guild-filter-description" id="guildExclusionSummary" role="status">Guild rankings use each member's last observed power. 0 excludes no guilds.</div>
 </div></div>
+<details class="guild-rankings" id="guildRankings">
+<summary>Guild power rankings for this server</summary>
+<p class="muted" id="guildRankingNote">Loading ranking…</p>
+<div class="table-wrap"><table><thead><tr><th>Rank</th><th>Guild</th><th>Total known power</th><th>Power measured</th></tr></thead><tbody id="guildRankingRows"></tbody></table></div>
+</details>
 <div class="stats">
 <div class="stat"><span class="muted">Players in roster</span><b id="total">—</b></div>
 <div class="stat"><span class="muted">With observed changes in window</span><b id="active">—</b></div>
@@ -77,10 +92,50 @@ th{font-size:13px;color:#b9d0e7}td{font-size:14px}tr:hover{background:#20384f}
 </main>
 <script src="./recruitment-activity.js?v=20261109-power-kills-multiselect-2"></script>
 <script src="./server-freshness.js?v=20261109-1"></script>
+<script src="./guild-power.js?v=20261109-1"></script>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
 let entries=[], seq=0, servers=[];
+let guildRanking={ranked:[],unranked:[],byKey:new Map()};
+function topGuildCount(){
+ const n=Number($('excludeTopGuilds').value);
+ return Number.isFinite(n)&&n>0?Math.min(10000,Math.floor(n)):0;
+}
+function renderGuildRanking(){
+ const amount=topGuildCount(), excluded=ZRouteGuildPower.excludedTop(guildRanking,amount);
+ const all=guildRanking.ranked;
+ const summary=$('guildExclusionSummary');
+ if(!all.length){
+  summary.textContent='No guilds have known power in this server export. Top-guild exclusions will not remove anyone until a scan publishes power.';
+  $('guildRankingNote').textContent='No measurable guild power yet. Unknown values are never treated as zero.';
+ }else{
+  const names=all.filter(g=>excluded.has(g.key)).map(g=>g.name);
+  summary.textContent=excluded.size
+   ? 'Excluding '+excluded.size+' top-ranked guild'+(excluded.size===1?'':'s')+
+     ' by known power: '+names.slice(0,8).join(', ')+(names.length>8?' and '+(names.length-8)+' more':'')+
+     '. The separate Exclude D3AD option still applies.'
+   : '0 excludes no guilds. Rankings use total known power of players in the current server roster; unknown power is omitted.';
+  $('guildRankingNote').textContent=all.length+' ranked guilds · '+guildRanking.unranked.length+
+   ' guilds with unknown totals. The list uses all roster players, independent of recruitment filters.';
+ }
+ const body=$('guildRankingRows');body.replaceChildren();
+ const make=(tag,text)=>{const element=document.createElement(tag);element.textContent=text;return element};
+ for(const g of all){
+  const tr=document.createElement('tr');
+  if(excluded.has(g.key))tr.className='is-excluded';
+  tr.append(make('td','#'+g.rank),make('td',g.name),
+    make('td',g.totalPower.toLocaleString()),
+    make('td',g.knownMembers+'/'+g.members+' players'));
+  body.append(tr);
+ }
+ for(const g of guildRanking.unranked){
+  const tr=document.createElement('tr');
+  tr.append(make('td','—'),make('td',g.name),make('td','Unknown'),
+    make('td','0/'+g.members+' players'));
+  body.append(tr);
+ }
+}
 function refreshServerFreshness(){
  const server=$('server').value,entry=servers.find(s=>s.id===server);
  ZRouteFreshness.render($('scanSummary'),servers,server);
@@ -135,10 +190,12 @@ function updateActivitySummary(){
 function ranked(){
  const query=$('search').value.trim().toLowerCase(),alliance=$('alliance').value,selected=selectedActivity(),min=Number($('level').value)||1;
  const minPower=Math.max(0,Number($('minPower').value)||0),minKills=Math.max(0,Number($('minKills').value)||0);
+ const excludedGuilds=ZRouteGuildPower.excludedTop(guildRanking,topGuildCount());
  return entries.map(p=>({...p,signal:summarize(p)})).filter(p=>
   (!query||[p.name,p.id,...p.aliases].some(v=>String(v).toLowerCase().includes(query))) &&
   (alliance===''||alliance==='unallied'&&!p.alliance||p.alliance.toLowerCase()===alliance.toLowerCase()) &&
   (!$('excludeD3AD').checked||p.alliance.toLowerCase()!=='d3ad') &&
+  !excludedGuilds.has(ZRouteGuildPower.guildKey(p.alliance)) &&
   (p.level>=min) &&
   (minPower===0||p.power!==null&&p.power>=minPower) &&
   (minKills===0||p.kills!==null&&p.kills>=minKills) &&
@@ -148,6 +205,7 @@ function ranked(){
  ).sort((a,b)=>Date.parse(b.signal.lastChangeAt||0)-Date.parse(a.signal.lastChangeAt||0)||b.signal.types.length-a.signal.types.length||b.level-a.level||a.name.localeCompare(b.name));
 }
 function render(){
+ renderGuildRanking();
  const list=ranked();
  $('total').textContent=entries.length.toLocaleString();
  $('active').textContent=entries.filter(p=>summarize(p).types.length).length.toLocaleString();
@@ -182,7 +240,8 @@ function exportCSV(){
 }
 async function loadServer(){
  const id=++seq,server=$('server').value,entry=servers.find(s=>s.id===server);
- entries=[];$('status').textContent='Loading Server '+server+'…';$('results').replaceChildren();refreshServerFreshness();
+ entries=[];guildRanking={ranked:[],unranked:[],byKey:new Map()};$('status').textContent='Loading Server '+server+'…';$('results').replaceChildren();refreshServerFreshness();
+ renderGuildRanking();
  try{
   if(!entry)throw Error('No roster registered');
   const response=await fetch('./'+entry.data,{cache:'no-store'});
@@ -193,7 +252,9 @@ async function loadServer(){
   const unique=new Map();
   for(const r of rows){if(r.server!==server)throw Error('Mixed-server roster');const p=parsePlayer(r);if(p)unique.set(p.id,p)}
   ZRouteFreshness.reconcile(entry,ZRouteFreshness.observedFromRows(rows));
-  entries=[...unique.values()];render();
+  entries=[...unique.values()];
+  guildRanking=ZRouteGuildPower.rank(entries,server);
+  render();
  }catch(error){if(id!==seq)return;entries=[];render();$('status').textContent='Unable to load roster: '+error.message}
 }
 async function load(){
@@ -210,7 +271,7 @@ async function load(){
   loadServer();
  }catch(e){$('status').textContent='Unable to load server registry: '+e.message}
 }
-for(const id of ['search','alliance','level','minPower','minKills','window','excludeD3AD'])$(id).addEventListener('input',render);
+for(const id of ['search','alliance','level','minPower','minKills','excludeTopGuilds','window','excludeD3AD'])$(id).addEventListener('input',render);
 $('activityMenu').addEventListener('change',()=>{updateActivitySummary();render()});
 $('activityAll').addEventListener('click',()=>{
  activityCheckboxes().forEach(c=>c.checked=c.dataset.activity!=='none');
@@ -223,7 +284,7 @@ $('activityClear').addEventListener('click',()=>{
 updateActivitySummary();
 $('server').addEventListener('change',loadServer);
 $('reset').addEventListener('click',()=>{
- $('search').value='';$('alliance').value='';$('level').value='1';$('minPower').value='0';$('minKills').value='0';$('window').value='7';$('excludeD3AD').checked=true;
+ $('search').value='';$('alliance').value='';$('level').value='1';$('minPower').value='0';$('minKills').value='0';$('excludeTopGuilds').value='0';$('window').value='7';$('excludeD3AD').checked=true;
  activityCheckboxes().forEach(c=>c.checked=true);
  $('activitySelect').open=false;updateActivitySummary();render();
 });

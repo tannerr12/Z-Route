@@ -1,7 +1,7 @@
 /* Pure, offline recruitment signals from observed player history. */
 (function (root) {
   'use strict';
-  const ORDER = ['guild', 'rename', 'move', 'shield'];
+  const ORDER = ['guild', 'rename', 'move', 'shield', 'power', 'kills'];
   const DAY_MS = 24 * 60 * 60 * 1000;
 
   function summarize(history, nowMs = Date.now(), days = 7) {
@@ -18,6 +18,10 @@
       if (event.fields.includes('username')) types.push('rename');
       if (event.fields.includes('x') || event.fields.includes('y')) types.push('move');
       if (event.fields.includes('bubble_status')) types.push('shield');
+      // Changes must have been measured against an earlier known value by
+      // the scanner. First-seen (unknown -> known) is never a change.
+      if (event.fields.includes('power')) types.push('power');
+      if (event.fields.includes('kills')) types.push('kills');
       for (const type of types) {
         if (!(type in latest) || when > latest[type]) latest[type] = when;
       }

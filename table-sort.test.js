@@ -18,6 +18,11 @@ test('numeric power sorting is numeric, reversible, and leaves unknown values la
  assert.deepEqual(ids(sortPlayers(players,{key:'kills',direction:'desc'})),['a','b','c']);
  assert.deepEqual(ids(sortPlayers(players,{key:'level',direction:'asc'})),['b','c','a']);
 });
+test('unknown levels stay last even when sorting ascending',()=>{
+ const rows=[{id:'1',name:'Known',level:10},{id:'2',name:'Missing',level:0},{id:'3',name:'Higher',level:25}];
+ assert.deepEqual(ids(sortPlayers(rows,{key:'level',direction:'asc'})),['1','3','2']);
+ assert.deepEqual(ids(sortPlayers(rows,{key:'level',direction:'desc'})),['3','1','2']);
+});
 test('name uses natural sort and location breaks ties by y',()=>{
  assert.deepEqual(ids(sortPlayers(players,{key:'player',direction:'asc'})),['c','a','b']);
  assert.deepEqual(ids(sortPlayers(players,{key:'location',direction:'asc'})),['a','c','b']);

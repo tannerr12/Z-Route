@@ -9,6 +9,17 @@ nav a{color:#9bd1ff}nav{margin-bottom:18px}h1{margin:0 0 6px;font-size:28px}p{co
 .filters{display:flex;flex-wrap:wrap;align-items:end;gap:12px}.filters label{display:grid;gap:6px;color:#bdd1e7}
 select,input,button{font:inherit;color:#f1f5fa;background:#152a40;border:1px solid #40556d;border-radius:8px;padding:9px}
 input[type=checkbox]{accent-color:#9bd1ff}button{cursor:pointer}button:hover{background:#28445e}
+.activity-select{position:relative;min-width:245px;max-width:310px}
+.activity-select summary{border:1px solid #40556d;border-radius:8px;background:#152a40;color:#f1f5fa;padding:9px 30px 9px 12px;cursor:pointer;list-style:none}
+.activity-select summary::-webkit-details-marker{display:none}
+.activity-select summary::after{content:'▾';position:absolute;right:12px;top:32px;color:#b9d0e7}
+.activity-select[open] summary::after{content:'▴'}
+.activity-menu{display:grid;gap:7px;position:absolute;top:100%;left:0;z-index:20;min-width:265px;width:max-content;max-width:min(345px,90vw);background:#152a40;border:1px solid #536f8a;border-radius:10px;padding:12px;box-shadow:0 10px 30px #0009}
+.activity-menu label{display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px;color:#edf4ff}
+.activity-menu input[type=checkbox]{width:17px;height:17px;flex:none}
+.activity-actions{display:flex;gap:8px}.activity-actions button{padding:6px 10px}
+.activity-hint{font-size:12px;color:#a9c0d9;margin:0}
+@media(max-width:600px){.activity-menu{width:100%;min-width:245px}}
 .stats{display:flex;gap:12px;flex-wrap:wrap}.stat{flex:1;min-width:180px;background:#132a41;border-radius:10px;padding:12px}
 .stat b{display:block;font-size:25px}.muted{font-size:13px;color:#a9c0d9}
 table{width:100%;border-collapse:collapse;min-width:850px}th,td{padding:12px 9px;border-bottom:1px solid #2b4157;text-align:left}
@@ -24,8 +35,22 @@ th{font-size:13px;color:#b9d0e7}td{font-size:14px}tr:hover{background:#20384f}
 <label>Server <select id="server"><option value="125">125</option></select></label>
 <label>Search name / known alias / ID <input id="search" type="search" placeholder="Player name"></label>
 <label>Alliance <select id="alliance"><option value="">All alliances</option><option value="unallied">Unallied only</option></select></label>
-<label>Activity <select id="activity"><option value="any">Any verified change</option><option value="guild">Alliance changed</option><option value="rename">Name changed</option><option value="move">Base moved</option><option value="shield">Bubble changed</option><option value="none">No changes observed</option></select></label>
+<details class="activity-select" id="activitySelect">
+<summary><span class="muted">Activity — match any selected</span><span id="activitySummary" style="display:block">All 6 change types</span></summary>
+<div class="activity-menu" id="activityMenu">
+<p class="activity-hint">A player qualifies when any checked change was observed during the selected window.</p>
+<label><input type="checkbox" data-activity="guild" checked> Alliance changed</label>
+<label><input type="checkbox" data-activity="rename" checked> Name changed</label>
+<label><input type="checkbox" data-activity="move" checked> Base moved</label>
+<label><input type="checkbox" data-activity="shield" checked> Bubble changed</label>
+<label><input type="checkbox" data-activity="power" checked> Power changed</label>
+<label><input type="checkbox" data-activity="kills" checked> Kills changed</label>
+<label><input type="checkbox" data-activity="none"> No changes observed</label>
+<div class="activity-actions"><button id="activityAll" type="button">Select all changes</button><button id="activityClear" type="button">Clear selection</button></div>
+</div></details>
 <label>Minimum level <input id="level" type="number" min="1" max="50" value="1" style="width:110px"></label>
+<label>Minimum power <input id="minPower" type="number" min="0" value="0" style="width:135px"></label>
+<label>Minimum kills <input id="minKills" type="number" min="0" value="0" style="width:135px"></label>
 <label>Window <select id="window"><option value="7">Last 7 days</option><option value="3">Last 3 days</option><option value="1">Last 24 hours</option><option value="14">Last 14 days</option></select></label>
 <label><span>Options</span><span><input id="excludeD3AD" type="checkbox" checked> Exclude D3AD</span></label>
 <button id="reset" type="button">Reset</button><button id="export" type="button">Export filtered CSV</button>
@@ -38,7 +63,7 @@ th{font-size:13px;color:#b9d0e7}td{font-size:14px}tr:hover{background:#20384f}
 </div>
 <section class="panel">
 <p class="muted" id="status" role="status">Loading roster…</p>
-<div class="table-wrap"><table><thead><tr><th>Player</th><th>Alliance</th><th>Level</th><th>Observed signals</th><th>Last observed change</th><th>World location</th><th>Recorded bubble</th></tr></thead><tbody id="results"></tbody></table></div>
+<div class="table-wrap"><table><thead><tr><th>Player</th><th>Alliance</th><th>Level</th><th>Power</th><th>Kills</th><th>Observed signals</th><th>Last observed change</th><th>World location</th><th>Recorded bubble</th></tr></thead><tbody id="results"></tbody></table></div>
 <p class="small" id="remaining"></p>
 </section>
 <p class="muted">Signals are derived from recorded changes to the same server + player ID, not from appearance in a single scan. No observed change is <em>not</em> proof of inactivity. Renames, movement and alliance changes may occur between scans; timestamps mark when differences were observed. Bubble status may be stale. History exported by the scanner can be incomplete, so results reflect available evidence only.</p>
@@ -48,7 +73,7 @@ th{font-size:13px;color:#b9d0e7}td{font-size:14px}tr:hover{background:#20384f}
 'use strict';
 const $ = id => document.getElementById(id);
 let entries=[], seq=0, servers=[];
-const labels={guild:'Alliance',rename:'Rename',move:'Movement',shield:'Bubble'};
+const labels={guild:'Alliance',rename:'Rename',move:'Movement',shield:'Bubble',power:'Power',kills:'Kills'};
 function parseCSV(text){
  const rows=[];let row=[],field='',quoted=false;
  text=text.replace(/^\uFEFF/,'');
@@ -62,23 +87,47 @@ function parseCSV(text){
 }
 function jsonArray(s){try{const x=JSON.parse(s||'[]');return Array.isArray(x)?x:[]}catch{return []}}
 function textNode(tag,content,cls){const x=document.createElement(tag);x.textContent=content;if(cls)x.className=cls;return x}
+function statOrNull(value){
+ if(value===undefined||value===null||String(value).trim()==='')return null;
+ const n=Number(value);
+ return Number.isSafeInteger(n)&&n>=0?n:null;
+}
+function formatStat(value){return value===null?'Unknown':value.toLocaleString()}
 function parsePlayer(row){
  if(row.coordinate_source!=='passive_network_world_xy'||!row.player_id||!row.username)return null;
  const x=Number(row.x),y=Number(row.y);
  if(!Number.isInteger(x)||!Number.isInteger(y)||x<0||y<0||x>5000||y>5000)return null;
  return {id:row.player_id,server:row.server,name:row.username,alliance:(row.alliance_tag||row.alliance_name||'').trim(),level:Number(row.base_level)||0,x,y,
+   power:statOrNull(row.power),kills:statOrNull(row.kills),
+   powerAt:row.power_observed_at_utc||'',killsAt:row.kills_observed_at_utc||'',
    history:jsonArray(row.player_history_json),aliases:jsonArray(row.known_aliases_json),shield:row.recorded_shield_status||row.shield_status||'unknown',
    shieldAt:row.shield_observed_at_utc||'',snapshot:row.roster_snapshot_at_utc||''};
 }
 function summarize(p){return ZRouteRecruitment.summarize(p.history,Date.now(),Number($('window').value))}
+const activityCheckboxes=()=>[...document.querySelectorAll('#activityMenu input[data-activity]')];
+function selectedActivity(){return new Set(activityCheckboxes().filter(c=>c.checked).map(c=>c.dataset.activity))}
+function updateActivitySummary(){
+ const selected=selectedActivity(),changeCount=[...selected].filter(k=>k!=='none').length;
+ let label;
+ if(!selected.size)label='No types selected';
+ else if(changeCount===6&&!selected.has('none'))label='All 6 change types';
+ else if(changeCount===6&&selected.has('none'))label='All types + no changes';
+ else if(changeCount===0&&selected.has('none'))label='No changes observed';
+ else label=[...selected].map(k=>k==='none'?'No change':labels[k]).join(', ');
+ $('activitySummary').textContent=label;
+ $('activitySummary').title=label;
+}
 function ranked(){
- const query=$('search').value.trim().toLowerCase(),alliance=$('alliance').value,kind=$('activity').value,min=Number($('level').value)||1;
+ const query=$('search').value.trim().toLowerCase(),alliance=$('alliance').value,selected=selectedActivity(),min=Number($('level').value)||1;
+ const minPower=Math.max(0,Number($('minPower').value)||0),minKills=Math.max(0,Number($('minKills').value)||0);
  return entries.map(p=>({...p,signal:summarize(p)})).filter(p=>
   (!query||[p.name,p.id,...p.aliases].some(v=>String(v).toLowerCase().includes(query))) &&
   (alliance===''||alliance==='unallied'&&!p.alliance||p.alliance.toLowerCase()===alliance.toLowerCase()) &&
   (!$('excludeD3AD').checked||p.alliance.toLowerCase()!=='d3ad') &&
   (p.level>=min) &&
-  (kind==='none'?!p.signal.types.length:kind==='any'?p.signal.types.length>0:p.signal.types.includes(kind))
+  (minPower===0||p.power!==null&&p.power>=minPower) &&
+  (minKills===0||p.kills!==null&&p.kills>=minKills) &&
+  ZRouteRecruitment.matchesSelected(p.signal.types,selected)
  ).sort((a,b)=>Date.parse(b.signal.lastChangeAt||0)-Date.parse(a.signal.lastChangeAt||0)||b.signal.types.length-a.signal.types.length||b.level-a.level||a.name.localeCompare(b.name));
 }
 function render(){
@@ -91,12 +140,13 @@ function render(){
  const body=$('results');body.replaceChildren();
  for(const p of list.slice(0,250)){
   const tr=document.createElement('tr'), cells=[
-   p.name,p.alliance||'Unallied',p.level||'Unknown',null,
+   p.name,p.alliance||'Unallied',p.level||'Unknown',
+   formatStat(p.power),formatStat(p.kills),null,
    p.signal.lastChangeAt?new Date(p.signal.lastChangeAt).toLocaleString():'Not observed',
    'X:'+p.x+' Y:'+p.y,p.shield||'unknown'];
   cells.forEach((value,i)=>{
     const td=document.createElement('td');
-    if(i===3){if(!p.signal.types.length)td.textContent='No recorded change';else p.signal.types.forEach(type=>td.append(textNode('span',labels[type],'chip')))}
+    if(i===5){if(!p.signal.types.length)td.textContent='No recorded change';else p.signal.types.forEach(type=>td.append(textNode('span',labels[type],'chip')))}
     else td.textContent=value;
     tr.append(td);
   });
@@ -106,8 +156,8 @@ function render(){
  $('status').textContent=entries.length?'Changes are observed scan differences, not direct proof of player login.':'No valid players loaded.';
 }
 function exportCSV(){
- const list=ranked(), cols=['server','player_id','username','alliance','level','signals','last_observed_change_utc','x','y','recorded_shield'];
- const csv=[cols.join(','),...list.map(p=>[p.server,p.id,p.name,p.alliance,p.level,p.signal.types.join(';'),p.signal.lastChangeAt,p.x,p.y,p.shield].map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(','))].join('\r\n');
+ const list=ranked(), cols=['server','player_id','username','alliance','level','power','kills','power_observed_at_utc','kills_observed_at_utc','signals','last_observed_change_utc','x','y','recorded_shield'];
+ const csv=[cols.join(','),...list.map(p=>[p.server,p.id,p.name,p.alliance,p.level,p.power??'',p.kills??'',p.powerAt,p.killsAt,p.signal.types.join(';'),p.signal.lastChangeAt,p.x,p.y,p.shield].map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(','))].join('\r\n');
  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
  const a=document.createElement('a');a.href=url;a.download='recruitment-S'+$('server').value+'-'+$('window').value+'d.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
@@ -138,9 +188,23 @@ async function load(){
   loadServer();
  }catch(e){$('status').textContent='Unable to load server registry: '+e.message}
 }
-for(const id of ['search','alliance','activity','level','window','excludeD3AD'])$(id).addEventListener('input',render);
+for(const id of ['search','alliance','level','minPower','minKills','window','excludeD3AD'])$(id).addEventListener('input',render);
+$('activityMenu').addEventListener('change',()=>{updateActivitySummary();render()});
+$('activityAll').addEventListener('click',()=>{
+ activityCheckboxes().forEach(c=>c.checked=c.dataset.activity!=='none');
+ updateActivitySummary();render();
+});
+$('activityClear').addEventListener('click',()=>{
+ activityCheckboxes().forEach(c=>c.checked=false);
+ updateActivitySummary();render();
+});
+updateActivitySummary();
 $('server').addEventListener('change',loadServer);
-$('reset').addEventListener('click',()=>{$('search').value='';$('alliance').value='';$('activity').value='any';$('level').value='1';$('window').value='7';$('excludeD3AD').checked=true;render()});
+$('reset').addEventListener('click',()=>{
+ $('search').value='';$('alliance').value='';$('level').value='1';$('minPower').value='0';$('minKills').value='0';$('window').value='7';$('excludeD3AD').checked=true;
+ activityCheckboxes().forEach(c=>c.checked=c.dataset.activity!=='none');
+ $('activitySelect').open=false;updateActivitySummary();render();
+});
 $('export').addEventListener('click',exportCSV);
 load();
 </script></body></html>

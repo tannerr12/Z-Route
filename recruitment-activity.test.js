@@ -38,3 +38,14 @@ test('observations without changed fields do not prove activity', () => {
 test('one coordinate change counts as movement', () => {
   assert.deepEqual(summarize([evt(7, ['y'])], NOW).types, ['move']);
 });
+
+test('measured power and kill-count changes qualify as observed activity', () => {
+  assert.deepEqual(
+    summarize([evt(2,['power']),evt(1,['kills'])],NOW).types,
+    ['power','kills']
+  );
+  assert.deepEqual(
+    summarize([evt(1,['first_seen','power','kills'])],NOW).types,
+    []
+  );
+});

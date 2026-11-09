@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Z-Route | Recruitment Activity</title>
+<style>
+:root{color-scheme:dark;font:15px system-ui,-apple-system,Segoe UI,sans-serif;background:#091321;color:#e9f1fc}
+*{box-sizing:border-box}body{margin:0;padding:24px}main{max-width:1450px;margin:auto}
+nav a{color:#9bd1ff}nav{margin-bottom:18px}h1{margin:0 0 6px;font-size:28px}p{color:#b8cbe0;line-height:1.5}
+.panel{border:1px solid #30465e;background:#102035;border-radius:14px;padding:17px;margin:15px 0}
+.filters{display:flex;flex-wrap:wrap;align-items:end;gap:12px}.filters label{display:grid;gap:6px;color:#bdd1e7}
+select,input,button{font:inherit;color:#f1f5fa;background:#152a40;border:1px solid #40556d;border-radius:8px;padding:9px}
+input[type=checkbox]{accent-color:#9bd1ff}button{cursor:pointer}button:hover{background:#28445e}
+.stats{display:flex;gap:12px;flex-wrap:wrap}.stat{flex:1;min-width:180px;background:#132a41;border-radius:10px;padding:12px}
+.stat b{display:block;font-size:25px}.muted{font-size:13px;color:#a9c0d9}
+table{width:100%;border-collapse:collapse;min-width:850px}th,td{padding:12px 9px;border-bottom:1px solid #2b4157;text-align:left}
+th{font-size:13px;color:#b9d0e7}td{font-size:14px}tr:hover{background:#20384f}
+.chip{display:inline-block;border:1px solid #48647d;padding:3px 7px;margin:2px;border-radius:999px;font-size:12px}
+#status{min-height:20px}.table-wrap{overflow-x:auto}.small{font-size:12px;color:#a8bdd4}
+@media(max-width:700px){body{padding:12px}.filters>*{flex:1 1 150px}}
+</style></head><body><main>
+<nav><a href="./index.html">World Map</a> · <a href="./activity.html">Player Activity</a> · <a href="./donations.html">Donations</a> · <a href="./vs.html">VS</a></nav>
+<h1>Recruitment Activity</h1>
+<p>Find potential alliance recruits with <strong>observed changes in the last seven days</strong>. This is historical scan evidence—not real-time login status or proof of in-game activity without a recorded change.</p>
+<div class="panel"><div class="filters">
+<label>Server <select id="server"><option value="125">125</option></select></label>
+<label>Search name / known alias / ID <input id="search" type="search" placeholder="Player name"></label>
+<label>Alliance <select id="alliance"><option value="">All alliances</option><option value="unallied">Unallied only</option></select></label>
+<label>Activity <select id="activity"><option value="any">Any verified change</option><option value="guild">Alliance changed</option><option value="rename">Name changed</option><option value="move">Base moved</option><option value="shield">Bubble changed</option><option value="none">No changes observed</option></select></label>
+<label>Minimum level <input id="level" type="number" min="1" max="50" value="1" style="width:110px"></label>
+<label>Window <select id="window"><option value="7">Last 7 days</option><option value="3">Last 3 days</option><option value="1">Last 24 hours</option><option value="14">Last 14 days</option></select></label>
+<label><span>Options</span><span><input id="excludeD3AD" type="checkbox" checked> Exclude D3AD</span></label>
+<button id="reset" type="button">Reset</button><button id="export" type="button">Export filtered CSV</button>
+</div></div>
+<div class="stats">
+<div class="stat"><span class="muted">Players in roster</span><b id="total">—</b></div>
+<div class="stat"><span class="muted">With observed changes in window</span><b id="active">—</b></div>
+<div class="stat"><span class="muted">Matching recruitment filters</span><b id="matches">—</b></div>
+<div class="stat"><span class="muted">Last roster capture</span><b id="snapshot" style="font-size:15px">—</b></div>
+</div>
+<section class="panel">
+<p class="muted" id="status" role="status">Loading roster…</p>
+<div class="table-wrap"><table><thead><tr><th>Player</th><th>Alliance</th><th>Level</th><th>Observed signals</th><th>Last observed change</th><th>World location</th><th>Recorded bubble</th></tr></thead><tbody id="results"></tbody></table></div>
+<p class="small" id="remaining"></p>
+</section>
+<p class="muted">Signals are derived from recorded changes to the same server + player ID, not from appearance in a single scan. No observed change is <em>not</em> proof of inactivity. Renames, movement and alliance changes may occur between scans; timestamps mark when differences were observed. Bubble status may be stale. History exported by the scanner can be incomplete, so results reflect available evidence only.</p>
+</main>
+<script src="./recruitment-activity.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+let entries=[], seq=0, servers=[];
+const labels={guild:'Alliance',rename:'Rename',move:'Movement',shield:'Bubble'};
+function parseCSV(text){
+ const rows=[];let row=[],field='',quoted=false;
+ text=text.replace(/^\uFEFF/,'');
+ for(let i=0;i<text.length;i++){const c=text[i];
+  if(quoted){if(c==='"'&&text[i+1]==='"'){field+='"';i++}else if(c==='"')quoted=false;else field+=c}
+  else if(c==='"')quoted=true;else if(c===','){row.push(field);field=''}else if(c==='\n'){row.push(field.replace(/\r$/,''));rows.push(row);row=[];field=''}else field+=c;
+ }
+ if(field.length||row.length){row.push(field.replace(/\r$/,''));rows.push(row)}
+ const h=(rows.shift()||[]).map(x=>x.trim().toLowerCase());
+ return rows.filter(r=>r.some(x=>x.trim())).map(r=>Object.fromEntries(h.map((x,i)=>[x,r[i]||''])));
+}
+function jsonArray(s){try{const x=JSON.parse(s||'[]');return Array.isArray(x)?x:[]}catch{return []}}
+function textNode(tag,content,cls){const x=document.createElement(tag);x.textContent=content;if(cls)x.className=cls;return x}
+function parsePlayer(row){
+ if(row.coordinate_source!=='passive_network_world_xy'||!row.player_id||!row.username)return null;
+ const x=Number(row.x),y=Number(row.y);
+ if(!Number.isInteger(x)||!Number.isInteger(y)||x<0||y<0||x>5000||y>5000)return null;
+ return {id:row.player_id,server:row.server,name:row.username,alliance:(row.alliance_tag||row.alliance_name||'').trim(),level:Number(row.base_level)||0,x,y,
+   history:jsonArray(row.player_history_json),aliases:jsonArray(row.known_aliases_json),shield:row.recorded_shield_status||row.shield_status||'unknown',
+   shieldAt:row.shield_observed_at_utc||'',snapshot:row.roster_snapshot_at_utc||''};
+}
+function summarize(p){return ZRouteRecruitment.summarize(p.history,Date.now(),Number($('window').value))}
+function ranked(){
+ const query=$('search').value.trim().toLowerCase(),alliance=$('alliance').value,kind=$('activity').value,min=Number($('level').value)||1;
+ return entries.map(p=>({...p,signal:summarize(p)})).filter(p=>
+  (!query||[p.name,p.id,...p.aliases].some(v=>String(v).toLowerCase().includes(query))) &&
+  (alliance===''||alliance==='unallied'&&!p.alliance||p.alliance.toLowerCase()===alliance.toLowerCase()) &&
+  (!$('excludeD3AD').checked||p.alliance.toLowerCase()!=='d3ad') &&
+  (p.level>=min) &&
+  (kind==='none'?!p.signal.types.length:kind==='any'?p.signal.types.length>0:p.signal.types.includes(kind))
+ ).sort((a,b)=>Date.parse(b.signal.lastChangeAt||0)-Date.parse(a.signal.lastChangeAt||0)||b.signal.types.length-a.signal.types.length||b.level-a.level||a.name.localeCompare(b.name));
+}
+function render(){
+ const list=ranked();
+ $('total').textContent=entries.length.toLocaleString();
+ $('active').textContent=entries.filter(p=>summarize(p).types.length).length.toLocaleString();
+ $('matches').textContent=list.length.toLocaleString();
+ const snapshots=entries.map(p=>Date.parse(p.snapshot)).filter(Number.isFinite);
+ $('snapshot').textContent=snapshots.length?new Date(Math.max(...snapshots)).toLocaleString():'Unknown';
+ const body=$('results');body.replaceChildren();
+ for(const p of list.slice(0,250)){
+  const tr=document.createElement('tr'), cells=[
+   p.name,p.alliance||'Unallied',p.level||'Unknown',null,
+   p.signal.lastChangeAt?new Date(p.signal.lastChangeAt).toLocaleString():'Not observed',
+   'X:'+p.x+' Y:'+p.y,p.shield||'unknown'];
+  cells.forEach((value,i)=>{
+    const td=document.createElement('td');
+    if(i===3){if(!p.signal.types.length)td.textContent='No recorded change';else p.signal.types.forEach(type=>td.append(textNode('span',labels[type],'chip')))}
+    else td.textContent=value;
+    tr.append(td);
+  });
+  body.append(tr);
+ }
+ $('remaining').textContent=list.length>250?'Showing first 250 of '+list.length.toLocaleString()+' matching players. Export CSV for the full list.':'';
+ $('status').textContent=entries.length?'Changes are observed scan differences, not direct proof of player login.':'No valid players loaded.';
+}
+function exportCSV(){
+ const list=ranked(), cols=['server','player_id','username','alliance','level','signals','last_observed_change_utc','x','y','recorded_shield'];
+ const csv=[cols.join(','),...list.map(p=>[p.server,p.id,p.name,p.alliance,p.level,p.signal.types.join(';'),p.signal.lastChangeAt,p.x,p.y,p.shield].map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(','))].join('\r\n');
+ const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+ const a=document.createElement('a');a.href=url;a.download='recruitment-S'+$('server').value+'-'+$('window').value+'d.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+async function loadServer(){
+ const id=++seq,server=$('server').value,entry=servers.find(s=>s.id===server);
+ entries=[];$('status').textContent='Loading Server '+server+'…';$('results').replaceChildren();
+ try{
+  if(!entry)throw Error('No roster registered');
+  const response=await fetch('./'+entry.data,{cache:'no-store'});
+  if(!response.ok)throw Error('HTTP '+response.status);
+  const rows=parseCSV(await response.text());
+  if(id!==seq)return;
+  if(rows.length&&!['server','player_id','username','player_history_json','coordinate_source'].every(k=>Object.hasOwn(rows[0],k)))throw Error('Roster lacks required history columns');
+  const unique=new Map();
+  for(const r of rows){if(r.server!==server)throw Error('Mixed-server roster');const p=parsePlayer(r);if(p)unique.set(p.id,p)}
+  entries=[...unique.values()];render();
+ }catch(error){if(id!==seq)return;entries=[];render();$('status').textContent='Unable to load roster: '+error.message}
+}
+async function load(){
+ try{
+  const resp=await fetch('./data/servers.json',{cache:'no-store'});
+  if(!resp.ok)throw Error('Server list HTTP '+resp.status);
+  const directory=await resp.json();
+  servers=(Array.isArray(directory.servers)?directory.servers:[]).filter(s=>s&&/^\d+$/.test(String(s.id))&&/^data\/(?:world-players\.csv|servers\/\d+\/world-players\.csv)$/.test(s.data)).map(s=>({id:String(s.id),data:s.data}));
+  if(!servers.length)throw Error('No servers');
+  $('server').replaceChildren(...servers.map(s=>new Option('Server '+s.id,s.id)));
+  $('server').value=servers.some(s=>s.id==='125')?'125':servers[0].id;
+  loadServer();
+ }catch(e){$('status').textContent='Unable to load server registry: '+e.message}
+}
+for(const id of ['search','alliance','activity','level','window','excludeD3AD'])$(id).addEventListener('input',render);
+$('server').addEventListener('change',loadServer);
+$('reset').addEventListener('click',()=>{$('search').value='';$('alliance').value='';$('activity').value='any';$('level').value='1';$('window').value='7';$('excludeD3AD').checked=true;render()});
+$('export').addEventListener('click',exportCSV);
+load();
+</script></body></html>

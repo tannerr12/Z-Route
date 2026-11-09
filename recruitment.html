@@ -24,8 +24,10 @@ th{font-size:13px;color:#b9d0e7}td{font-size:14px}tr:hover{background:#20384f}
 <label>Server <select id="server"><option value="125">125</option></select></label>
 <label>Search name / known alias / ID <input id="search" type="search" placeholder="Player name"></label>
 <label>Alliance <select id="alliance"><option value="">All alliances</option><option value="unallied">Unallied only</option></select></label>
-<label>Activity <select id="activity"><option value="any">Any verified change</option><option value="guild">Alliance changed</option><option value="rename">Name changed</option><option value="move">Base moved</option><option value="shield">Bubble changed</option><option value="none">No changes observed</option></select></label>
+<label>Activity <select id="activity"><option value="any">Any verified change</option><option value="guild">Alliance changed</option><option value="rename">Name changed</option><option value="move">Base moved</option><option value="shield">Bubble changed</option><option value="power">Power changed</option><option value="kills">Kills changed</option><option value="none">No changes observed</option></select></label>
 <label>Minimum level <input id="level" type="number" min="1" max="50" value="1" style="width:110px"></label>
+<label>Minimum power <input id="minPower" type="number" min="0" value="0" style="width:135px"></label>
+<label>Minimum kills <input id="minKills" type="number" min="0" value="0" style="width:135px"></label>
 <label>Window <select id="window"><option value="7">Last 7 days</option><option value="3">Last 3 days</option><option value="1">Last 24 hours</option><option value="14">Last 14 days</option></select></label>
 <label><span>Options</span><span><input id="excludeD3AD" type="checkbox" checked> Exclude D3AD</span></label>
 <button id="reset" type="button">Reset</button><button id="export" type="button">Export filtered CSV</button>
@@ -38,7 +40,7 @@ th{font-size:13px;color:#b9d0e7}td{font-size:14px}tr:hover{background:#20384f}
 </div>
 <section class="panel">
 <p class="muted" id="status" role="status">Loading roster…</p>
-<div class="table-wrap"><table><thead><tr><th>Player</th><th>Alliance</th><th>Level</th><th>Observed signals</th><th>Last observed change</th><th>World location</th><th>Recorded bubble</th></tr></thead><tbody id="results"></tbody></table></div>
+<div class="table-wrap"><table><thead><tr><th>Player</th><th>Alliance</th><th>Level</th><th>Power</th><th>Kills</th><th>Observed signals</th><th>Last observed change</th><th>World location</th><th>Recorded bubble</th></tr></thead><tbody id="results"></tbody></table></div>
 <p class="small" id="remaining"></p>
 </section>
 <p class="muted">Signals are derived from recorded changes to the same server + player ID, not from appearance in a single scan. No observed change is <em>not</em> proof of inactivity. Renames, movement and alliance changes may occur between scans; timestamps mark when differences were observed. Bubble status may be stale. History exported by the scanner can be incomplete, so results reflect available evidence only.</p>
@@ -48,7 +50,7 @@ th{font-size:13px;color:#b9d0e7}td{font-size:14px}tr:hover{background:#20384f}
 'use strict';
 const $ = id => document.getElementById(id);
 let entries=[], seq=0, servers=[];
-const labels={guild:'Alliance',rename:'Rename',move:'Movement',shield:'Bubble'};
+const labels={guild:'Alliance',rename:'Rename',move:'Movement',shield:'Bubble',power:'Power',kills:'Kills'};
 function parseCSV(text){
  const rows=[];let row=[],field='',quoted=false;
  text=text.replace(/^\uFEFF/,'');
@@ -62,22 +64,33 @@ function parseCSV(text){
 }
 function jsonArray(s){try{const x=JSON.parse(s||'[]');return Array.isArray(x)?x:[]}catch{return []}}
 function textNode(tag,content,cls){const x=document.createElement(tag);x.textContent=content;if(cls)x.className=cls;return x}
+function statOrNull(value){
+ if(value===undefined||value===null||String(value).trim()==='')return null;
+ const n=Number(value);
+ return Number.isSafeInteger(n)&&n>=0?n:null;
+}
+function formatStat(value){return value===null?'Unknown':value.toLocaleString()}
 function parsePlayer(row){
  if(row.coordinate_source!=='passive_network_world_xy'||!row.player_id||!row.username)return null;
  const x=Number(row.x),y=Number(row.y);
  if(!Number.isInteger(x)||!Number.isInteger(y)||x<0||y<0||x>5000||y>5000)return null;
  return {id:row.player_id,server:row.server,name:row.username,alliance:(row.alliance_tag||row.alliance_name||'').trim(),level:Number(row.base_level)||0,x,y,
+   power:statOrNull(row.power),kills:statOrNull(row.kills),
+   powerAt:row.power_observed_at_utc||'',killsAt:row.kills_observed_at_utc||'',
    history:jsonArray(row.player_history_json),aliases:jsonArray(row.known_aliases_json),shield:row.recorded_shield_status||row.shield_status||'unknown',
    shieldAt:row.shield_observed_at_utc||'',snapshot:row.roster_snapshot_at_utc||''};
 }
 function summarize(p){return ZRouteRecruitment.summarize(p.history,Date.now(),Number($('window').value))}
 function ranked(){
  const query=$('search').value.trim().toLowerCase(),alliance=$('alliance').value,kind=$('activity').value,min=Number($('level').value)||1;
+ const minPower=Math.max(0,Number($('minPower').value)||0),minKills=Math.max(0,Number($('minKills').value)||0);
  return entries.map(p=>({...p,signal:summarize(p)})).filter(p=>
   (!query||[p.name,p.id,...p.aliases].some(v=>String(v).toLowerCase().includes(query))) &&
   (alliance===''||alliance==='unallied'&&!p.alliance||p.alliance.toLowerCase()===alliance.toLowerCase()) &&
   (!$('excludeD3AD').checked||p.alliance.toLowerCase()!=='d3ad') &&
   (p.level>=min) &&
+  (minPower===0||p.power!==null&&p.power>=minPower) &&
+  (minKills===0||p.kills!==null&&p.kills>=minKills) &&
   (kind==='none'?!p.signal.types.length:kind==='any'?p.signal.types.length>0:p.signal.types.includes(kind))
  ).sort((a,b)=>Date.parse(b.signal.lastChangeAt||0)-Date.parse(a.signal.lastChangeAt||0)||b.signal.types.length-a.signal.types.length||b.level-a.level||a.name.localeCompare(b.name));
 }
@@ -91,12 +104,13 @@ function render(){
  const body=$('results');body.replaceChildren();
  for(const p of list.slice(0,250)){
   const tr=document.createElement('tr'), cells=[
-   p.name,p.alliance||'Unallied',p.level||'Unknown',null,
+   p.name,p.alliance||'Unallied',p.level||'Unknown',
+   formatStat(p.power),formatStat(p.kills),null,
    p.signal.lastChangeAt?new Date(p.signal.lastChangeAt).toLocaleString():'Not observed',
    'X:'+p.x+' Y:'+p.y,p.shield||'unknown'];
   cells.forEach((value,i)=>{
     const td=document.createElement('td');
-    if(i===3){if(!p.signal.types.length)td.textContent='No recorded change';else p.signal.types.forEach(type=>td.append(textNode('span',labels[type],'chip')))}
+    if(i===5){if(!p.signal.types.length)td.textContent='No recorded change';else p.signal.types.forEach(type=>td.append(textNode('span',labels[type],'chip')))}
     else td.textContent=value;
     tr.append(td);
   });
@@ -106,8 +120,8 @@ function render(){
  $('status').textContent=entries.length?'Changes are observed scan differences, not direct proof of player login.':'No valid players loaded.';
 }
 function exportCSV(){
- const list=ranked(), cols=['server','player_id','username','alliance','level','signals','last_observed_change_utc','x','y','recorded_shield'];
- const csv=[cols.join(','),...list.map(p=>[p.server,p.id,p.name,p.alliance,p.level,p.signal.types.join(';'),p.signal.lastChangeAt,p.x,p.y,p.shield].map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(','))].join('\r\n');
+ const list=ranked(), cols=['server','player_id','username','alliance','level','power','kills','power_observed_at_utc','kills_observed_at_utc','signals','last_observed_change_utc','x','y','recorded_shield'];
+ const csv=[cols.join(','),...list.map(p=>[p.server,p.id,p.name,p.alliance,p.level,p.power??'',p.kills??'',p.powerAt,p.killsAt,p.signal.types.join(';'),p.signal.lastChangeAt,p.x,p.y,p.shield].map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(','))].join('\r\n');
  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
  const a=document.createElement('a');a.href=url;a.download='recruitment-S'+$('server').value+'-'+$('window').value+'d.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
@@ -138,9 +152,9 @@ async function load(){
   loadServer();
  }catch(e){$('status').textContent='Unable to load server registry: '+e.message}
 }
-for(const id of ['search','alliance','activity','level','window','excludeD3AD'])$(id).addEventListener('input',render);
+for(const id of ['search','alliance','activity','level','minPower','minKills','window','excludeD3AD'])$(id).addEventListener('input',render);
 $('server').addEventListener('change',loadServer);
-$('reset').addEventListener('click',()=>{$('search').value='';$('alliance').value='';$('activity').value='any';$('level').value='1';$('window').value='7';$('excludeD3AD').checked=true;render()});
+$('reset').addEventListener('click',()=>{$('search').value='';$('alliance').value='';$('activity').value='any';$('level').value='1';$('minPower').value='0';$('minKills').value='0';$('window').value='7';$('excludeD3AD').checked=true;render()});
 $('export').addEventListener('click',exportCSV);
 load();
 </script></body></html>

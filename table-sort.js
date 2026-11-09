@@ -33,7 +33,7 @@ function playerValue(p,key){
  switch(key){
  case 'player':return p.name||'';
  case 'alliance':return p.alliance||'Unallied';
- case 'level':return numberOrNull(p.level);
+ case 'level':{const level=numberOrNull(p.level);return level!==null&&level>0?level:null;}
  case 'power':return numberOrNull(p.power);
  case 'kills':return numberOrNull(p.kills);
  case 'signals':return p.signal?.types?.length??0;

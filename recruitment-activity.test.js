@@ -2,7 +2,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { summarize } = require('./recruitment-activity.js');
+const { summarize, matchesSelected } = require('./recruitment-activity.js');
 
 const NOW = Date.parse('2026-11-08T20:00:00Z');
 const evt = (daysAgo, fields) => ({
@@ -48,4 +48,19 @@ test('measured power and kill-count changes qualify as observed activity', () =>
     summarize([evt(1,['first_seen','power','kills'])],NOW).types,
     []
   );
+});
+
+test('multi-select matches any checked signal, not all at once', () => {
+  assert.equal(matchesSelected(['move','power'],new Set(['kills','power'])),true);
+  assert.equal(matchesSelected(['move'],new Set(['kills','power'])),false);
+  assert.equal(matchesSelected(['power','kills'],new Set(['kills'])),true);
+  assert.equal(matchesSelected(['power','kills'],new Set()),false);
+});
+
+test('explicit no-change choice can combine with other signals', () => {
+  const selected=new Set(['power','none']);
+  assert.equal(matchesSelected([],selected),true);
+  assert.equal(matchesSelected(['power'],selected),true);
+  assert.equal(matchesSelected(['rename'],selected),false);
+  assert.equal(matchesSelected([],new Set(['guild','power'])),false);
 });

@@ -104,8 +104,50 @@ const aB=benefits(a),bB=benefits(b),stats=[];let benefit=0;
 for(const key of new Set([...aB.keys(),...bB.keys()])){const prev=aB.get(key),next=bB.get(key),gain=(next?.value||0)-(prev?.value||0);if(!gain)continue;stats.push({name:next?.name||prev.name,type:next?.type||prev.type,start:prev?.value||0,end:next?.value||0,gain});benefit+=normalizedStatGain(next?.name||prev.name,next?.type||prev.type,gain,w)}
 let cost=0;for(const [name,qty] of costs)cost+=costWeight(name,qty,w);
 return {ability:number(b.ability)-number(a.ability),benefit,cost,efficiency:cost>0?benefit/cost*1000:null,costs,stats};}
+
+function promotionStates(g){return g.promotion_levels||[]}
+function promotionLabel(r){return r.level+'★'+(r.stage?' · stage '+r.stage+'/4':' · full star')}
+function comparePromotion(g,from,to,w){
+ const states=promotionStates(g);if(from<0||to<=from||to>=states.length)return null;
+ const a=states[from],b=states[to],costs=new Map();
+ for(const state of states.slice(from+1,to+1))for(const c of state.costs||[]){
+  const name=itemName(c);costs.set(name,(costs.get(name)||0)+number(c.count))}
+ const left=benefits(a),right=benefits(b),stats=[];let benefit=0;
+ for(const key of new Set([...left.keys(),...right.keys()])){
+  const old=left.get(key),next=right.get(key),gain=(next?.value||0)-(old?.value||0);
+  if(!gain)continue;const name=next?.name||old.name,type=next?.type||old.type;
+  stats.push({name,type,start:old?.value||0,end:next?.value||0,gain});
+  benefit+=normalizedStatGain(name,type,gain,w)}
+ const cost=[...costs].reduce((sum,[name,qty])=>sum+costWeight(name,qty,w),0);
+ return {ability:number(b.ability)-number(a.ability),benefit,cost,efficiency:cost>0?benefit/cost*1000:null,costs,stats}
+}
+function refreshPromotion(current=0,target=null){
+ const states=promotionStates(selectedGear());$('promotionControls').hidden=states.length<2;
+ $('promotionCurrent').replaceChildren(...states.map((r,i)=>new Option(promotionLabel(r),String(i))));
+ $('promotionCurrent').value=String(Math.min(Math.max(0,current),Math.max(0,states.length-1)));
+ refreshPromotionTarget(target)
+}
+function refreshPromotionTarget(target=null){
+ const states=promotionStates(selectedGear()),current=Number($('promotionCurrent').value);
+ const options=states.map((r,i)=>({r,i})).filter(x=>x.i>current);
+ $('promotionTarget').replaceChildren(...options.map(x=>new Option(promotionLabel(x.r),String(x.i))));
+ $('promotionTarget').disabled=!options.length;
+ if(options.length)$('promotionTarget').value=String(options.some(x=>x.i===target)?target:options[0].i);
+ render()
+}
+function renderComparison(g,from,w){
+ const body=$('sideBySide');body.replaceChildren();
+ const strengthen=compare(g,from,from+1,w),state=Number($('promotionCurrent').value);
+ const promotion=promotionStates(g).length>1?comparePromotion(g,state,state+1,w):null;
+ if(strengthen)row(['Strengthen +1',fmt(strengthen.ability),fmt(strengthen.benefit),fmt(strengthen.cost),fmt(strengthen.efficiency)],body);
+ if(promotion)row(['Promotion +1 stage',fmt(promotion.ability),fmt(promotion.benefit),fmt(promotion.cost),fmt(promotion.efficiency)],body);
+ if(!body.children.length)row(['No further steps','—','—','—','—'],body);
+ $('comparisonNote').textContent=strengthen?.efficiency!=null&&promotion?.efficiency!=null
+ ?'Higher weighted efficiency for the next step: '+(strengthen.efficiency>=promotion.efficiency?'strengthening':'star promotion')+'.'
+ :'Only available, positive-cost steps can be compared.';
+}
 function updateSelectors(){const g=selectedGear();if(!g)return;const levels=g.strengthen_levels.map(x=>x.level).sort((a,b)=>a-b);const prevC=Number($('current').value),prevT=Number($('target').value);
-$('current').replaceChildren(...levels.map(x=>new Option('Level '+x,x)));$('current').value=String(levels.includes(prevC)?prevC:levels[0]);updateTarget(levels.includes(prevT)?prevT:null)}
+$('current').replaceChildren(...levels.map(x=>new Option('Level '+x,x)));$('current').value=String(levels.includes(prevC)?prevC:levels[0]);updateTarget(levels.includes(prevT)?prevT:null);refreshPromotion(0,null)}
 function updateTarget(preferred){const g=selectedGear();if(!g)return;const c=Number($('current').value);const levels=g.strengthen_levels.map(x=>x.level).filter(x=>x>c).sort((a,b)=>a-b);
 $('target').replaceChildren(...levels.map(x=>new Option('Level '+x,x)));$('target').disabled=!levels.length;
 if(levels.length)$('target').value=String(levels.includes(preferred)?preferred:levels[0]);render()}
@@ -113,20 +155,33 @@ function row(cells,parent){const tr=document.createElement('tr');for(const cell 
 function render(){const g=selectedGear();if(!g)return;const w=readWeights(),from=Number($('current').value),to=Number($('target').value);
 $('gearInfo').textContent=g.name+' · Strengthen cap '+Math.max(...g.strengthen_levels.map(x=>x.level))+' · '+(g.manufacturable?'Manufacturable':'Not manufacturable')+' · '+(g.promotion_levels?.length?'Separate promotion path available':'No promotion path');
 const result=$('target').disabled?null:compare(g,from,to,w);
-for(const [id,val] of Object.entries({ability:result?fmt(result.ability):'—',benefit:result?fmt(result.benefit):'—',cost:result?fmt(result.cost):'—',efficiency:result?fmt(result.efficiency):'—'}))$(id).textContent=val;
-$('scoreExplain').textContent=result?'Efficiency = weighted stat gain ÷ weighted cost × 1,000. This is a configurable comparison score.':'Select a level below this equipment’s maximum to compare upgrades.';
+const states=promotionStates(g),pFrom=Number($('promotionCurrent').value),pTo=Number($('promotionTarget').value);
+const promotionResult=states.length>1&&!$('promotionTarget').disabled?comparePromotion(g,pFrom,pTo,w):null;
+renderComparison(g,from,w);
+const totalCost=(result?.cost||0)+(promotionResult?.cost||0),totalBenefit=(result?.benefit||0)+(promotionResult?.benefit||0);
+for(const [id,val] of Object.entries({ability:result||promotionResult?fmt((result?.ability||0)+(promotionResult?.ability||0)):'—',benefit:result||promotionResult?fmt(totalBenefit):'—',cost:result||promotionResult?fmt(totalCost):'—',efficiency:totalCost>0?fmt(totalBenefit/totalCost*1000):'—'}))$(id).textContent=val;
+$('scoreExplain').textContent=result||promotionResult?'Planning totals combine independently reported strengthen and promotion gains; final game stat stacking is not verified. Efficiency = weighted benefit ÷ weighted cost × 1,000.':'No further steps for this selection.';
 const mat=$('materials'),stats=$('stats');mat.replaceChildren();stats.replaceChildren();
+if(promotionResult){row(['PROMOTION: '+promotionLabel(states[pFrom])+' → '+promotionLabel(states[pTo]),'—','—'],mat);
+for(const [name,qty] of promotionResult.costs)row([name,fmt(qty),fmt(costWeight(name,qty,w))],mat);
+for(const b of promotionResult.stats)row(['Promotion: '+b.name+' (ID '+b.type+')',fmt(b.start),fmt(b.end),fmt(b.gain)],stats)}
 if(result){for(const [name,quantity] of result.costs)row([name,fmt(quantity),fmt(costWeight(name,quantity,w))],mat);
 for(const b of result.stats)row([b.name+' (ID '+b.type+')',fmt(b.start),fmt(b.end),fmt(b.gain)],stats)}
-if(!mat.children.length)row(['No strengthening costs in selected interval','—','—'],mat);
+if(!mat.children.length)row(['No costs in selected interval','—','—'],mat);
 if(!stats.children.length)row(['No stat changes','—','—','—'],stats);
-const choices=g.strengthen_levels.map(r=>r.level).filter(l=>l>from).map(l=>({level:l,result:compare(g,from,l,w)})).filter(x=>x.result&&x.result.efficiency!==null).sort((a,b)=>b.result.efficiency-a.result.efficiency);
-const container=$('ranking');container.replaceChildren();if(!choices.length){container.textContent='No further strengthen levels.';return}
+const choices=g.strengthen_levels.map(r=>r.level).filter(l=>l>from).map(l=>({type:'strengthen',level:l,label:'Strengthen Lv '+l,result:compare(g,from,l,w)}));
+for(let i=pFrom+1;i<states.length;i++)choices.push({type:'promotion',level:i,label:'Promotion '+promotionLabel(states[i]),result:comparePromotion(g,pFrom,i,w)});
+const ranked=choices.filter(x=>x.result&&x.result.efficiency!==null).sort((a,b)=>b.result.efficiency-a.result.efficiency);
+const container=$('ranking');container.replaceChildren();if(!ranked.length){container.textContent='No further upgrade paths with calculable costs.';return}
 const table=document.createElement('table'),head=document.createElement('thead'),hr=document.createElement('tr');
 for(const text of ['Target','Value / 1K cost','Cost units','Ability +']){const th=document.createElement('th');th.textContent=text;hr.append(th)}head.append(hr);table.append(head);
-const tbody=document.createElement('tbody');for(const item of choices.slice(0,12)){const tr=row(['Lv '+item.level,fmt(item.result.efficiency),fmt(item.result.cost),fmt(item.result.ability)],tbody);tr.className='selectable'+(item.level===to?' current':'');tr.title='Compare with level '+item.level;tr.tabIndex=0;tr.addEventListener('click',()=>{$('target').value=String(item.level);render()});tr.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('target').value=String(item.level);render()}})}
+const tbody=document.createElement('tbody');for(const item of ranked.slice(0,15)){const tr=row([item.label,fmt(item.result.efficiency),fmt(item.result.cost),fmt(item.result.ability)],tbody);
+tr.className='selectable';tr.tabIndex=0;tr.title='Compare '+item.label;
+const choose=()=>{if(item.type==='strengthen')$('target').value=String(item.level);else $('promotionTarget').value=String(item.level);render()};
+tr.addEventListener('click',choose);tr.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();choose()}})}
+
 table.append(tbody);container.append(table)}
-$('quality').addEventListener('change',updateSelectors);$('slot').addEventListener('change',updateSelectors);$('current').addEventListener('change',()=>updateTarget(null));$('target').addEventListener('change',render);
+$('quality').addEventListener('change',updateSelectors);$('slot').addEventListener('change',updateSelectors);$('current').addEventListener('change',()=>updateTarget(null));$('target').addEventListener('change',render);$('promotionCurrent').addEventListener('change',()=>refreshPromotionTarget(null));$('promotionTarget').addEventListener('change',render);
 for(const id of ids)$(id).addEventListener('input',render);
 $('reset').addEventListener('click',()=>{for(const id of ids)$(id).value=defaults[id];render()});
 async function init(){try{const response=await fetch(SOURCE);if(!response.ok)throw Error('HTTP '+response.status);const payload=await response.json();

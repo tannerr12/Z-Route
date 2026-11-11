@@ -12,7 +12,7 @@
 <div class="split"><section class="panel"><h2 id="chartTitle">Attack activity by day</h2><canvas id="trend" width="650" height="240" aria-label="Daily event activity"></canvas></section><section class="panel"><h2 id="leaderTitle">Most active attackers</h2><div class="scroll"><table><thead><tr><th>Player</th><th>Events</th></tr></thead><tbody id="leaders"></tbody></table></div></section></div>
 <section class="panel"><h2 id="tableTitle">Attack history</h2><div class="scroll"><table><thead id="head"></thead><tbody id="rows"></tbody></table></div><p id="shown" class="muted data-note"></p></section>
 <p class="muted data-note">Sources: <code>data/player_activity/attacks.csv</code> and <code>data/player_activity/guild_changes.csv</code>. The bot runs locally; this GitHub Pages dashboard reads only committed CSV data. Missing data is not reported as zero activity.</p>
-</main><script src="./activity-copy.js?v=20261111-1"></script><script>
+</main><script src="./activity-copy.js?v=20261111-2"></script><script>
 'use strict';
 const $=id=>document.getElementById(id);
 const fields={attacks:['timestamp','attacker','attack_direction','attacker_guild','attacker_server','attacker_x','attacker_y','attacked','attacked_guild','attack_target_type','destination_server','destination_x','destination_y','outcome'],changes:['timestamp','player','guild','event','actor']};

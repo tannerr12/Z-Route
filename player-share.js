@@ -10,6 +10,7 @@
   if(!player)return '';
   const name=String(player.name??'').trim();
   const server=String(player.server??'').trim();
+  if(player.x==null||player.y==null||String(player.x).trim()===''||String(player.y).trim()==='')return '';
   const x=Number(player.x),y=Number(player.y);
   if(!name||!/^[0-9]+$/.test(server)||!Number.isSafeInteger(x)||!Number.isSafeInteger(y)||x<0||y<0)return '';
   const guild=String(player.guild??'').trim().replace(/^\[+|\]+$/g,'');

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Z-Route | Tools Hub</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#091321;color:#e9f1fc}
+*{box-sizing:border-box}body{margin:0;padding:18px}main{max-width:1600px;margin:auto}header{display:flex;justify-content:space-between;align-items:flex-start;gap:15px;flex-wrap:wrap}
+h1{font-size:26px;margin:0}h2{font-size:18px;margin:0}p{color:#9eb1c8;margin:7px 0 13px;line-height:1.5}a{color:#8cc9ff}
+nav{display:flex;gap:12px;flex-wrap:wrap;font-size:14px}
+.tabs{display:flex;gap:8px;overflow-x:auto;margin:20px 0 13px;padding-bottom:4px}
+.tabs button{white-space:nowrap;cursor:pointer;background:#14273c;color:#d4e5f5;border:1px solid #40566e;border-radius:10px;padding:10px 16px;font:inherit}
+.tabs button[aria-selected=true]{background:#285174;color:white;border-color:#84bfff}
+.tabs button:focus-visible{outline:2px solid #a4d2ff;outline-offset:2px}
+.panel{background:#102035;border:1px solid #30465e;border-radius:12px;padding:15px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap}
+.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.action{border:1px solid #405b76;background:#182d43;color:#c7e4ff;text-decoration:none;border-radius:8px;padding:10px 13px;font-size:13px}
+.action:hover{background:#26425c}
+.note{font-size:13px;color:#9eb1c8;margin:8px 0 13px}
+.frame{width:100%;height:clamp(650px,82vh,1250px);display:block;border:1px solid #324a63;border-radius:9px;background:#fff}
+.footer{font-size:12px;color:#96abc2;margin:12px 0}
+@media(max-width:700px){body{padding:10px}.frame{height:78vh;min-height:620px}.tabs button{padding:9px 12px}}
+</style></head><body><main>
+<header><div><h1>Z-Route Tools Hub</h1><p>Progression, heroes, research, and equipment in one place.</p></div>
+<nav><a href="./index.html">World Map</a><a href="./vs.html">VS Analytics</a><a href="./donations.html">Donations</a><a href="./activity.html">Player Activity</a></nav>
+</header>
+<div class="tabs" role="tablist" aria-label="Z-Route tools">
+<button type="button" role="tab" data-tool="equipment" aria-selected="true">Equipment Optimizer</button>
+<button type="button" role="tab" data-tool="base" aria-selected="false">Base / Producer ROI</button>
+<button type="button" role="tab" data-tool="research" aria-selected="false">Research</button>
+<button type="button" role="tab" data-tool="heroes" aria-selected="false">Heroes / Squads</button>
+<button type="button" role="tab" data-tool="hero-exp" aria-selected="false">Hero EXP</button>
+<button type="button" role="tab" data-tool="fighter" aria-selected="false">Sky Fighter</button>
+</div>
+<section class="panel" id="tool-panel" role="tabpanel" aria-label="Selected tool">
+<div class="top"><div><h2 id="tool-title">Equipment Optimizer</h2><p id="tool-desc">Compare strengthening costs with upgrade benefits.</p></div>
+<div class="actions"><a class="action" id="original" target="_blank" rel="noopener noreferrer" href="./equipment.html">Open full page</a></div></div>
+<div class="note" id="credit">Our custom Equipment Optimizer. External planners are independently developed by JeffxLabs (ZR:Reference).</div>
+<iframe id="tool-frame" class="frame" title="Equipment Optimizer" src="./equipment.html" loading="eager" referrerpolicy="strict-origin-when-cross-origin"></iframe>
+<p class="note">If a tool appears blank or refuses to load inside this page, use <strong>Open full page</strong>. External sites can restrict iframe embedding; we cannot override their settings.</p>
+</section>
+<footer class="footer">External progression planners © their respective authors. ZR:Reference content and updates are provided by <a href="https://jeffxlabs.github.io/zrouteredemption/" target="_blank" rel="noopener">JeffxLabs</a>, not by this dashboard. Settings inside embedded tools may remain in the embedded site's browser storage.</footer>
+</main>
+<script>
+const tools={
+'equipment':{title:'Equipment Optimizer',desc:'Our cost-to-value equipment strengthening comparison.',url:'./equipment.html',credit:'Custom Z-Route Equipment Optimizer using the JeffxLabs public equipment dataset.'},
+'base':{title:'Base Planner & Producer ROI',desc:'Building prerequisites, construction routes and producer payback.',url:'https://jeffxlabs.github.io/zrouteredemption/base/'},
+'research':{title:'Research Planner',desc:'Technology trees, prerequisites, costs and Research Data.',url:'https://jeffxlabs.github.io/zrouteredemption/research/'},
+'heroes':{title:'Heroes & Squad Planner',desc:'Hero details, skills, counters and squad composition.',url:'https://jeffxlabs.github.io/zrouteredemption/heroes/'},
+'hero-exp':{title:'Hero EXP Calculator',desc:'Leveling costs and Alliance Competition point estimates.',url:'https://jeffxlabs.github.io/zrouteredemption/hero-exp/'},
+'fighter':{title:'Sky Fighter Planner',desc:'Fighter stages, components, chips and loadout comparisons.',url:'https://jeffxlabs.github.io/zrouteredemption/fighter/'}
+};
+const buttons=[...document.querySelectorAll('[role=tab]')];
+const frame=document.getElementById('tool-frame'), original=document.getElementById('original');
+function selectTool(key,updateHash=true){
+ const t=tools[key]||tools.equipment;
+ buttons.forEach(b=>{const yes=b.dataset.tool===key;b.setAttribute('aria-selected',String(yes));b.tabIndex=yes?0:-1});
+ document.getElementById('tool-title').textContent=t.title;
+ document.getElementById('tool-desc').textContent=t.desc;
+ document.getElementById('credit').textContent=key==='equipment'?t.credit:'Embedded from JeffxLabs’ independent ZR:Reference project. Data and features are maintained by the original author.';
+ original.href=t.url;
+ original.textContent=key==='equipment'?'Open full page':'Open original on ZR:Reference';
+ frame.title=t.title;
+ // Only navigate when changing tool, preserving form state when a tab is reselected.
+ if(frame.getAttribute('src')!==t.url)frame.setAttribute('src',t.url);
+ if(updateHash)history.replaceState(null,'','#'+key);
+}
+buttons.forEach((b,i)=>{
+ b.addEventListener('click',()=>selectTool(b.dataset.tool));
+ b.addEventListener('keydown',e=>{
+  let next;if(e.key==='ArrowRight')next=(i+1)%buttons.length;
+  else if(e.key==='ArrowLeft')next=(i-1+buttons.length)%buttons.length;
+  else if(e.key==='Home')next=0;
+  else if(e.key==='End')next=buttons.length-1;
+  else return;
+  e.preventDefault();buttons[next].focus();selectTool(buttons[next].dataset.tool)
+ });
+});
+window.addEventListener('hashchange',()=>{const k=location.hash.slice(1);if(tools[k])selectTool(k,false)});
+const initial=location.hash.slice(1);selectTool(tools[initial]?initial:'equipment',false);
+</script></body></html>

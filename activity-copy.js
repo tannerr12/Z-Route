@@ -1,5 +1,5 @@
 /* Copy-friendly summaries of filtered Z-Route Player Activity records.
- * Produces plain text only; no chat markup and no network calls.
+ * Produces Z-Route chat-ready text with literal <br> line breaks. No network calls.
  */
 (function(root,factory){
  'use strict';
@@ -36,7 +36,7 @@
    const outcome=safeText(row.outcome);
    return [date,who+' → '+target+(pos?' '+pos:''),direction,outcome].filter(Boolean).join(' | ');
   });
-  return ['Attacks — '+rows.length+' filtered record'+(rows.length===1?'':'s'),...lines].join('\n');
+  return ['Attacks — '+rows.length+' filtered record'+(rows.length===1?'':'s'),...lines].join('<br>');
  }
  function changes(rows){
   if(!Array.isArray(rows)||!rows.length)return '';
@@ -47,7 +47,7 @@
    const actor=safeText(row.actor);
    return [date,player+' — '+event+(actor?' (by '+actor+')':'')].join(' | ');
   });
-  return ['Join / Leave — '+rows.length+' filtered record'+(rows.length===1?'':'s'),...lines].join('\n');
+  return ['Join / Leave — '+rows.length+' filtered record'+(rows.length===1?'':'s'),...lines].join('<br>');
  }
  return {attacks,changes};
 });

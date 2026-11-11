@@ -1,0 +1,36 @@
+name: VS Membership history checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'vs.html'
+      - 'vs-membership.js'
+      - 'vs-membership.test.js'
+      - '.github/workflows/vs-membership-checks.yml'
+  pull_request:
+    paths:
+      - 'vs.html'
+      - 'vs-membership.js'
+      - 'vs-membership.test.js'
+      - '.github/workflows/vs-membership-checks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  membership:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate membership module
+        run: node --check vs-membership.js
+      - name: Validate inline VS dashboard script
+        run: |
+          node -e "const fs=require('fs');const html=fs.readFileSync('vs.html','utf8');const block=/<script>([\s\S]*?)<\/script>/.exec(html);if(!block)throw Error('Missing inline script');new Function(block[1]);"
+      - name: Check historical membership status logic
+        run: node --test vs-membership.test.js

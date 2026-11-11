@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Z-Route | Equipment Upgrade Optimizer</title>
+<style>
+:root{color-scheme:dark;font:15px system-ui,-apple-system,Segoe UI,sans-serif;background:#091321;color:#e9f1fc}
+*{box-sizing:border-box}body{margin:0;padding:24px}main{max-width:1260px;margin:auto}a{color:#8cc9ff}
+header{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:20px}
+h1{font-size:29px;margin:0}h2{font-size:19px;margin:0 0 12px}p{color:#9eb1c8;line-height:1.55}
+nav{display:flex;gap:13px;flex-wrap:wrap}.panel{border:1px solid #30465e;background:#102035;border-radius:13px;padding:19px;margin:12px 0}
+.layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(270px,1fr);gap:15px}
+.inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:13px}
+label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:#b5c9df}
+input,select,button{background:#15283c;border:1px solid #476079;border-radius:8px;color:#f0f6ff;padding:10px;font:inherit;min-width:0;width:100%}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid #85bffc;outline-offset:2px}
+button{cursor:pointer}button:hover{background:#26445d}button:disabled{cursor:default;opacity:.5}
+h3{font-size:15px;margin:0 0 8px}.hint{font-size:12px;color:#9db1c9}.metric{font-size:26px;font-weight:750;letter-spacing:-.5px}.metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.tile{background:#162c42;border:1px solid #36506a;border-radius:10px;padding:13px}.tile span{color:#a9bdd1;font-size:12px}
+table{border-collapse:collapse;width:100%}td,th{padding:10px 9px;border-bottom:1px solid #30465e;text-align:right;white-space:nowrap}th:first-child,td:first-child{text-align:left}
+.scroll{overflow:auto}th{font-size:12px;color:#a9bed4}tr.current{background:#233b51}tr.selectable{cursor:pointer}tr.selectable:hover{background:#294963}
+.good{color:#7be4ac}.warn{color:#ffcf83}.error{color:#ff9d98}.muted{color:#9eb1c8}
+.bar{height:11px;border-radius:6px;background:#20364c;overflow:hidden}.fill{height:100%;background:#7bbce7;width:0%;transition:width .2s}
+.note{padding:12px 14px;border-left:3px solid #83c6ff;background:#182d41;border-radius:5px;color:#c1d3e7;font-size:13px}
+summary{cursor:pointer;color:#b6d8fc;font-weight:600}
+footer{color:#9db1c9;font-size:12px;margin:18px 0}
+@media(max-width:850px){body{padding:12px}.layout{grid-template-columns:1fr}h1{font-size:25px}}
+</style></head>
+<body><main>
+<header><div><h1>Equipment Upgrade Optimizer</h1><p>Compare the cost of each upgrade against its actual stat gains. Adjust values to fit your resource shortages and combat priorities.</p></div>
+<nav><a href="./index.html">World Map</a><a href="./vs.html">VS Analytics</a><a href="./donations.html">Donations</a><a href="./activity.html">Player Activity</a></nav></header>
+<p id="status" role="status">Loading client equipment data…</p>
+<div class="layout"><div>
+<section class="panel"><h2>Your equipment</h2>
+<div class="inputs">
+<label>Quality<select id="quality"></select></label>
+<label>Slot<select id="slot"><option value="0">Rifle / Weapon</option><option value="1">Helmet</option><option value="2">Scope</option><option value="3">Bulletproof Vest</option></select></label>
+<label>Current strengthen level<select id="current"></select></label>
+<label>Target strengthen level<select id="target"></select></label>
+</div>
+<p class="hint" id="gearInfo"></p>
+</section>
+<section class="panel"><h2>Upgrade result</h2><div class="metrics">
+<div class="tile"><span>Ability increase</span><div class="metric" id="ability">—</div></div>
+<div class="tile"><span>Weighted benefit increase</span><div class="metric" id="benefit">—</div></div>
+<div class="tile"><span>Weighted resource cost</span><div class="metric" id="cost">—</div></div>
+<div class="tile"><span>Value efficiency</span><div class="metric" id="efficiency">—</div><small class="muted">Benefit points per 1,000 cost units</small></div>
+</div><p id="scoreExplain" class="hint"></p></section>
+<section class="panel"><h2>Materials needed</h2><div class="scroll"><table><thead><tr><th>Resource</th><th>Quantity</th><th>Weighted cost</th></tr></thead><tbody id="materials"></tbody></table></div>
+<p class="hint">Costs sum the steps from the current level + 1 through the target level, not the total resources shown as rewards.</p></section>
+<section class="panel"><h2>Attribute changes</h2><div class="scroll"><table><thead><tr><th>Benefit</th><th>Current</th><th>Target</th><th>Increase</th></tr></thead><tbody id="stats"></tbody></table></div>
+<p class="hint">The same display label can appear under multiple client benefit IDs (flat and fractional values); they are kept distinct.</p></section>
+</div>
+<div>
+<section class="panel"><h2>Set your cost and benefit weights</h2>
+<p class="hint">These inputs express <em>your</em> preferences; they are not official game exchange rates or damage formulas. An efficiency score only compares upgrades under the same weights.</p>
+<div class="inputs">
+<label>Oil per 1 cost unit<input id="oilScale" type="number" min=".001" value="10000" step="1000"></label>
+<label>Enhancement stone cost units<input id="stoneWeight" type="number" min="0" value="2" step=".5"></label>
+<label>Mythic material cost units<input id="materialWeight" type="number" min="0" value="120" step="10"></label>
+<label>Other item cost units<input id="otherWeight" type="number" min="0" value="10" step="1"></label>
+<label>ATK benefit weight<input id="atkWeight" type="number" min="0" value="4" step=".5"></label>
+<label>DEF benefit weight<input id="defWeight" type="number" min="0" value="1.5" step=".5"></label>
+<label>HP benefit weight<input id="hpWeight" type="number" min="0" value=".05" step=".01"></label>
+<label>Other stat weight<input id="otherStatWeight" type="number" min="0" value="100" step="10"></label>
+</div>
+<p class="hint">For fractional client bonuses, value is multiplied by 100 before weighting (e.g., 0.01 becomes 1 benefit point before your weight). These are comparison units, not percentages of actual DPS.</p>
+<button type="button" id="reset">Reset weights</button></section>
+<section class="panel"><h2>Best next upgrades</h2>
+<p class="hint">From your chosen equipment's current level, rank the next available strengthen steps by weighted gain per weighted cost.</p>
+<div id="ranking" class="scroll">Select gear to compare.</div>
+<div class="note">The highest efficiency is not necessarily the highest combat impact. Evaluate role, total stats and equipment promotion bonuses too.</div></section>
+</div></div>
+<section class="panel"><h2>Source and limitations</h2>
+<p>This uses the publicly accessible <a href="https://github.com/JeffxLabs/zrouteredemption/blob/main/data/equipment.json" target="_blank" rel="noopener">JeffxLabs Z-Route equipment dataset</a> as a live external source, rather than republishing its full contents. The source models client equipment strengthening and promotion. This first version compares <strong>strengthen levels only</strong>; Mythic promotion stages, manufacturing prerequisites, hero-specific effects and real combat damage calculations are not yet included.</p>
+<p>Equipment quality caps are Premium 0, Good 15, SSR 30 and Mythic 40. Costs and bonuses may change in future client versions. If the source cannot be loaded, the page reports an error rather than inventing values.</p>
+</section><footer>Independent Z-Route analytics tool · Equipment model attribution: JeffxLabs / ZR:Reference · Score values are user-weighted estimates, not official battle power.</footer>
+</main><script>
+'use strict';
+const SOURCE='https://raw.githubusercontent.com/JeffxLabs/zrouteredemption/main/data/equipment.json';
+const $=id=>document.getElementById(id);
+const ids=['oilScale','stoneWeight','materialWeight','otherWeight','atkWeight','defWeight','hpWeight','otherStatWeight'];
+const defaults=Object.fromEntries(ids.map(id=>[id,$(id).value]));
+let data=null;
+const number=x=>Number(x)||0;
+const fmt=x=>Number.isFinite(x)?x.toLocaleString(undefined,{maximumFractionDigits:3}):'—';
+function selectedGear(){return data?.equipment?.find(e=>String(e.quality)===$('quality').value&&String(e.slot)===$('slot').value)}
+function readWeights(){return Object.fromEntries(ids.map(id=>[id,Math.max(0,number($(id).value))]))}
+function itemName(c){return c.type_name==='Oil'?'Oil':c.item_id==='item_equipment_enhanceStone'?'Enhancement stones':c.item_id==='item_equip_produce_materials_05'?'Mythic materials':c.item_id||c.type_name||'Unknown'}
+function costWeight(name,q,w){if(name==='Oil')return q/Math.max(.001,w.oilScale);if(name==='Enhancement stones')return q*w.stoneWeight;if(name==='Mythic materials')return q*w.materialWeight;return q*w.otherWeight}
+function benefits(level){const out=new Map();for(const b of level?.benefits||[]){const key=b.type+'|'+b.name;out.set(key,{name:b.name,type:b.type,value:number(b.value)})}return out}
+function normalizedStatGain(name,type,gain,w){if(!Number.isFinite(gain)||gain<=0)return 0;const n=String(name).toLowerCase();
+let weight=n.includes('atk')?w.atkWeight:n.includes('def')?w.defWeight:n.includes('hp')?w.hpWeight:w.otherStatWeight;
+// Fractional values are proportions, not raw flat stat points.
+// Client benefit IDs 10005,10006,10007 and 10030+ use fractional magnitudes.
+const fractional=[10005,10006,10007,10030,10035,10036,10037].includes(Number(type));
+return gain*weight*(fractional?100:1)}
+function compare(gear,from,to,w){const byLevel=new Map(gear.strengthen_levels.map(v=>[v.level,v]));const a=byLevel.get(from),b=byLevel.get(to);if(!a||!b||to<=from)return null;
+const costs=new Map();for(let level=from+1;level<=to;level++){const row=byLevel.get(level);if(!row)return null;for(const c of row.costs||[]){let name=itemName(c);costs.set(name,(costs.get(name)||0)+number(c.count))}}
+const aB=benefits(a),bB=benefits(b),stats=[];let benefit=0;
+for(const key of new Set([...aB.keys(),...bB.keys()])){const prev=aB.get(key),next=bB.get(key),gain=(next?.value||0)-(prev?.value||0);if(!gain)continue;stats.push({name:next?.name||prev.name,type:next?.type||prev.type,start:prev?.value||0,end:next?.value||0,gain});benefit+=normalizedStatGain(next?.name||prev.name,next?.type||prev.type,gain,w)}
+let cost=0;for(const [name,qty] of costs)cost+=costWeight(name,qty,w);
+return {ability:number(b.ability)-number(a.ability),benefit,cost,efficiency:cost>0?benefit/cost*1000:null,costs,stats};}
+function updateSelectors(){const g=selectedGear();if(!g)return;const levels=g.strengthen_levels.map(x=>x.level).sort((a,b)=>a-b);const prevC=Number($('current').value),prevT=Number($('target').value);
+$('current').replaceChildren(...levels.map(x=>new Option('Level '+x,x)));$('current').value=String(levels.includes(prevC)?prevC:levels[0]);updateTarget(levels.includes(prevT)?prevT:null)}
+function updateTarget(preferred){const g=selectedGear();if(!g)return;const c=Number($('current').value);const levels=g.strengthen_levels.map(x=>x.level).filter(x=>x>c).sort((a,b)=>a-b);
+$('target').replaceChildren(...levels.map(x=>new Option('Level '+x,x)));$('target').disabled=!levels.length;
+if(levels.length)$('target').value=String(levels.includes(preferred)?preferred:levels[0]);render()}
+function row(cells,parent){const tr=document.createElement('tr');for(const cell of cells){const td=document.createElement('td');td.textContent=String(cell);tr.append(td)}parent.append(tr);return tr}
+function render(){const g=selectedGear();if(!g)return;const w=readWeights(),from=Number($('current').value),to=Number($('target').value);
+$('gearInfo').textContent=g.name+' · Strengthen cap '+Math.max(...g.strengthen_levels.map(x=>x.level))+' · '+(g.manufacturable?'Manufacturable':'Not manufacturable')+' · '+(g.promotion_levels?.length?'Separate promotion path available':'No promotion path');
+const result=$('target').disabled?null:compare(g,from,to,w);
+for(const [id,val] of Object.entries({ability:result?fmt(result.ability):'—',benefit:result?fmt(result.benefit):'—',cost:result?fmt(result.cost):'—',efficiency:result?fmt(result.efficiency):'—'}))$(id).textContent=val;
+$('scoreExplain').textContent=result?'Efficiency = weighted stat gain ÷ weighted cost × 1,000. This is a configurable comparison score.':'Select a level below this equipment’s maximum to compare upgrades.';
+const mat=$('materials'),stats=$('stats');mat.replaceChildren();stats.replaceChildren();
+if(result){for(const [name,quantity] of result.costs)row([name,fmt(quantity),fmt(costWeight(name,quantity,w))],mat);
+for(const b of result.stats)row([b.name+' (ID '+b.type+')',fmt(b.start),fmt(b.end),fmt(b.gain)],stats)}
+if(!mat.children.length)row(['No strengthening costs in selected interval','—','—'],mat);
+if(!stats.children.length)row(['No stat changes','—','—','—'],stats);
+const choices=g.strengthen_levels.map(r=>r.level).filter(l=>l>from).map(l=>({level:l,result:compare(g,from,l,w)})).filter(x=>x.result&&x.result.efficiency!==null).sort((a,b)=>b.result.efficiency-a.result.efficiency);
+const container=$('ranking');container.replaceChildren();if(!choices.length){container.textContent='No further strengthen levels.';return}
+const table=document.createElement('table'),head=document.createElement('thead'),hr=document.createElement('tr');
+for(const text of ['Target','Value / 1K cost','Cost units','Ability +']){const th=document.createElement('th');th.textContent=text;hr.append(th)}head.append(hr);table.append(head);
+const tbody=document.createElement('tbody');for(const item of choices.slice(0,12)){const tr=row(['Lv '+item.level,fmt(item.result.efficiency),fmt(item.result.cost),fmt(item.result.ability)],tbody);tr.className='selectable'+(item.level===to?' current':'');tr.title='Compare with level '+item.level;tr.tabIndex=0;tr.addEventListener('click',()=>{$('target').value=String(item.level);render()});tr.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('target').value=String(item.level);render()}})}
+table.append(tbody);container.append(table)}
+$('quality').addEventListener('change',updateSelectors);$('slot').addEventListener('change',updateSelectors);$('current').addEventListener('change',()=>updateTarget(null));$('target').addEventListener('change',render);
+for(const id of ids)$(id).addEventListener('input',render);
+$('reset').addEventListener('click',()=>{for(const id of ids)$(id).value=defaults[id];render()});
+async function init(){try{const response=await fetch(SOURCE);if(!response.ok)throw Error('HTTP '+response.status);const payload=await response.json();
+if(!payload||!Array.isArray(payload.equipment)||payload.equipment.length<16)throw Error('Unexpected equipment schema');data=payload;
+const qualities=Object.entries(payload.quality_labels).sort(([a],[b])=>Number(a)-Number(b));
+$('quality').replaceChildren(...qualities.map(([id,name])=>new Option(name,id)));$('quality').value='5';$('slot').value='0';
+updateSelectors();$('status').textContent='Loaded '+data.equipment.length+' equipment definitions from JeffxLabs (live source).';
+}catch(error){$('status').className='error';$('status').textContent='Unable to load equipment data: '+error.message+' — check network connectivity and the external source.';}}
+init();
+</script></body></html>

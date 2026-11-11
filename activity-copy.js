@@ -16,27 +16,24 @@
   return name&&!/^(unknown|none|no guild|n\/a|-)$/i.test(name)?'['+name+'] ':'';
  }
  function nameWithGuild(name,guild){return guildTag(guild)+(safeText(name)||'?')}
- function coords(row){
-  const server=safeText(row.destination_server),x=safeText(row.destination_x),y=safeText(row.destination_y);
-  if(!/^\d+$/.test(server)||!/^\d+$/.test(x)||!/^\d+$/.test(y))return '';
-  return '[S:'+server+' X:'+x+' Y:'+y+']';
- }
- function attackDirection(value){
-  const key=safeText(value).toLowerCase();
-  return key==='outgoing'?'Our attack':key==='incoming'?'Attack on D3AD':key==='unknown'?'Unclassified':key;
- }
  function attacks(rows){
   if(!Array.isArray(rows)||!rows.length)return '';
-  const lines=rows.map(row=>{
-   const date=safeText(row.timestamp)||'Unknown time';
-   const who=nameWithGuild(row.attacker,row.attacker_guild);
-   const target=nameWithGuild(row.attacked,row.attacked_guild);
-   const pos=coords(row);
-   const direction=attackDirection(row.attack_direction);
-   const outcome=safeText(row.outcome);
-   return [date,who+' → '+target+(pos?' '+pos:''),direction,outcome].filter(Boolean).join(' | ');
-  });
-  return ['Attacks — '+rows.length+' filtered record'+(rows.length===1?'':'s'),...lines].join('<br>');
+  // Preserve the visible filter/sort order while collapsing repeat hits by
+  // the same attacker against the same victim, even if non-consecutive.
+  const grouped=new Map();
+  for(const row of rows){
+   const attacker=safeText(row.attacker)||'?';
+   const victim=safeText(row.attacked)||'?';
+   const key=JSON.stringify([attacker.toLocaleLowerCase(),victim.toLocaleLowerCase()]);
+   if(grouped.has(key)){
+    grouped.get(key).count++;
+   }else{
+    grouped.set(key,{attacker,victim,count:1});
+   }
+  }
+  return [...grouped.values()].map(({attacker,victim,count})=>
+   attacker+'->'+victim+(count>1?' x'+count:'')
+  ).join('<br>');
  }
  function changes(rows){
   if(!Array.isArray(rows)||!rows.length)return '';

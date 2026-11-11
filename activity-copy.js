@@ -40,10 +40,11 @@
    const day=dateParts(row.timestamp).day;
    if(!days.has(day))days.set(day,new Map());
    const groups=days.get(day);
-   const attacker=safeText(row.attacker)||'?';
-   const victim=safeText(row.attacked)||'?';
+   const attacker=nameWithGuild(row.attacker,row.attacker_guild);
+   const victim=nameWithGuild(row.attacked,row.attacked_guild);
    const direction=directionLabel(row.attack_direction);
-   // Repeat counts are per-day, per-direction, per attacker/victim pair.
+   // Keep distinct guild tags separate so grouped hits never imply an
+   // attacker or victim belonged to a different guild at that time.
    const key=JSON.stringify([direction,attacker.toLowerCase(),victim.toLowerCase()]);
    if(groups.has(key))groups.get(key).count++;
    else groups.set(key,{attacker,victim,direction,count:1});

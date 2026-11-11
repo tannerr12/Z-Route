@@ -37,6 +37,8 @@ footer{color:#9db1c9;font-size:12px;margin:18px 0}
 <label>Target strengthen level<select id="target"></select></label>
 </div>
 <p class="hint" id="gearInfo"></p>
+<div id="promotionControls"><h3>Mythic Star Promotion</h3><p class="hint">Stars have four intermediate stages before the next full star.</p>
+<div class="inputs"><label>Current star / stage<select id="promotionCurrent"></select></label><label>Target star / stage<select id="promotionTarget"></select></label></div></div>
 </section>
 <section class="panel"><h2>Upgrade result</h2><div class="metrics">
 <div class="tile"><span>Ability increase</span><div class="metric" id="ability">—</div></div>
@@ -44,6 +46,8 @@ footer{color:#9db1c9;font-size:12px;margin:18px 0}
 <div class="tile"><span>Weighted resource cost</span><div class="metric" id="cost">—</div></div>
 <div class="tile"><span>Value efficiency</span><div class="metric" id="efficiency">—</div><small class="muted">Benefit points per 1,000 cost units</small></div>
 </div><p id="scoreExplain" class="hint"></p></section>
+<section class="panel"><h2>Strengthen vs Star Promotion</h2><p class="hint">Compare the next available step along either path, using your resource and stat weights.</p>
+<div class="scroll"><table><thead><tr><th>Step</th><th>Ability +</th><th>Weighted gain</th><th>Cost units</th><th>Gain per 1K cost</th></tr></thead><tbody id="sideBySide"></tbody></table></div><p class="hint" id="comparisonNote"></p></section>
 <section class="panel"><h2>Materials needed</h2><div class="scroll"><table><thead><tr><th>Resource</th><th>Quantity</th><th>Weighted cost</th></tr></thead><tbody id="materials"></tbody></table></div>
 <p class="hint">Costs sum the steps from the current level + 1 through the target level, not the total resources shown as rewards.</p></section>
 <section class="panel"><h2>Attribute changes</h2><div class="scroll"><table><thead><tr><th>Benefit</th><th>Current</th><th>Target</th><th>Increase</th></tr></thead><tbody id="stats"></tbody></table></div>
@@ -56,6 +60,7 @@ footer{color:#9db1c9;font-size:12px;margin:18px 0}
 <label>Oil per 1 cost unit<input id="oilScale" type="number" min=".001" value="10000" step="1000"></label>
 <label>Enhancement stone cost units<input id="stoneWeight" type="number" min="0" value="2" step=".5"></label>
 <label>Mythic material cost units<input id="materialWeight" type="number" min="0" value="120" step="10"></label>
+<label>Mythic drawing cost units<input id="drawingWeight" type="number" min="0" value="500" step="50"></label>
 <label>Other item cost units<input id="otherWeight" type="number" min="0" value="10" step="1"></label>
 <label>ATK benefit weight<input id="atkWeight" type="number" min="0" value="4" step=".5"></label>
 <label>DEF benefit weight<input id="defWeight" type="number" min="0" value="1.5" step=".5"></label>
@@ -65,33 +70,33 @@ footer{color:#9db1c9;font-size:12px;margin:18px 0}
 <p class="hint">For fractional client bonuses, value is multiplied by 100 before weighting (e.g., 0.01 becomes 1 benefit point before your weight). These are comparison units, not percentages of actual DPS.</p>
 <button type="button" id="reset">Reset weights</button></section>
 <section class="panel"><h2>Best next upgrades</h2>
-<p class="hint">From your chosen equipment's current level, rank the next available strengthen steps by weighted gain per weighted cost.</p>
+<p class="hint">Rank strengthen and star-promotion targets by weighted gain per weighted cost, including all intervening steps.</p>
 <div id="ranking" class="scroll">Select gear to compare.</div>
 <div class="note">The highest efficiency is not necessarily the highest combat impact. Evaluate role, total stats and equipment promotion bonuses too.</div></section>
 </div></div>
 <section class="panel"><h2>Source and limitations</h2>
-<p>This uses the publicly accessible <a href="https://github.com/JeffxLabs/zrouteredemption/blob/main/data/equipment.json" target="_blank" rel="noopener">JeffxLabs Z-Route equipment dataset</a> as a live external source, rather than republishing its full contents. The source models client equipment strengthening and promotion. This first version compares <strong>strengthen levels only</strong>; Mythic promotion stages, manufacturing prerequisites, hero-specific effects and real combat damage calculations are not yet included.</p>
+<p>This uses the publicly accessible <a href="https://github.com/JeffxLabs/zrouteredemption/blob/main/data/equipment.json" target="_blank" rel="noopener">JeffxLabs Z-Route equipment dataset</a> as a live external source, rather than republishing its full contents. The source models client equipment strengthening and promotion. This version compares strengthening and Mythic star-promotion stages. Their ability and stat benefits are modeled separately; a final in-battle combination formula is not verified. Manufacturing prerequisites and actual combat damage calculations are not included.</p>
 <p>Equipment quality caps are Premium 0, Good 15, SSR 30 and Mythic 40. Costs and bonuses may change in future client versions. If the source cannot be loaded, the page reports an error rather than inventing values.</p>
 </section><footer>Independent Z-Route analytics tool · Equipment model attribution: JeffxLabs / ZR:Reference · Score values are user-weighted estimates, not official battle power.</footer>
 </main><script>
 'use strict';
 const SOURCE='https://raw.githubusercontent.com/JeffxLabs/zrouteredemption/main/data/equipment.json';
 const $=id=>document.getElementById(id);
-const ids=['oilScale','stoneWeight','materialWeight','otherWeight','atkWeight','defWeight','hpWeight','otherStatWeight'];
+const ids=['oilScale','stoneWeight','materialWeight','drawingWeight','otherWeight','atkWeight','defWeight','hpWeight','otherStatWeight'];
 const defaults=Object.fromEntries(ids.map(id=>[id,$(id).value]));
 let data=null;
 const number=x=>Number(x)||0;
 const fmt=x=>Number.isFinite(x)?x.toLocaleString(undefined,{maximumFractionDigits:3}):'—';
 function selectedGear(){return data?.equipment?.find(e=>String(e.quality)===$('quality').value&&String(e.slot)===$('slot').value)}
 function readWeights(){return Object.fromEntries(ids.map(id=>[id,Math.max(0,number($(id).value))]))}
-function itemName(c){return c.type_name==='Oil'?'Oil':c.item_id==='item_equipment_enhanceStone'?'Enhancement stones':c.item_id==='item_equip_produce_materials_05'?'Mythic materials':c.item_id||c.type_name||'Unknown'}
-function costWeight(name,q,w){if(name==='Oil')return q/Math.max(.001,w.oilScale);if(name==='Enhancement stones')return q*w.stoneWeight;if(name==='Mythic materials')return q*w.materialWeight;return q*w.otherWeight}
-function benefits(level){const out=new Map();for(const b of level?.benefits||[]){const key=b.type+'|'+b.name;out.set(key,{name:b.name,type:b.type,value:number(b.value)})}return out}
+function itemName(c){return c.type_name==='Oil'?'Oil':c.item_id==='item_equipment_enhanceStone'?'Enhancement stones':c.item_id==='item_equip_produce_materials_05'?'Mythic materials':c.item_id==='item_equipment_equipmentDrawing_mythology'?'Mythic drawings':c.item_id||c.type_name||'Unknown'}
+function costWeight(name,q,w){if(name==='Oil')return q/Math.max(.001,w.oilScale);if(name==='Enhancement stones')return q*w.stoneWeight;if(name==='Mythic materials')return q*w.materialWeight;if(name==='Mythic drawings')return q*w.drawingWeight;return q*w.otherWeight}
+function benefits(level){const out=new Map();for(const b of [...(level?.benefits||[]),...(level?.additional_benefits||[])]){const key=b.type+'|'+b.name;out.set(key,{name:b.name,type:b.type,value:number(b.value)})}return out}
 function normalizedStatGain(name,type,gain,w){if(!Number.isFinite(gain)||gain<=0)return 0;const n=String(name).toLowerCase();
 let weight=n.includes('atk')?w.atkWeight:n.includes('def')?w.defWeight:n.includes('hp')?w.hpWeight:w.otherStatWeight;
 // Fractional values are proportions, not raw flat stat points.
 // Client benefit IDs 10005,10006,10007 and 10030+ use fractional magnitudes.
-const fractional=[10005,10006,10007,10030,10035,10036,10037].includes(Number(type));
+const fractional=[10005,10006,10007,10028,10029,10030,10031,10033,10035,10036,10037].includes(Number(type));
 return gain*weight*(fractional?100:1)}
 function compare(gear,from,to,w){const byLevel=new Map(gear.strengthen_levels.map(v=>[v.level,v]));const a=byLevel.get(from),b=byLevel.get(to);if(!a||!b||to<=from)return null;
 const costs=new Map();for(let level=from+1;level<=to;level++){const row=byLevel.get(level);if(!row)return null;for(const c of row.costs||[]){let name=itemName(c);costs.set(name,(costs.get(name)||0)+number(c.count))}}

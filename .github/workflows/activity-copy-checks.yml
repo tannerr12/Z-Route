@@ -1,0 +1,33 @@
+name: Player Activity clipboard checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'activity.html'
+      - 'activity-copy.js'
+      - 'activity-copy.test.js'
+      - '.github/workflows/activity-copy-checks.yml'
+  pull_request:
+    paths:
+      - 'activity.html'
+      - 'activity-copy.js'
+      - 'activity-copy.test.js'
+      - '.github/workflows/activity-copy-checks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  activity-copy-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate clipboard module syntax
+        run: node --check activity-copy.js
+      - name: Run clipboard formatter unit tests
+        run: node --test activity-copy.test.js

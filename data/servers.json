@@ -12,7 +12,7 @@
       "id": "125",
       "label": "Server 125",
       "data": "data/servers/125/world-players.csv",
-      "last_scan_at_utc": "2026-11-11T05:09:23+00:00",
+      "last_scan_at_utc": "2026-11-11T14:15:00+00:00",
       "scan_timestamp_basis": "roster_file_mtime_approximate"
     }
   ]

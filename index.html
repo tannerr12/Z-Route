@@ -31,6 +31,11 @@
 .guild-info{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
 .guild-info .guild-name{flex:none}
 .guild-power{font-size:11px;color:#a8cde8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.player-entry{display:flex;align-items:center;gap:5px;margin:2px 0}
+.player-entry .guild{flex:1;min-width:0;width:auto}
+.copy-coords{flex:none;background:#254762;color:#e9f1fc;border:1px solid #6088a7;border-radius:7px;padding:7px 9px;font:inherit;font-size:12px;white-space:nowrap;cursor:pointer}
+.copy-coords:hover{background:#32617e}.copy-coords:focus-visible{outline:2px solid #bce7ff;outline-offset:2px}.copy-coords:disabled{opacity:.85;cursor:default}
+.detail-head{display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap}
 </style></head><body><main><nav style="margin-bottom:14px"><a href="./donations.html" style="color:#8cc9ff">Donation Analytics →</a> · <a href="./tools.html" style="color:#8cc9ff">Tools Hub</a> · <a href="./vs.html" style="color:#8cc9ff">VS Comparison →</a> · <a href="./activity.html" style="color:#8cc9ff">Player Activity →</a> · <a href="./recruitment.html" style="color:#8cc9ff">Recruitment →</a></nav>
 <div class="top"><div><h1>Z-Route Player Locator</h1><p>Search players and explore their last recorded exact game-world coordinates.</p></div><span id="source" class="muted">Loading CSV…</span></div>
 <div class="controls"><label for="serverFilter" class="muted">Server <select id="serverFilter" aria-label="Select server"><option value="125">125</option></select></label><input id="search" type="search" placeholder="Search current or past username…" aria-label="Search current or past username"><select id="guildFilter" aria-label="Filter guild"><option value="">All guilds</option></select><div class="bubble-filters" id="bubbleFilters" role="group" aria-label="Filter by bubble status"><button class="bubble-option active" type="button" data-shield="" aria-pressed="true">All</button><button class="bubble-option" type="button" data-shield="shielded" aria-pressed="false" title="Last observed bubbled (not real-time)"><svg viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13" fill="#4ebcff22" stroke="#6cd5ff" stroke-width="1.8"/><path d="M7 11V7h3v3h4V7h3v3h4V7h3v4h-2v13H5V11z" fill="currentColor" opacity=".9"/><path d="M12 24v-7a3 3 0 0 1 6 0v7" fill="#102035"/><path d="M5 14h19" stroke="#102035" stroke-width="1.2"/></svg><span>Bubbled</span></button><button class="bubble-option" type="button" data-shield="unshielded" aria-pressed="false" title="Last observed not bubbled (not real-time)"><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M7 11V7h3v3h4V7h3v3h4V7h3v4h-2v13H5V11z" fill="currentColor" opacity=".9"/><path d="M12 24v-7a3 3 0 0 1 6 0v7" fill="#102035"/><path d="M5 14h19" stroke="#102035" stroke-width="1.2"/></svg><span>Not bubbled</span></button></div><label class="history-check" for="renamedOnly"><input id="renamedOnly" type="checkbox">Renamed only</label><fieldset class="level-filter"><legend>Base level <strong id="levelLabel">Lv 1–30</strong></legend><div class="range-track" id="rangeTrack"><input id="levelMin" type="range" min="1" max="30" value="1" step="1" aria-label="Minimum base level"><input id="levelMax" type="range" min="1" max="30" value="30" step="1" aria-label="Maximum base level"></div><p class="level-note" id="levelNote">All levels; players with unknown levels included.</p></fieldset><button id="clear">Clear filters</button></div>
@@ -38,7 +43,7 @@
 <div class="layout"><section class="panel"><div class="map-actions"><button id="zoomIn" title="Zoom in">＋</button><button id="zoomOut" title="Zoom out">－</button><button id="resetView">Reset view</button><span class="muted" style="margin:auto 0 auto auto">Wheel to zoom · Drag to pan</span></div><div id="mapWrap" class="map-wrap"><canvas id="map" aria-label="Player location map"></canvas><div id="tip" class="tooltip"></div></div><div class="status"><span id="count" class="muted">Loading players…</span><span id="worldExtent" class="muted">Exact world X/Y · observed extent</span></div><div id="detail" class="detail" hidden></div></section>
 <aside class="panel"><strong>Guilds · Ranked by Power</strong><p class="muted">Total last-recorded power of each guild's observed players. Select a guild to filter the map.</p><p id="guildPowerInfo" class="muted">Loading guild power…</p><input id="guildSearch" type="search" placeholder="Find guild (e.g. D3AD)…" aria-label="Search guilds" autocomplete="off" style="width:100%;background:#15263a;color:#f1f5fa;border:1px solid #40556d;border-radius:9px;padding:10px;margin:0 0 9px"><div id="guildMatchCount" class="muted" aria-live="polite"></div><div id="legend" class="legend"></div><hr style="border:0;border-top:1px solid #30465e;margin:14px 0"><strong>Players</strong><p class="muted">Search above, then select a player to view history.</p><div id="playerResults" class="legend" style="max-height:420px"></div></aside></div>
 <p id="message" class="muted" role="status"></p>
-</main><script src="./server-freshness.js?v=20261109-1"></script><script src="./guild-power.js?v=20261109-1"></script><script>
+</main><script src="./player-share.js?v=20261111-1"></script><script src="./server-freshness.js?v=20261109-1"></script><script src="./guild-power.js?v=20261109-1"></script><script>
 'use strict';
 const $=id=>document.getElementById(id),canvas=$('map'),ctx=canvas.getContext('2d'),wrap=$('mapWrap'),tip=$('tip');
 let players=[],filtered=[],colors=new Map(),guildCounts=new Map(),hover=null,selected=null,shieldFilter='';
@@ -239,6 +244,33 @@ function filter(){
  if(selected&&!filtered.includes(selected)){selected=null;$('detail').hidden=true}
  hover=null;tip.style.display='none';renderLegend();renderPlayerResults();draw();
 }
+async function copyPlayerLocation(p,button){
+ const share=ZRoutePlayerShare.format(p);
+ if(!share){$('message').textContent='No valid world coordinates to copy for this player.';return}
+ let copied=false;
+ try{
+  if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(share);copied=true}
+ }catch(_error){}
+ if(!copied){
+  const field=document.createElement('textarea');
+  field.value=share;field.setAttribute('readonly','');
+  field.style.cssText='position:fixed;left:-9999px;top:0;opacity:0';
+  document.body.append(field);field.focus();field.select();
+  try{copied=document.execCommand('copy')}catch(_error){}
+  field.remove();
+ }
+ if(copied){
+  const previous=button.textContent;button.textContent='✓ Copied';button.disabled=true;
+  setTimeout(()=>{if(button.isConnected){button.textContent=previous;button.disabled=false}},1600);
+ }else $('message').textContent='Copy blocked by your browser. Allow clipboard access to use this shortcut.';
+}
+function makeCopyButton(p){
+ const button=document.createElement('button');button.type='button';button.className='copy-coords';
+ button.textContent='📋 Copy';button.title=ZRoutePlayerShare.format(p);
+ button.setAttribute('aria-label','Copy in-game location for '+p.name);
+ button.onclick=()=>copyPlayerLocation(p,button);
+ return button;
+}
 function renderPlayerResults(){
  const el=$('playerResults');el.replaceChildren();
  for(const p of filtered.slice(0,60)){
@@ -247,7 +279,8 @@ function renderPlayerResults(){
   button.textContent=state+' '+p.name+' · '+p.guild+' · Lv '+(p.level||'?');
   button.title='Show player history for '+p.name+' · Power '+statText(p.power)+' · Kills '+statText(p.kills);
   button.onclick=()=>detail(p);
-  el.append(button);
+  const row=document.createElement('div');row.className='player-entry';
+  row.append(button,makeCopyButton(p));el.append(row);
  }
  if(filtered.length>60){
   const note=document.createElement('p');note.className='muted';
@@ -281,6 +314,7 @@ function nearest(x,y){let best=null,dist=Infinity;for(const p of filtered){const
 function detail(p){
  selected=p;const el=$('detail');el.replaceChildren();
  const title=document.createElement('strong');title.textContent=p.name;
+ const headline=document.createElement('div');headline.className='detail-head';headline.append(title,makeCopyButton(p));
  const info=document.createElement('div');info.textContent=p.guild+' · Level '+(p.level||'unknown')+' · S'+p.server+' X:'+p.x+' Y:'+p.y+' · Player ID '+p.id;
  const stats=document.createElement('div');stats.style.marginTop='7px';
  stats.textContent='Power: '+statText(p.power)+' · Kills: '+statText(p.kills);
@@ -323,7 +357,7 @@ function detail(p){
  }
  const date=document.createElement('div');date.className='muted';
  date.textContent=p.observed?'Roster snapshot: '+p.observed+' (not an individual sighting timestamp)':'Snapshot time unavailable';
- el.append(title,info,stats,statsObserved,shield,history,activity,date);el.hidden=false;draw()
+ el.append(headline,info,stats,statsObserved,shield,history,activity,date);el.hidden=false;draw()
 }
 function pointer(e){const r=canvas.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top}}
 canvas.addEventListener('pointermove',e=>{const v=pointer(e);if(drag){if(Math.hypot(v.x-drag.startX,v.y-drag.startY)>3)drag.moved=true;offsetX=v.x-drag.x+drag.ox;offsetY=v.y-drag.y+drag.oy;draw();return}const p=nearest(v.x,v.y);if(hover!==p){hover=p;draw()}if(!p){tip.style.display='none';return}tip.replaceChildren();const a=document.createElement('strong');a.textContent=p.name;const b=document.createElement('span');b.textContent=p.guild+' · S'+p.server+' X:'+p.x+' Y:'+p.y+' · Lv '+(p.level||'?')+(p.renameCount?' · '+p.renameCount+' observed renames':'');const stats=document.createElement('div');stats.textContent='Power '+statText(p.power)+' · Kills '+statText(p.kills);tip.append(a,b,stats);tip.style.display='block';tip.style.left=Math.max(4,Math.min(wrap.clientWidth-tip.offsetWidth-4,v.x+13))+'px';tip.style.top=Math.max(4,v.y-54)+'px'});

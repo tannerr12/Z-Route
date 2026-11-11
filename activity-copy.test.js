@@ -13,6 +13,8 @@ test('attacks copy ordered matches and location details',()=>{
  assert.ok(result.includes('[D3AD] Dinoo993 → [XENO] KarnagejL7 [S:125 X:515 Y:407] | Our attack'));
  assert.ok(result.includes('Raider → [D3AD] Defender | Attack on D3AD'));
  assert.ok(result.indexOf('Dinoo993')<result.indexOf('Raider'));
+ assert.equal(result.split('<br>').length,3);
+ assert.ok(!result.includes('\n'));
 });
 test('changes copy join, left, and removal actor without invented guild',()=>{
  const rows=[
@@ -23,6 +25,8 @@ test('changes copy join, left, and removal actor without invented guild',()=>{
  assert.ok(result.includes('Swtlyn — joined'));
  assert.ok(result.includes('rapture — removed (by Gandolph)'));
  assert.ok(!result.includes('[]'));
+ assert.equal(result.split('<br>').length,3);
+ assert.ok(!result.includes('\n'));
 });
 test('formats optional guild and suppresses invalid coordinate fragments',()=>{
  const result=attacks([{timestamp:'now',attacker:'A',attacker_guild:'[ABC]',attacked:'B',attacked_guild:'Unknown',destination_server:'125',destination_x:'',destination_y:'5'}]);
@@ -33,6 +37,7 @@ test('formats optional guild and suppresses invalid coordinate fragments',()=>{
 });
 test('strips row breaks and tabs to avoid accidental extra messages',()=>{
  const result=changes([{timestamp:'t',player:'Bad\nName\t',event:'left'}]);
- assert.equal(result.split('\n').length,2);
+ assert.equal(result.split('<br>').length,2);
+ assert.ok(!result.includes('\n'));
  assert.ok(result.includes('Bad Name — left'));
 });

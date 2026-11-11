@@ -30,7 +30,7 @@ test('attack copy omits times, coordinates and unnecessary headers',()=>{
   attacker_guild:'D3AD',attacked:'KarnagejL7',attacked_guild:'XENO',
   destination_server:'125',destination_x:'515',destination_y:'407',
   attack_direction:'outgoing'}]);
- assert.equal(result,'2026-11-10<br>OUT Dinoo993->KarnagejL7');
+ assert.equal(result,'2026-11-10<br>OUT [D3AD] Dinoo993->[XENO] KarnagejL7');
  assert.ok(!result.includes('14:03:44'));
  assert.ok(!result.includes('515'));
  assert.ok(!result.includes('\n'));
@@ -53,4 +53,14 @@ test('unknown dates, sanitized whitespace, explicit <br> separators',()=>{
   'Unknown date<br>UNK Bad Name->Target');
  const result=changes([{timestamp:'t',player:'Bad\nName\t',event:'left'}]);
  assert.equal(result,'Unknown date<br>Bad Name — left');
+});
+
+test('known guilds appear for both sides and distinct guilds are not merged',()=>{
+ const result=attacks([
+  {timestamp:'2026-11-10 17:00:00',attacker:'Dinoo993',attacker_guild:'D3AD',attacked:'KarnagejL7',attacked_guild:'XENO',attack_direction:'outgoing'},
+  {timestamp:'2026-11-10 16:00:00',attacker:'Dinoo993',attacker_guild:'[D3AD]',attacked:'KarnagejL7',attacked_guild:'[XENO]',attack_direction:'outgoing'},
+  {timestamp:'2026-11-10 15:00:00',attacker:'Dinoo993',attacker_guild:'D3AD',attacked:'KarnagejL7',attacked_guild:'wAz',attack_direction:'outgoing'},
+  {timestamp:'2026-11-10 14:00:00',attacker:'Raider',attacker_guild:'Unknown',attacked:'Defender',attacked_guild:'D3AD',attack_direction:'incoming'}
+ ]);
+ assert.equal(result,'2026-11-10<br>OUT [D3AD] Dinoo993->[XENO] KarnagejL7 x2<br>OUT [D3AD] Dinoo993->[wAz] KarnagejL7<br>IN Raider->[D3AD] Defender');
 });

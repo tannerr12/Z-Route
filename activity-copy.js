@@ -1,5 +1,5 @@
-/* Copy-friendly summaries of filtered Z-Route Player Activity records.
- * Produces Z-Route chat-ready text with literal <br> line breaks. No network calls.
+/* Z-Route Player Activity copy text.
+ * Date-grouped chat summaries with literal <br> separators; no network calls.
  */
 (function(root,factory){
  'use strict';
@@ -16,35 +16,60 @@
   return name&&!/^(unknown|none|no guild|n\/a|-)$/i.test(name)?'['+name+'] ':'';
  }
  function nameWithGuild(name,guild){return guildTag(guild)+(safeText(name)||'?')}
+ function dateParts(value){
+  // Accepted event times: 2026.11.10 14:03:44, 2026-11-10T14:03:44, etc.
+  const match=safeText(value).match(/^(\d{4})[-./](\d{2})[-./](\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if(!match)return {day:'Unknown date',sort:''};
+  const day=match[1]+'-'+match[2]+'-'+match[3];
+  return {day,sort:day+'T'+(match[4]||'00')+':'+(match[5]||'00')+':'+(match[6]||'00')};
+ }
+ function chronological(rows){
+  // Newest first, stable when event timestamps are identical. Times are not copied.
+  return [...rows].sort((a,b)=>dateParts(b.timestamp).sort.localeCompare(dateParts(a.timestamp).sort));
+ }
+ function directionLabel(value){
+  const direction=safeText(value).toLowerCase();
+  if(direction==='incoming'||direction==='in')return 'IN';
+  if(direction==='outgoing'||direction==='out')return 'OUT';
+  return 'UNK'; // Do not guess unknown attack direction.
+ }
  function attacks(rows){
   if(!Array.isArray(rows)||!rows.length)return '';
-  // Preserve the visible filter/sort order while collapsing repeat hits by
-  // the same attacker against the same victim, even if non-consecutive.
-  const grouped=new Map();
-  for(const row of rows){
+  const days=new Map();
+  for(const row of chronological(rows)){
+   const day=dateParts(row.timestamp).day;
+   if(!days.has(day))days.set(day,new Map());
+   const groups=days.get(day);
    const attacker=safeText(row.attacker)||'?';
    const victim=safeText(row.attacked)||'?';
-   const key=JSON.stringify([attacker.toLocaleLowerCase(),victim.toLocaleLowerCase()]);
-   if(grouped.has(key)){
-    grouped.get(key).count++;
-   }else{
-    grouped.set(key,{attacker,victim,count:1});
-   }
+   const direction=directionLabel(row.attack_direction);
+   // Repeat counts are per-day, per-direction, per attacker/victim pair.
+   const key=JSON.stringify([direction,attacker.toLowerCase(),victim.toLowerCase()]);
+   if(groups.has(key))groups.get(key).count++;
+   else groups.set(key,{attacker,victim,direction,count:1});
   }
-  return [...grouped.values()].map(({attacker,victim,count})=>
-   attacker+'->'+victim+(count>1?' x'+count:'')
-  ).join('<br>');
+  const lines=[];
+  for(const [day,groups] of days){
+   lines.push(day);
+   for(const {attacker,victim,direction,count} of groups.values())
+    lines.push(direction+' '+attacker+'->'+victim+(count>1?' x'+count:''));
+  }
+  return lines.join('<br>');
  }
  function changes(rows){
   if(!Array.isArray(rows)||!rows.length)return '';
-  const lines=rows.map(row=>{
-   const date=safeText(row.timestamp)||'Unknown time';
+  const days=new Map();
+  for(const row of chronological(rows)){
+   const day=dateParts(row.timestamp).day;
+   if(!days.has(day))days.set(day,[]);
    const player=nameWithGuild(row.player,row.guild);
    const event=safeText(row.event)||'event';
    const actor=safeText(row.actor);
-   return [date,player+' — '+event+(actor?' (by '+actor+')':'')].join(' | ');
-  });
-  return ['Join / Leave — '+rows.length+' filtered record'+(rows.length===1?'':'s'),...lines].join('<br>');
+   days.get(day).push(player+' — '+event+(actor?' (by '+actor+')':''));
+  }
+  const lines=[];
+  for(const [day,events] of days)lines.push(day,...events);
+  return lines.join('<br>');
  }
  return {attacks,changes};
 });

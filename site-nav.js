@@ -14,7 +14,7 @@
     ["equipment.html","Equipment"]
   ];
   const styles=`
-    .zr-site-nav{box-sizing:border-box;margin:0 0 23px;padding:12px 14px;
+    .zr-site-nav{display:block!important;width:100%;line-height:normal;box-sizing:border-box;margin:0 0 23px;padding:12px 14px;
       border:1px solid #334c66;border-radius:14px;background:#102035;
       color:#e9f1fc;box-shadow:0 4px 20px #0002}
     .zr-site-nav *{box-sizing:border-box}

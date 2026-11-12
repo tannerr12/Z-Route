@@ -34,7 +34,7 @@ function build(){const w=$('week').value,donGoal=Math.max(0,Number($('donGoal').
  const activeDays=DAYS.filter((d,i)=>new Date(start.getTime()+i*86400000)<=now);
  const map=new Map();function row(name){const id=key(name);if(!map.has(id))map.set(id,{name:name.trim(),don:null,vs:new Map(),meta:null});return map.get(id)}
  for(const d of state.don.filter(x=>x.week_start===w&&x.username&&validNum(x.points))){const m=row(d.username);m.don=Number(d.points);m.name=d.username.trim()}
- for(const v of state.vs.filter(x=>x.week_start===w&&DAYS.includes(v.day)&&v.username&&validNum(v.points))){const m=row(v.username);m.vs.set(v.day,Number(v.points))}
+ for(const v of state.vs.filter(x=>x.week_start===w&&DAYS.includes(x.day)&&x.username&&validNum(x.points))){const m=row(v.username);m.vs.set(v.day,Number(v.points))}
  const meta=new Map(state.members.filter(m=>m.username).map(m=>[key(m.username),m]));
  for(const [id,m] of map){m.meta=meta.get(id)||null;m.lowDon=m.don!==null&&m.don<donGoal;m.below=DAYS.filter(d=>m.vs.has(d)&&m.vs.get(d)<vsGoal);m.missing=activeDays.filter(d=>!m.vs.has(d));m.vsIssues=m.below.length>0||m.missing.length>0;m.review=m.lowDon||m.vsIssues}
  state.current=[...map.values()].sort((a,b)=>Number(b.review)-Number(a.review)||a.name.localeCompare(b.name));

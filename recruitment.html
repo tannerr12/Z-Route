@@ -99,7 +99,7 @@ th[aria-sort="ascending"] .sort-indicator,th[aria-sort="descending"] .sort-indic
 </section>
 <p class="muted">Signals are derived from recorded changes to the same server + player ID, not from appearance in a single scan. No observed change is <em>not</em> proof of inactivity. Renames, movement and alliance changes may occur between scans; timestamps mark when differences were observed. Bubble status may be stale. History exported by the scanner can be incomplete, so results reflect available evidence only.</p>
 </main>
-<script src="./recruitment-removals.js?v=20261112-removed1"></script>
+<script src="./recruitment-removals.js?v=20261112-playerids2"></script>
 <script src="./recruitment-activity.js?v=20261109-power-kills-multiselect-2"></script>
 <script src="./server-freshness.js?v=20261109-1"></script>
 <script src="./guild-power.js?v=20261109-1"></script>
@@ -108,7 +108,7 @@ th[aria-sort="ascending"] .sort-indicator,th[aria-sort="descending"] .sort-indic
 'use strict';
 const $ = id => document.getElementById(id);
 let entries=[], seq=0, servers=[];
-let removedNames=new Set(),removalHistoryLoaded=false;
+let removalRows=[],removedIdentity=null,removalHistoryLoaded=false;
 let playerSort={key:'lastChange',direction:'desc'};
 let guildSort={key:'rank',direction:'asc'};
 function updateSortHeadings(tableId,current){
@@ -220,7 +220,7 @@ function ranked(){
   (!query||[p.name,p.id,...p.aliases].some(v=>String(v).toLowerCase().includes(query))) &&
   (alliance===''||alliance==='unallied'&&!p.alliance||p.alliance.toLowerCase()===alliance.toLowerCase()) &&
   (!$('excludeD3AD').checked||p.alliance.toLowerCase()!=='d3ad') &&
-  (!excludedRemoved||!ZRouteRecruitmentRemovals.wasRemoved(p,removedNames)) &&
+  (!excludedRemoved||!ZRouteRecruitmentRemovals.wasRemoved(p,removedIdentity)) &&
   !excludedGuilds.has(ZRouteGuildPower.guildKey(p.alliance)) &&
   (p.level>=min) &&
   (minPower===0||p.power!==null&&p.power>=minPower) &&
@@ -265,6 +265,18 @@ function exportCSV(){
  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
  const a=document.createElement('a');a.href=url;a.download='recruitment-S'+$('server').value+'-'+$('window').value+'d.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+function refreshRemovalMatches(){
+ const checkbox=$('excludeRemoved'),notice=$('removedSummary');
+ checkbox.disabled=!removalHistoryLoaded||$('server').value!=='125';
+ if(!removalHistoryLoaded)return;
+ removedIdentity=ZRouteRecruitmentRemovals.removedIdentity(removalRows,entries);
+ const identity=removedIdentity;
+ notice.textContent=identity.removedEvents+' recorded removals · '+
+  identity.publishedIds+' with published player IDs · '+
+  identity.rosterMatched+' matched to unique roster IDs · '+
+  identity.ambiguous.size+' ambiguous names not excluded. '+
+  'Only “removed” events count; voluntary departures do not. Server 125 only.';
+}
 async function loadRemovalHistory(){
  const checkbox=$('excludeRemoved'),notice=$('removedSummary');
  checkbox.disabled=true;checkbox.checked=false;
@@ -275,12 +287,11 @@ async function loadRemovalHistory(){
   const records=parseCSV(await response.text());
   if(records.length&&!['event','player'].every(field=>Object.hasOwn(records[0],field)))
    throw Error('Join/Leave CSV missing event or player columns');
-  removedNames=ZRouteRecruitmentRemovals.kickedNames(records);
+  removalRows=records;
   removalHistoryLoaded=true;
-  checkbox.disabled=$('server').value!=='125';
-  notice.textContent=removedNames.size+' distinct previously removed names recorded. Optional exclusion applies only to Server 125, using exact names or known aliases. Voluntary “left” and “joined” events are ignored.';
+  refreshRemovalMatches();
  }catch(error){
-  removedNames=new Set();removalHistoryLoaded=false;checkbox.disabled=true;
+  removalRows=[];removedIdentity=null;removalHistoryLoaded=false;checkbox.disabled=true;
   notice.textContent='Removal exclusion unavailable: '+error.message+'. No candidates have been excluded by removal history.';
  }
  render();
@@ -301,6 +312,7 @@ async function loadServer(){
   ZRouteFreshness.reconcile(entry,ZRouteFreshness.observedFromRows(rows));
   entries=[...unique.values()];
   guildRanking=ZRouteGuildPower.rank(entries,server);
+  refreshRemovalMatches();
   render();
  }catch(error){if(id!==seq)return;entries=[];render();$('status').textContent='Unable to load roster: '+error.message}
 }

@@ -17,7 +17,7 @@
 </section>
 <section class="panel"><h2>Individual performance matrix</h2><p class="muted">Click a column heading to sort; click it again to reverse. ✓ meets goal · ▼ below goal · — no record. Missing is not zero. The VS threshold applies <b>per day</b>, not to a weekly total. A current week is provisional.</p><div class="scroll"><table><thead><tr><th data-sort="name" aria-sort="none" role="button" tabindex="0" title="Sort by Player">Player</th><th data-sort="don" aria-sort="none" role="button" tabindex="0" title="Sort by Donations">Donations</th><th data-sort="donFlag" aria-sort="none" role="button" tabindex="0" title="Sort by Donation flag">Donation flag</th><th data-sort="joined" aria-sort="none" role="button" tabindex="0" title="Sort by Join date">Join date</th><th data-sort="shield" aria-sort="none" role="button" tabindex="0" title="Sort by Shield list">Shield list</th><th data-sort="frenzy" aria-sort="none" role="button" tabindex="0" title="Sort by Frenzy">Frenzy</th><th data-sort="MON" aria-sort="none" role="button" tabindex="0" title="Sort by MON">MON</th><th data-sort="TUE" aria-sort="none" role="button" tabindex="0" title="Sort by TUE">TUE</th><th data-sort="WED" aria-sort="none" role="button" tabindex="0" title="Sort by WED">WED</th><th data-sort="THU" aria-sort="none" role="button" tabindex="0" title="Sort by THU">THU</th><th data-sort="FRI" aria-sort="none" role="button" tabindex="0" title="Sort by FRI">FRI</th><th data-sort="SAT" aria-sort="none" role="button" tabindex="0" title="Sort by SAT">SAT</th><th data-sort="total" aria-sort="none" role="button" tabindex="0" title="Sort by Recorded VS total">Recorded VS total</th><th data-sort="below" aria-sort="none" role="button" tabindex="0" title="Sort by VS days below">VS days below</th><th data-sort="missing" aria-sort="none" role="button" tabindex="0" title="Sort by VS days missing">VS days missing</th><th data-sort="review" aria-sort="none" role="button" tabindex="0" title="Sort by Review">Review</th></tr></thead><tbody id="rows"></tbody></table></div></section>
 <section class="summary"><div class="panel"><h2>VS underperformance by day</h2><ul id="underDays"></ul></div><div class="panel"><h2>Missing VS records by day</h2><ul id="missingDays"></ul></div><div class="panel"><h2>Recommended actions</h2><ol id="actions"></ol></div></section>
-<section class="panel actions"><button id="download">Export review CSV</button><button id="print">Print review</button><span class="muted">Optional management metadata: data/review/&lt;guild&gt;/members.csv (username,joined_at,no_shield,frenzy). Unknown data is displayed as —.</span></section>
+<section class="panel actions"><button id="copyBad" type="button" title="Copy low-donation and below-target VS members as game HTML">Copy Bad Standings</button><span id="copyStatus" role="status" aria-live="polite" class="muted"></span><button id="download">Export review CSV</button><button id="print">Print review</button><span class="muted">Optional management metadata: data/review/&lt;guild&gt;/members.csv (username,joined_at,no_shield,frenzy). Unknown data is displayed as —.</span></section>
 </main><script>
 'use strict';
 const $=id=>document.getElementById(id),DAYS=['MON','TUE','WED','THU','FRI','SAT'],fmt=n=>Number(n).toLocaleString('en-CA');
@@ -119,6 +119,46 @@ document.querySelectorAll('th[data-sort]').forEach(th=>{
  });
 });
 $('guild').addEventListener('change',loadGuild);['week','donGoal','vsGoal','filter','search'].forEach(id=>$(id).addEventListener('input',build));
+// In-game paste format: one player per literal <br>; no guild prefixes.
+// Missing records are unknown, never interpreted as low/zero contributions.
+const DAY_SHORT={MON:'M',TUE:'Tu',WED:'W',THU:'Th',FRI:'F',SAT:'Sa'};
+function plainPlayerName(name){return String(name||'').replace(/^\s*\[[^\]]{1,20}\]\s*/,'').trim()}
+function htmlSafeName(name){return plainPlayerName(name).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function badStandingsText(members){
+ const flagged=members.filter(m=>m.lowDon||m.below.length>0);
+ return flagged.map(m=>{
+   const donation=m.don===null?'—':fmt(m.don);
+   const days=DAYS.filter(day=>m.below.includes(day)).map(day=>DAY_SHORT[day]).join(':')||'—';
+   return htmlSafeName(m.name)+' D:'+donation+' V:'+days;
+ }).join('<br>');
+}
+async function copyBadStandings(){
+ const bad=state.current.filter(m=>m.lowDon||m.below.length>0);
+ const output=$('copyStatus');
+ if(!bad.length){output.textContent='No recorded below-target scores for this week.';return}
+ const payload=badStandingsText(state.current);
+ try{
+   if(navigator.clipboard&&window.isSecureContext){
+     await navigator.clipboard.writeText(payload);
+   }else{
+     const temporary=document.createElement('textarea');
+     temporary.value=payload;temporary.setAttribute('readonly','');
+     temporary.style.position='fixed';temporary.style.opacity='0';
+     document.body.appendChild(temporary);temporary.select();
+     const copied=document.execCommand('copy');temporary.remove();
+     if(!copied)throw new Error('Clipboard permission denied');
+   }
+   output.textContent='Copied '+bad.length+' players with <br> separators.';
+ }catch(error){
+   output.textContent='Copy blocked by browser. Select and copy the message below.';
+   const field=document.createElement('textarea');
+   field.value=payload;field.readOnly=true;field.rows=5;
+   field.style.width='100%';field.setAttribute('aria-label','Bad standings message');
+   output.replaceChildren(document.createTextNode('Select and copy: '),field);
+   field.select();
+ }
+}
+$('copyBad').addEventListener('click',copyBadStandings);
 $('print').addEventListener('click',()=>window.print());
 $('download').addEventListener('click',()=>{const header=['player','donations','donation_low',...DAYS,'vs_below_days','vs_missing_days','review'];const lines=[header.join(',')];const quote=v=>'"'+String(v??'').replaceAll('"','""')+'"';for(const m of state.current){lines.push([m.name,m.don??'',m.lowDon,...DAYS.map(d=>m.vs.get(d)??''),m.below.join('|'),m.missing.join('|'),m.review].map(quote).join(','))}const blob=new Blob([lines.join('\r\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='zroute-review-'+($('guild').value||'guild')+'-'+($('week').value||'week')+'.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)});
 init();

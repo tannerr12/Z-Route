@@ -1,0 +1,45 @@
+name: Backfill Join Leave Player IDs
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'data/servers/125/world-players.csv'
+      - 'data/player_activity/guild_changes.csv'
+      - 'scripts/backfill_membership_ids.py'
+      - '.github/workflows/backfill-membership-ids.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: backfill-membership-ids-main
+  cancel-in-progress: false
+
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check identity reconciliation logic
+        run: python -m unittest discover -v -s scripts -p 'test_backfill_membership_ids.py'
+      - name: Enrich historical membership events
+        run: python scripts/backfill_membership_ids.py --apply
+      - name: Commit unique historical ID matches
+        run: |
+          if git diff --quiet -- data/player_activity/guild_changes.csv; then
+            echo "No new unique IDs to publish."
+            exit 0
+          fi
+          git config user.name "Z-Route Scanner"
+          git config user.email "zroute-scanner@users.noreply.github.com"
+          git add -- data/player_activity/guild_changes.csv
+          git commit -m "Backfill resolved membership player IDs from world roster"
+          git push origin HEAD:main

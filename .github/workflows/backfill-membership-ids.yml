@@ -6,6 +6,7 @@ on:
       - 'data/servers/125/world-players.csv'
       - 'data/player_activity/guild_changes.csv'
       - 'scripts/backfill_membership_ids.py'
+      - 'scripts/test_backfill_membership_ids.py'
       - '.github/workflows/backfill-membership-ids.yml'
   workflow_dispatch:
 

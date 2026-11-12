@@ -75,9 +75,10 @@ th[aria-sort="ascending"] .sort-indicator,th[aria-sort="descending"] .sort-indic
 <label>Minimum kills <input id="minKills" type="number" min="0" value="0" style="width:135px"></label>
 <label>Exclude top guilds <input id="excludeTopGuilds" type="number" min="0" max="10000" step="1" value="0" style="width:135px" aria-describedby="guildExclusionSummary"></label>
 <label>Window <select id="window"><option value="7">Last 7 days</option><option value="3">Last 3 days</option><option value="1">Last 24 hours</option><option value="14">Last 14 days</option></select></label>
-<label><span>Options</span><span><input id="excludeD3AD" type="checkbox" checked> Exclude D3AD</span></label>
+<label><span>Options</span><span><input id="excludeD3AD" type="checkbox" checked> Exclude D3AD</span><span><input id="excludeRemoved" type="checkbox" disabled aria-describedby="removedSummary"> Exclude previously removed members</span></label>
 <button id="reset" type="button">Reset</button><button id="export" type="button">Export filtered CSV</button>
 <div class="guild-filter-description" id="guildExclusionSummary" role="status">Guild rankings use each member's last observed power. 0 excludes no guilds.</div>
+<div class="guild-filter-description" id="removedSummary" role="status">Loading D3AD removal history… Only recorded “removed” events count, not players who left voluntarily. Name and known-alias matches only (Server 125).</div>
 </div></div>
 <details class="guild-rankings" id="guildRankings">
 <summary>Guild power rankings for this server</summary>
@@ -98,6 +99,7 @@ th[aria-sort="ascending"] .sort-indicator,th[aria-sort="descending"] .sort-indic
 </section>
 <p class="muted">Signals are derived from recorded changes to the same server + player ID, not from appearance in a single scan. No observed change is <em>not</em> proof of inactivity. Renames, movement and alliance changes may occur between scans; timestamps mark when differences were observed. Bubble status may be stale. History exported by the scanner can be incomplete, so results reflect available evidence only.</p>
 </main>
+<script src="./recruitment-removals.js?v=20261112-removed1"></script>
 <script src="./recruitment-activity.js?v=20261109-power-kills-multiselect-2"></script>
 <script src="./server-freshness.js?v=20261109-1"></script>
 <script src="./guild-power.js?v=20261109-1"></script>
@@ -106,6 +108,7 @@ th[aria-sort="ascending"] .sort-indicator,th[aria-sort="descending"] .sort-indic
 'use strict';
 const $ = id => document.getElementById(id);
 let entries=[], seq=0, servers=[];
+let removedNames=new Set(),removalHistoryLoaded=false;
 let playerSort={key:'lastChange',direction:'desc'};
 let guildSort={key:'rank',direction:'asc'};
 function updateSortHeadings(tableId,current){
@@ -212,10 +215,12 @@ function ranked(){
  const query=$('search').value.trim().toLowerCase(),alliance=$('alliance').value,selected=selectedActivity(),min=Number($('level').value)||1;
  const minPower=Math.max(0,Number($('minPower').value)||0),minKills=Math.max(0,Number($('minKills').value)||0);
  const excludedGuilds=ZRouteGuildPower.excludedTop(guildRanking,topGuildCount());
+ const excludedRemoved=$('excludeRemoved').checked&&removalHistoryLoaded&&$('server').value==='125';
  return ZRouteTableSort.sortPlayers(entries.map(p=>({...p,signal:summarize(p)})).filter(p=>
   (!query||[p.name,p.id,...p.aliases].some(v=>String(v).toLowerCase().includes(query))) &&
   (alliance===''||alliance==='unallied'&&!p.alliance||p.alliance.toLowerCase()===alliance.toLowerCase()) &&
   (!$('excludeD3AD').checked||p.alliance.toLowerCase()!=='d3ad') &&
+  (!excludedRemoved||!ZRouteRecruitmentRemovals.wasRemoved(p,removedNames)) &&
   !excludedGuilds.has(ZRouteGuildPower.guildKey(p.alliance)) &&
   (p.level>=min) &&
   (minPower===0||p.power!==null&&p.power>=minPower) &&
@@ -260,9 +265,29 @@ function exportCSV(){
  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
  const a=document.createElement('a');a.href=url;a.download='recruitment-S'+$('server').value+'-'+$('window').value+'d.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+async function loadRemovalHistory(){
+ const checkbox=$('excludeRemoved'),notice=$('removedSummary');
+ checkbox.disabled=true;checkbox.checked=false;
+ notice.textContent='Loading D3AD historical removals…';
+ try{
+  const response=await fetch('./data/player_activity/guild_changes.csv',{cache:'no-store'});
+  if(!response.ok)throw Error('HTTP '+response.status);
+  const records=parseCSV(await response.text());
+  if(records.length&&!['event','player'].every(field=>Object.hasOwn(records[0],field)))
+   throw Error('Join/Leave CSV missing event or player columns');
+  removedNames=ZRouteRecruitmentRemovals.kickedNames(records);
+  removalHistoryLoaded=true;
+  checkbox.disabled=$('server').value!=='125';
+  notice.textContent=removedNames.size+' distinct previously removed names recorded. Optional exclusion applies only to Server 125, using exact names or known aliases. Voluntary “left” and “joined” events are ignored.';
+ }catch(error){
+  removedNames=new Set();removalHistoryLoaded=false;checkbox.disabled=true;
+  notice.textContent='Removal exclusion unavailable: '+error.message+'. No candidates have been excluded by removal history.';
+ }
+ render();
+}
 async function loadServer(){
  const id=++seq,server=$('server').value,entry=servers.find(s=>s.id===server);
- entries=[];guildRanking={ranked:[],unranked:[],byKey:new Map()};$('status').textContent='Loading Server '+server+'…';$('results').replaceChildren();refreshServerFreshness();
+ entries=[];guildRanking={ranked:[],unranked:[],byKey:new Map()};$('excludeRemoved').disabled=!removalHistoryLoaded||server!=='125';if(server!=='125')$('excludeRemoved').checked=false;$('status').textContent='Loading Server '+server+'…';$('results').replaceChildren();refreshServerFreshness();
  renderGuildRanking();
  try{
   if(!entry)throw Error('No roster registered');
@@ -293,7 +318,7 @@ async function load(){
   loadServer();
  }catch(e){$('status').textContent='Unable to load server registry: '+e.message}
 }
-for(const id of ['search','alliance','level','minPower','minKills','excludeTopGuilds','window','excludeD3AD'])$(id).addEventListener('input',render);
+for(const id of ['search','alliance','level','minPower','minKills','excludeTopGuilds','window','excludeD3AD','excludeRemoved'])$(id).addEventListener('input',render);
 $('activityMenu').addEventListener('change',()=>{updateActivitySummary();render()});
 $('activityAll').addEventListener('click',()=>{
  activityCheckboxes().forEach(c=>c.checked=c.dataset.activity!=='none');
@@ -318,12 +343,13 @@ $('guildRankingTable').querySelector('thead').addEventListener('click',event=>{
 });
 $('server').addEventListener('change',loadServer);
 $('reset').addEventListener('click',()=>{
- $('search').value='';$('alliance').value='';$('level').value='1';$('minPower').value='0';$('minKills').value='0';$('excludeTopGuilds').value='0';$('window').value='7';$('excludeD3AD').checked=true;
+ $('search').value='';$('alliance').value='';$('level').value='1';$('minPower').value='0';$('minKills').value='0';$('excludeTopGuilds').value='0';$('window').value='7';$('excludeD3AD').checked=true;$('excludeRemoved').checked=false;
  activityCheckboxes().forEach(c=>c.checked=true);
  playerSort={key:'lastChange',direction:'desc'};
  guildSort={key:'rank',direction:'asc'};
  $('activitySelect').open=false;updateActivitySummary();render();
 });
 $('export').addEventListener('click',exportCSV);
+loadRemovalHistory();
 load();
 </script></body><script defer src="./site-nav.js"></script></html>

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Backfill public Join/Leave player IDs from Server 125's world roster.
 
-This only links exact, globally unambiguous player names / known aliases to
-the stable world player_id. No guesses based on partial names, guild,
-coordinates, chronology or similar spelling. Original log names remain intact.
+First links unique exact names / aliases. If the same name belongs to
+multiple player IDs, chooses the most recently *observed* exact name only
+when its timestamp ranks strictly above all competing observations. This
+is a heuristic (not proof of identity), tracked by player_id_source.
+No fuzzy matching; existing ID assignments remain unchanged.
 It is safe to re-run after every world scan or Player Activity publication.
 """
 from __future__ import annotations
@@ -56,8 +58,69 @@ def names_from_roster(path):
     return unique,ambiguous
 
 
+def recently_observed_names(path):
+    """Ambiguous exact names -> newest observed ID with unique timestamp.
+
+    Name observation history provides stronger evidence than a last-modified
+    export timestamp. Never use roster publish time to infer an alias's age.
+    Only timestamped evidence about that EXACT name counts.
+    """
+    seen=defaultdict(dict)
+    with Path(path).open(newline="",encoding="utf-8-sig") as stream:
+        for row in csv.DictReader(stream):
+            if str(row.get("server") or "").strip()!="125":
+                continue
+            pid=str(row.get("player_id") or "").strip()
+            if not pid:
+                continue
+            observations=[]
+            current=normalize(row.get("username"))
+            current_time=str(row.get("name_observed_at_utc") or "").strip()
+            if current and current_time:
+                observations.append((current,current_time))
+            try:
+                history=json.loads(row.get("name_history_json") or "[]")
+            except (TypeError,ValueError):
+                history=[]
+            if isinstance(history,list):
+                for change in history:
+                    if not isinstance(change,dict):
+                        continue
+                    for name_field,stamp_field in (
+                        ("old_name","last_old_observed_at_utc"),
+                        ("new_name","first_new_observed_at_utc")):
+                        name=normalize(change.get(name_field))
+                        stamp=str(change.get(stamp_field) or "").strip()
+                        if name and stamp:
+                            observations.append((name,stamp))
+            for name,stamp in observations:
+                # ISO8601 timestamps sort lexicographically in UTC; parse
+                # into comparable epoch values to handle different offsets.
+                from datetime import datetime,timezone
+                try:
+                    moment=datetime.fromisoformat(stamp.replace("Z","+00:00"))
+                    if moment.tzinfo is None:
+                        continue
+                    epoch=moment.astimezone(timezone.utc).timestamp()
+                except (ValueError,OverflowError):
+                    continue
+                old=seen[name].get(pid)
+                if old is None or epoch>old:
+                    seen[name][pid]=epoch
+    recent={}
+    for name,entries in seen.items():
+        if len(entries)<2:
+            continue
+        ranking=sorted(entries.items(),key=lambda entry:entry[1],reverse=True)
+        # A tie cannot be disambiguated by recency.
+        if ranking[0][1]>ranking[1][1]:
+            recent[name]=ranking[0][0]
+    return recent
+
+
 def enrich_file(world=WORLD,changes=CHANGES,apply=False):
     unique,ambiguous=names_from_roster(world)
+    recent=recently_observed_names(world)
     with Path(changes).open(newline="",encoding="utf-8-sig") as stream:
         reader=csv.DictReader(stream)
         header=list(reader.fieldnames or [])
@@ -65,15 +128,18 @@ def enrich_file(world=WORLD,changes=CHANGES,apply=False):
             raise ValueError("Join/Leave CSV missing player or event columns")
         rows=list(reader)
     fields=header+[x for x in ID_FIELDS if x not in header]
-    resolved=0;unresolved=0;ambiguous_count=0;conflicts=0
+    resolved=0;recent_resolved=0;unresolved=0;ambiguous_count=0;conflicts=0
     for row in rows:
         name=normalize(row.get("player"))
-        candidate=unique.get(name)
+        candidate=unique.get(name) or (recent.get(name) if name in ambiguous else None)
+        source=SOURCE if name in unique else "latest_name_observation_s125"
         prior=str(row.get("player_id") or "").strip()
         if candidate and not prior:
             row["player_id"]=candidate
-            row["player_id_source"]=SOURCE
+            row["player_id_source"]=source
             resolved+=1
+            if source!="unique_world_roster_alias_s125":
+                recent_resolved+=1
         elif prior and candidate and candidate!=prior:
             # Do not overwrite evidence from earlier private map history.
             row["player_id_source"]="conflicting_identity"
@@ -84,7 +150,8 @@ def enrich_file(world=WORLD,changes=CHANGES,apply=False):
             else:
                 unresolved+=1
     changed=fields!=header or resolved>0 or conflicts>0
-    counts=dict(events=len(rows),newly_resolved=resolved,unresolved=unresolved,
+    counts=dict(events=len(rows),newly_resolved=resolved,
+                recent_match_resolved=recent_resolved,unresolved=unresolved,
                 ambiguous=ambiguous_count,conflicts=conflicts,
                 with_id=sum(bool(row.get("player_id")) for row in rows),
                 unique_names=len(unique))

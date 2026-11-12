@@ -83,11 +83,7 @@ def enrich_file(world=WORLD,changes=CHANGES,apply=False):
                 ambiguous_count+=1
             else:
                 unresolved+=1
-    changed=fields!=header or any(
-        any(str(raw.get(k) or "")!=str(row.get(k) or "")
-            for k in ID_FIELDS)
-        for raw,row in []
-    ) or resolved>0 or conflicts>0
+    changed=fields!=header or resolved>0 or conflicts>0
     counts=dict(events=len(rows),newly_resolved=resolved,unresolved=unresolved,
                 ambiguous=ambiguous_count,conflicts=conflicts,
                 with_id=sum(bool(row.get("player_id")) for row in rows),

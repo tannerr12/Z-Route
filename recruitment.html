@@ -67,7 +67,7 @@ th[aria-sort="ascending"] .sort-indicator,th[aria-sort="descending"] .sort-indic
 <label><input type="checkbox" data-activity="shield" checked> Bubble changed</label>
 <label><input type="checkbox" data-activity="power" checked> Power changed</label>
 <label><input type="checkbox" data-activity="kills" checked> Kills changed</label>
-<label><input type="checkbox" data-activity="none" checked> No changes observed</label>
+<label><input type="checkbox" data-activity="none"> No changes observed</label>
 <div class="activity-actions"><button id="activityAll" type="button">Select all changes</button><button id="activityClear" type="button">Clear selection</button></div>
 </div></details>
 <label>Minimum level <input id="level" type="number" min="1" max="50" value="1" style="width:110px"></label>
@@ -357,7 +357,7 @@ $('guildRankingTable').querySelector('thead').addEventListener('click',event=>{
 $('server').addEventListener('change',loadServer);
 $('reset').addEventListener('click',()=>{
  $('search').value='';$('alliance').value='';$('level').value='1';$('minPower').value='0';$('minKills').value='0';$('excludeTopGuilds').value='0';$('window').value='7';$('excludeD3AD').checked=true;$('excludeRemoved').checked=false;$('excludeCommander2').checked=false;
- activityCheckboxes().forEach(c=>c.checked=true);
+ activityCheckboxes().forEach(c=>c.checked=c.dataset.activity!=='none');
  playerSort={key:'lastChange',direction:'desc'};
  guildSort={key:'rank',direction:'asc'};
  $('activitySelect').open=false;updateActivitySummary();render();

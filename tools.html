@@ -21,7 +21,7 @@ nav{display:flex;gap:12px;flex-wrap:wrap;font-size:14px}
 @media(max-width:700px){body{padding:10px}.frame{height:78vh;min-height:620px}.tabs button{padding:9px 12px}}
 </style></head><body><main>
 <header><div><h1>Z-Route Tools Hub</h1><p>Progression, heroes, research, and equipment in one place.</p></div>
-<nav><a href="./index.html">World Map</a><a href="./vs.html">VS Analytics</a><a href="./donations.html">Donations</a><a href="./activity.html">Player Activity</a></nav>
+
 </header>
 <div class="tabs" role="tablist" aria-label="Z-Route tools">
 <button type="button" role="tab" data-tool="equipment" aria-selected="true">Equipment Optimizer</button>
@@ -77,4 +77,4 @@ buttons.forEach((b,i)=>{
 });
 window.addEventListener('hashchange',()=>{const k=location.hash.slice(1);if(tools[k])selectTool(k,false)});
 const initial=location.hash.slice(1);selectTool(tools[initial]?initial:'equipment',false);
-</script></body></html>
+</script></body><script defer src="./site-nav.js"></script></html>

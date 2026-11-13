@@ -357,7 +357,7 @@ $('guildRankingTable').querySelector('thead').addEventListener('click',event=>{
 });
 $('server').addEventListener('change',loadServer);
 $('reset').addEventListener('click',()=>{
- $('search').value='';$('alliance').value='';$('level').value='1';$('minPower').value='0';$('minKills').value='0';$('excludeTopGuilds').value='0';$('window').value='7';$('excludeD3AD').checked=true;$('excludeRemoved').checked=false;$('excludeGeneratedCommander').checked=false;
+ $('search').value='';$('alliance').value='';$('level').value='1';$('minPower').value='0';$('minKills').value='0';$('excludeTopGuilds').value='0';$('window').value='7';$('excludeD3AD').checked=true;$('excludeRemoved').checked=false;$('excludeGeneratedCommander').checked=true;
  activityCheckboxes().forEach(c=>c.checked=c.dataset.activity!=='none');
  playerSort={key:'lastChange',direction:'desc'};
  guildSort={key:'rank',direction:'asc'};

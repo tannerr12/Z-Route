@@ -2,6 +2,13 @@
   "default_server": "125",
   "servers": [
     {
+      "id": "113",
+      "label": "Server 113",
+      "data": "data/servers/113/world-players.csv",
+      "last_scan_at_utc": "2026-11-13T04:55:31+00:00",
+      "scan_timestamp_basis": "roster_file_mtime_approximate"
+    },
+    {
       "id": "115",
       "label": "Server 115",
       "data": "data/servers/115/world-players.csv",

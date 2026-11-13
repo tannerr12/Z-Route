@@ -10,7 +10,7 @@ test('only Commander plus exactly seven alphanumeric characters is excluded',()=
   assert.equal(isGeneratedCommander(name),true,name);
  }
  for(const name of ['Commander2test','Commander123456','Commander12345678',
-                    'Commander','Commander2Player','Commander-123456',
+                    'Commander','Commander2PlayerX','Commander-123456',
                     'Commander John','MyCommander1234567','Commander_123456']){
   assert.equal(isGeneratedCommander(name),false,name);
  }

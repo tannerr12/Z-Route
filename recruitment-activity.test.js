@@ -2,6 +2,8 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const {isGeneratedCommander} = require('./activity-filters.js');
 const { summarize, matchesSelected } = require('./recruitment-activity.js');
 
 const NOW = Date.parse('2026-11-08T20:00:00Z');
@@ -63,4 +65,20 @@ test('explicit no-change choice can combine with other signals', () => {
   assert.equal(matchesSelected(['power'],selected),true);
   assert.equal(matchesSelected(['rename'],selected),false);
   assert.equal(matchesSelected([],new Set(['guild','power'])),false);
+});
+
+
+test('Recruitment NPC toggle uses the same exact seven-character rule as Player Activity', () => {
+  const page=fs.readFileSync(require('node:path').join(__dirname,'recruitment.html'),'utf8');
+  assert.match(page,/<script src="\.\/activity-filters\.js\?v=[^"]+"><\/script>/);
+  assert.match(page,/<input id="excludeGeneratedCommander" type="checkbox" checked>/);
+  assert.match(page,/!ZRouteAttackFilters\.isGeneratedCommander\(p\.name\)/);
+  assert.match(page,/\$\('excludeGeneratedCommander'\)\.checked=true/);
+  assert.doesNotMatch(page,/excludeCommander2/);
+  for(const name of ['CommanderABC1234','commander2aB9xT7','Commander0000000']){
+    assert.equal(isGeneratedCommander(name),true,name);
+  }
+  for(const name of ['Commander2test','Commander12345678','Commander-123456','CommanderSmith']){
+    assert.equal(isGeneratedCommander(name),false,name);
+  }
 });

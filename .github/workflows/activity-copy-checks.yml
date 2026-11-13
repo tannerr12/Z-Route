@@ -7,12 +7,16 @@ on:
       - 'activity.html'
       - 'activity-copy.js'
       - 'activity-copy.test.js'
+      - 'activity-filters.js'
+      - 'activity-filters.test.js'
       - '.github/workflows/activity-copy-checks.yml'
   pull_request:
     paths:
       - 'activity.html'
       - 'activity-copy.js'
       - 'activity-copy.test.js'
+      - 'activity-filters.js'
+      - 'activity-filters.test.js'
       - '.github/workflows/activity-copy-checks.yml'
 
 permissions:
@@ -28,6 +32,8 @@ jobs:
         with:
           node-version: '22'
       - name: Validate clipboard module syntax
-        run: node --check activity-copy.js
+        run: |
+          node --check activity-copy.js
+          node --check activity-filters.js
       - name: Run clipboard formatter unit tests
-        run: node --test activity-copy.test.js
+        run: node --test activity-copy.test.js activity-filters.test.js

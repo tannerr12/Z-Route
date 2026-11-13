@@ -9,6 +9,8 @@ on:
       - 'activity-copy.test.js'
       - 'activity-filters.js'
       - 'activity-filters.test.js'
+      - 'recruitment.html'
+      - 'recruitment-activity.test.js'
       - '.github/workflows/activity-copy-checks.yml'
   pull_request:
     paths:
@@ -17,6 +19,8 @@ on:
       - 'activity-copy.test.js'
       - 'activity-filters.js'
       - 'activity-filters.test.js'
+      - 'recruitment.html'
+      - 'recruitment-activity.test.js'
       - '.github/workflows/activity-copy-checks.yml'
 
 permissions:
@@ -36,4 +40,4 @@ jobs:
           node --check activity-copy.js
           node --check activity-filters.js
       - name: Run clipboard formatter unit tests
-        run: node --test activity-copy.test.js activity-filters.test.js
+        run: node --test activity-copy.test.js activity-filters.test.js recruitment-activity.test.js

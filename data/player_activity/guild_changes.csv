@@ -201,3 +201,4 @@ timestamp,player,guild,event,scanned_at,actor,game_event_time_utc,event_epoch_ms
 2026.11.10 14:11:53,Dinoo993,,removed,2026-11-10T17:49:27.363817+00:00,GolferGirl124,2026-11-10T14:11:52.274+00:00,1794319912274,uop_edfaba2d494a5ee8a2389cb227c64781,union_oplog_network,140700336253,unique_world_roster_alias_s125
 2026.11.10 23:38:32,777AMIR777,,joined,2026-11-11T05:06:55.323389+00:00,,2026-11-10T23:38:31.498+00:00,1794353911498,uop_eef098dd74cde50cd7fdc2c42f7f4fcc,union_oplog_network,143738159229,unique_world_roster_alias_s125
 2026.11.11 05:05:18,ValHammerfall,,removed,2026-11-11T05:06:55.323389+00:00,GolferGirl124,2026-11-11T05:05:17.058+00:00,1794373517058,uop_35210b01331eb464eb5b104cd97dc586,union_oplog_network,137406480509,unique_world_roster_alias_s125
+2026.11.13 04:09:01,D94,,joined,2026-11-13T04:45:55.941973+00:00,,2026-11-13T04:09:00.699+00:00,1794542940699,uop_9b55eabd558efda0d8891628c626f752,union_oplog_network,139992596605,unique_history_name_s125

@@ -5,7 +5,7 @@
 :root{color-scheme:dark;background:#091321;color:#e9f1fc;font:15px system-ui,-apple-system,Segoe UI,sans-serif}*{box-sizing:border-box}
 body{margin:0;padding:23px}main{max-width:1350px;margin:auto}a{color:#91cbff}h1{margin:0 0 4px;font-size:26px}p,.muted{color:#9eb1c8}header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap}.nav{line-height:2}
 .panel{background:#102035;border:1px solid #30465e;border-radius:12px;padding:18px;margin-top:16px}.controls,.metrics{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.controls label{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.controls select,.controls input,.controls button{background:#15263a;color:#e9f1fc;border:1px solid #40556d;border-radius:8px;padding:9px;font:inherit}
-.controls button{cursor:pointer}.controls input{min-width:165px}.metrics>div{flex:1;min-width:160px}.metric{font-size:27px;font-weight:750}.small{font-size:12px;color:#9eb1c8}.notice{padding:10px 12px;background:#1b344c;border-left:3px solid #7eb5ea;border-radius:5px;color:#d1e2f2}
+.controls button{cursor:pointer}.controls [hidden]{display:none!important}.controls input[type=date]{min-width:145px}.controls input{min-width:165px}.metrics>div{flex:1;min-width:160px}.metric{font-size:27px;font-weight:750}.small{font-size:12px;color:#9eb1c8}.notice{padding:10px 12px;background:#1b344c;border-left:3px solid #7eb5ea;border-radius:5px;color:#d1e2f2}
 .scroll{overflow:auto}table{width:100%;border-collapse:collapse;min-width:710px}th,td{padding:10px;border-bottom:1px solid #30465e;text-align:right}th:first-child,td:first-child,th:nth-child(2),td:nth-child(2),th:nth-child(3),td:nth-child(3){text-align:left}
 th{white-space:nowrap;color:#9eb1c8;cursor:pointer}tbody tr:hover{background:#1d344a}tbody tr{cursor:pointer}tr.selected{background:#27445d}button{cursor:pointer}canvas{width:100%;height:220px}
 .badge{display:inline-block;background:#264761;padding:3px 7px;border-radius:6px;font-size:12px}.warn{color:#ffc784}#detail{min-height:60px}#status{padding:12px 0;color:#b9cbdd}
@@ -14,12 +14,16 @@ th{white-space:nowrap;color:#9eb1c8;cursor:pointer}tbody tr:hover{background:#1d
 <header><div><h1>Expedition Frenzy</h1><p>Daily player contribution leaderboard · event timestamps in UTC · sourced from decoded network events</p></div>
 </header>
 <div class="panel"><div class="controls">
-<label>Date <select id="day"></select></label><label>Server <select id="server"></select></label>
+<label id="dayWrap" hidden>Date <select id="day"></select></label>
+<label id="weekWrap">Week (UTC) <select id="week"></select></label>
+<label id="fromWrap" hidden>Start (UTC) <input type="date" id="from"></label>
+<label id="toWrap" hidden>Finish (UTC) <input type="date" id="to"></label>
+<label>Server <select id="server"></select></label>
 <label>Guild <select id="guild"></select></label><label>Player <input type="search" id="search" placeholder="Search players"></label>
-<label>View <select id="view"><option value="through">Cumulative through date</option><option value="day">Selected day only</option><option value="all">All recorded days</option></select></label>
+<label>Period <select id="view"><option value="week">Selected week</option><option value="range">Custom date range</option><option value="day">Selected day only</option><option value="through">Cumulative through date</option><option value="all">All recorded days</option></select></label>
 <button id="export">Export leaderboard CSV</button></div>
 <p class="small" id="meta">Loading captures…</p>
-<div class="notice">Default view is cumulative through the selected UTC date. Switch to Selected day only for points earned that day. Scores are sums of observed player event records, not verified in-game leaderboard totals. Missing events and player activity are not inferred. Repeat scans merge event occurrences without summing the same snapshot twice.</div></div>
+<div class="notice">Default view is a Monday–Sunday UTC week. You can also choose an inclusive start/finish range, one day, cumulative through a day, or all recorded history. Scores are sums of observed player event records, not verified in-game leaderboard totals. Missing events and player activity are not inferred. Repeat scans merge event occurrences without summing the same snapshot twice.</div></div>
 <div class="panel metrics"><div><div class="small">Observed points</div><div class="metric" id="total">—</div></div>
 <div><div class="small">Players with events</div><div class="metric" id="players">—</div></div>
 <div><div class="small">Player events</div><div class="metric" id="events">—</div></div>
@@ -37,10 +41,43 @@ function options(sel, entries, label) {
   sel.replaceChildren(); if(label){const o=document.createElement("option");o.value="";o.textContent=label;sel.append(o);}
   for(const v of entries){const o=document.createElement("option");o.value=String(v);o.textContent=String(v);sel.append(o);}
 }
+function weekStart(day) {
+  const d=new Date(day+"T00:00:00Z");
+  d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);
+  return d.toISOString().slice(0,10);
+}
+function weekFinish(start) {
+  const d=new Date(start+"T00:00:00Z");d.setUTCDate(d.getUTCDate()+6);
+  return d.toISOString().slice(0,10);
+}
+function periodBounds(){
+  const mode=$("view").value,day=$("day").value;
+  if(mode==="all")return {start:"",end:"",valid:true,label:"All recorded dates"};
+  if(mode==="through")return {start:"",end:day,valid:!!day,label:"Through "+day};
+  if(mode==="day")return {start:day,end:day,valid:!!day,label:day};
+  if(mode==="week"){
+    const start=$("week").value;
+    return {start,end:start?weekFinish(start):"",valid:!!start,
+      label:start?start+" to "+weekFinish(start):"No week selected"};
+  }
+  const start=$("from").value,end=$("to").value;
+  return {start,end,valid:!!start&&!!end&&start<=end,
+    label:start+" to "+end};
+}
+function updatePeriodControls(){
+  const mode=$("view").value;
+  $("dayWrap").hidden=!(mode==="day"||mode==="through");
+  $("weekWrap").hidden=mode!=="week";
+  $("fromWrap").hidden=mode!=="range";$("toWrap").hidden=mode!=="range";
+}
+function periodMatches(e,bounds){
+  return bounds.valid&&(!bounds.start||e.event_day_utc>=bounds.start)&&
+    (!bounds.end||e.event_day_utc<=bounds.end);
+}
 function filters() {
-  const day=$("day").value, server=$("server").value, guild=$("guild").value, query=$("search").value.toLocaleLowerCase();
+  const bounds=periodBounds(), server=$("server").value,guild=$("guild").value,query=$("search").value.toLocaleLowerCase();
   return events.filter(e=>
-    ($("view").value==="all" || ($("view").value==="through" ? e.event_day_utc<=day : e.event_day_utc===day)) &&
+    periodMatches(e,bounds)&&
     (!server || String(e.player_server)===server) &&
     (!guild || String(e.player_guild||"")===guild) &&
     (!query || String(e.player_name||"").toLocaleLowerCase().includes(query)));
@@ -62,7 +99,8 @@ function sorting(a,b) {
 }
 function drawTrend() {
   const canvas=$("trend"),c=canvas.getContext("2d"),W=canvas.width,H=canvas.height;c.clearRect(0,0,W,H);
-  const days=[...new Set(events.map(e=>e.event_day_utc))].sort();
+  const bounds=periodBounds();
+  const days=[...new Set(events.filter(e=>periodMatches(e,bounds)).map(e=>e.event_day_utc))].sort();
   const server=$("server").value,guild=$("guild").value,q=$("search").value.toLocaleLowerCase();
   const values=days.map(d=>events.filter(e=>e.event_day_utc===d&&(!server||String(e.player_server)===server)&&(!guild||e.player_guild===guild)&&(!q||e.player_name.toLocaleLowerCase().includes(q))).reduce((s,e)=>s+Number(e.points),0));
   if(!days.length)return;
@@ -85,23 +123,25 @@ function drawDetail(){
  "</tbody></table></div>";
 }
 function render() {
- const filtered=filters(),all=totals(filtered),ranked=[...all].sort((a,b)=>b.points-a.points||a.name.localeCompare(b.name));
+ updatePeriodControls();
+ const bounds=periodBounds(),filtered=filters(),all=totals(filtered),ranked=[...all].sort((a,b)=>b.points-a.points||a.name.localeCompare(b.name));
  const positions=new Map(ranked.map((p,i)=>[p.id,i+1]));
  all.forEach(p=>p.rank=positions.get(p.id));all.sort(sorting);
  $("total").textContent=fmt(filtered.reduce((s,e)=>s+Number(e.points),0));
  $("players").textContent=fmt(all.length);$("events").textContent=fmt(filtered.length);
- $("status").textContent=all.length?all.length+" players shown. Click a row for event details.":"No player events match this selection; missing data is not zero.";
+ $("status").textContent=!bounds.valid?"Select a valid start and finish date (start must not be after finish).":all.length?all.length+" players shown for "+bounds.label+". Click a row for event details.":"No player events match "+bounds.label+"; missing data is not zero.";
  $("board").querySelector("tbody").innerHTML=all.map(p=>"<tr data-id='"+safe(p.id)+"' class='"+(selected===p.id?"selected":"")+"'><td>"+p.rank+"</td><td>"+safe(p.name)+"</td><td>"+safe(p.guild)+"</td><td>S"+safe(p.server)+"</td><td>"+fmt(p.points)+"</td><td>"+p.events+"</td><td>"+[...p.types].sort().join(", ")+"</td></tr>").join("");
  $("board").querySelectorAll("tbody tr").forEach(tr=>tr.addEventListener("click",()=>{selected=tr.dataset.id;render();}));
  drawTrend();drawDetail();
 }
 function exportCsv(){
  const list=totals(filters()).sort((a,b)=>b.points-a.points);
- const data=[["rank","player_id","player","guild","server","points","event_count","date_utc"]];
- list.forEach((p,i)=>data.push([i+1,p.id,p.name,p.guild,p.server,p.points,p.events,$("view").value==="all"?"all":$("view").value+"_"+$("day").value]));
+ const bounds=periodBounds();if(!bounds.valid)return;
+ const data=[["rank","player_id","player","guild","server","points","event_count","period_start_utc","period_finish_utc"]];
+ list.forEach((p,i)=>data.push([i+1,p.id,p.name,p.guild,p.server,p.points,p.events,bounds.start,bounds.end]));
  const csv=data.map(r=>r.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(",")).join("\r\n");
  const link=document.createElement("a");link.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
- link.download="expedition_frenzy_"+($("view").value==="all"?"all":$("view").value+"_"+$("day").value)+".csv";link.click();URL.revokeObjectURL(link.href);
+ link.download="expedition_frenzy_"+($("view").value==="all"?"all":$("view").value+"_"+(bounds.start||"start")+"_"+(bounds.end||"end"))+".csv";link.click();URL.revokeObjectURL(link.href);
 }
 async function init(){
  try{
@@ -110,14 +150,20 @@ async function init(){
  events=(store.events||[]).filter(e=>e.category==="player"&&e.player_id&&e.timestamp_utc&&Number.isFinite(Number(e.points))).map(e=>({...e,event_day_utc:e.event_day_utc||e.timestamp_utc.slice(0,10)}));
  runs=store.runs||[];
  const days=[...new Set(events.map(e=>e.event_day_utc))].sort().reverse();
- options($("day"),days);options($("server"),[...new Set(events.map(e=>e.player_server))].sort((a,b)=>a-b),"All servers");
+ options($("day"),days);
+ const weeks=[...new Set(days.map(weekStart))].sort().reverse();
+ options($("week"),weeks);
+ for(const o of $("week").options)o.textContent=o.value+" – "+weekFinish(o.value);
+ $("from").value=days.length?days[days.length-1]:"";
+ $("to").value=days.length?days[0]:"";
+ options($("server"),[...new Set(events.map(e=>e.player_server))].sort((a,b)=>a-b),"All servers");
  options($("guild"),[...new Set(events.map(e=>e.player_guild).filter(Boolean))].sort(),"All guilds");
  $("meta").textContent=fmt(events.length)+" distinct observed player event occurrences · "+fmt(runs.length)+" imported scan(s) · Daily buckets use UTC event date.";
  $("last").textContent=runs.length?new Date(runs[runs.length-1].captured_at_utc).toISOString().replace("T"," ").slice(0,16)+" UTC":"No scans";
  render();
  }catch(e){$("status").textContent="Unable to load event history: "+e.message;$("meta").textContent="Data unavailable";}
 }
-["day","server","guild","search","view"].forEach(id=>$(id).addEventListener(id==="search"?"input":"change",render));
+["day","week","from","to","server","guild","search","view"].forEach(id=>$(id).addEventListener(id==="search"?"input":"change",render));
 document.querySelectorAll("th[data-sort]").forEach(th=>th.addEventListener("click",()=>{
  if(sortKey===th.dataset.sort)descending=!descending;else{sortKey=th.dataset.sort;descending=sortKey!=="name"&&sortKey!=="guild";}
  render();

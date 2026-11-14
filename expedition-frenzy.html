@@ -12,7 +12,7 @@ th{white-space:nowrap;color:#9eb1c8;cursor:pointer}tbody tr:hover{background:#1d
 @media(max-width:700px){body{padding:12px}.controls label{width:100%}.controls select,.controls input{flex:1}.metric{font-size:23px}}
 </style></head><body><main>
 <header><div><h1>Expedition Frenzy</h1><p>Daily player contribution leaderboard · event timestamps in UTC · sourced from decoded network events</p></div>
-<nav class="nav"><a href="./index.html">Player Locator</a> · <a href="./vs.html">VS Analytics</a> · <a href="./donations.html">Donations</a> · <a href="./activity.html">Activity</a></nav></header>
+</header>
 <div class="panel"><div class="controls">
 <label>Date <select id="day"></select></label><label>Server <select id="server"></select></label>
 <label>Guild <select id="guild"></select></label><label>Player <input type="search" id="search" placeholder="Search players"></label>
@@ -123,4 +123,4 @@ document.querySelectorAll("th[data-sort]").forEach(th=>th.addEventListener("clic
  render();
 }));
 $("export").addEventListener("click",exportCsv);init();
-</script></body></html>
+</script><script defer src="./site-nav.js?v=20261114-1"></script></body></html>

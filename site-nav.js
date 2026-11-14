@@ -8,6 +8,7 @@
     ["recruitment.html","Recruitment"],
     ["activity.html","Player Activity"],
     ["vs.html","VS Analytics"],
+    ["expedition-frenzy.html","Expedition Frenzy"],
     ["donations.html","Donations"],
     ["review.html","Performance Review"],
     ["tools.html","Tools Hub"],

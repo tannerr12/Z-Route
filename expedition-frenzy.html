@@ -16,10 +16,10 @@ th{white-space:nowrap;color:#9eb1c8;cursor:pointer}tbody tr:hover{background:#1d
 <div class="panel"><div class="controls">
 <label>Date <select id="day"></select></label><label>Server <select id="server"></select></label>
 <label>Guild <select id="guild"></select></label><label>Player <input type="search" id="search" placeholder="Search players"></label>
-<label>View <select id="view"><option value="day">Selected day</option><option value="all">All recorded days</option></select></label>
+<label>View <select id="view"><option value="through">Cumulative through date</option><option value="day">Selected day only</option><option value="all">All recorded days</option></select></label>
 <button id="export">Export leaderboard CSV</button></div>
 <p class="small" id="meta">Loading captures…</p>
-<div class="notice">Scores are sums of observed player event records, not verified in-game leaderboard totals. Missing events and player activity are not inferred. Repeat scans merge event occurrences without summing the same snapshot twice.</div></div>
+<div class="notice">Default view is cumulative through the selected UTC date. Switch to Selected day only for points earned that day. Scores are sums of observed player event records, not verified in-game leaderboard totals. Missing events and player activity are not inferred. Repeat scans merge event occurrences without summing the same snapshot twice.</div></div>
 <div class="panel metrics"><div><div class="small">Observed points</div><div class="metric" id="total">—</div></div>
 <div><div class="small">Players with events</div><div class="metric" id="players">—</div></div>
 <div><div class="small">Player events</div><div class="metric" id="events">—</div></div>
@@ -40,7 +40,7 @@ function options(sel, entries, label) {
 function filters() {
   const day=$("day").value, server=$("server").value, guild=$("guild").value, query=$("search").value.toLocaleLowerCase();
   return events.filter(e=>
-    ($("view").value==="all" || e.event_day_utc===day) &&
+    ($("view").value==="all" || ($("view").value==="through" ? e.event_day_utc<=day : e.event_day_utc===day)) &&
     (!server || String(e.player_server)===server) &&
     (!guild || String(e.player_guild||"")===guild) &&
     (!query || String(e.player_name||"").toLocaleLowerCase().includes(query)));
@@ -98,10 +98,10 @@ function render() {
 function exportCsv(){
  const list=totals(filters()).sort((a,b)=>b.points-a.points);
  const data=[["rank","player_id","player","guild","server","points","event_count","date_utc"]];
- list.forEach((p,i)=>data.push([i+1,p.id,p.name,p.guild,p.server,p.points,p.events,$("view").value==="all"?"all":$("day").value]));
+ list.forEach((p,i)=>data.push([i+1,p.id,p.name,p.guild,p.server,p.points,p.events,$("view").value==="all"?"all":$("view").value+"_"+$("day").value]));
  const csv=data.map(r=>r.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(",")).join("\r\n");
  const link=document.createElement("a");link.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
- link.download="expedition_frenzy_"+($("view").value==="all"?"all":$("day").value)+".csv";link.click();URL.revokeObjectURL(link.href);
+ link.download="expedition_frenzy_"+($("view").value==="all"?"all":$("view").value+"_"+$("day").value)+".csv";link.click();URL.revokeObjectURL(link.href);
 }
 async function init(){
  try{

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Z-Route | Expedition Frenzy Daily Leaderboard</title>
+<style>
+:root{color-scheme:dark;background:#091321;color:#e9f1fc;font:15px system-ui,-apple-system,Segoe UI,sans-serif}*{box-sizing:border-box}
+body{margin:0;padding:23px}main{max-width:1350px;margin:auto}a{color:#91cbff}h1{margin:0 0 4px;font-size:26px}p,.muted{color:#9eb1c8}header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap}.nav{line-height:2}
+.panel{background:#102035;border:1px solid #30465e;border-radius:12px;padding:18px;margin-top:16px}.controls,.metrics{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.controls label{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.controls select,.controls input,.controls button{background:#15263a;color:#e9f1fc;border:1px solid #40556d;border-radius:8px;padding:9px;font:inherit}
+.controls button{cursor:pointer}.controls input{min-width:165px}.metrics>div{flex:1;min-width:160px}.metric{font-size:27px;font-weight:750}.small{font-size:12px;color:#9eb1c8}.notice{padding:10px 12px;background:#1b344c;border-left:3px solid #7eb5ea;border-radius:5px;color:#d1e2f2}
+.scroll{overflow:auto}table{width:100%;border-collapse:collapse;min-width:710px}th,td{padding:10px;border-bottom:1px solid #30465e;text-align:right}th:first-child,td:first-child,th:nth-child(2),td:nth-child(2),th:nth-child(3),td:nth-child(3){text-align:left}
+th{white-space:nowrap;color:#9eb1c8;cursor:pointer}tbody tr:hover{background:#1d344a}tbody tr{cursor:pointer}tr.selected{background:#27445d}button{cursor:pointer}canvas{width:100%;height:220px}
+.badge{display:inline-block;background:#264761;padding:3px 7px;border-radius:6px;font-size:12px}.warn{color:#ffc784}#detail{min-height:60px}#status{padding:12px 0;color:#b9cbdd}
+@media(max-width:700px){body{padding:12px}.controls label{width:100%}.controls select,.controls input{flex:1}.metric{font-size:23px}}
+</style></head><body><main>
+<header><div><h1>Expedition Frenzy</h1><p>Daily player contribution leaderboard · event timestamps in UTC · sourced from decoded network events</p></div>
+<nav class="nav"><a href="./index.html">Player Locator</a> · <a href="./vs.html">VS Analytics</a> · <a href="./donations.html">Donations</a> · <a href="./activity.html">Activity</a></nav></header>
+<div class="panel"><div class="controls">
+<label>Date <select id="day"></select></label><label>Server <select id="server"></select></label>
+<label>Guild <select id="guild"></select></label><label>Player <input type="search" id="search" placeholder="Search players"></label>
+<label>View <select id="view"><option value="day">Selected day</option><option value="all">All recorded days</option></select></label>
+<button id="export">Export leaderboard CSV</button></div>
+<p class="small" id="meta">Loading captures…</p>
+<div class="notice">Scores are sums of observed player event records, not verified in-game leaderboard totals. Missing events and player activity are not inferred. Repeat scans merge event occurrences without summing the same snapshot twice.</div></div>
+<div class="panel metrics"><div><div class="small">Observed points</div><div class="metric" id="total">—</div></div>
+<div><div class="small">Players with events</div><div class="metric" id="players">—</div></div>
+<div><div class="small">Player events</div><div class="metric" id="events">—</div></div>
+<div><div class="small">Last imported capture (UTC)</div><div id="last" class="metric" style="font-size:16px">—</div></div></div>
+<div class="panel"><h2>Leaderboard</h2><div class="scroll"><table id="board"><thead><tr><th data-sort="rank">Rank</th><th data-sort="name">Player</th><th data-sort="guild">Guild</th><th data-sort="server">Server</th><th data-sort="points">Points</th><th data-sort="events">Events</th><th data-sort="types">Event types</th></tr></thead><tbody></tbody></table></div><p id="status"></p></div>
+<div class="panel"><h2>Daily score trend</h2><canvas id="trend" width="1000" height="235" aria-label="Observed points per day"></canvas><p class="small">Totals reflect captured events only. A later import may add previously unseen historical events to earlier days.</p></div>
+<div class="panel"><h2>Player event breakdown</h2><div id="detail" class="muted">Select a player from the leaderboard to see individual recorded score events.</div></div>
+</main><script>
+"use strict";
+const fmt = n => new Intl.NumberFormat("en-CA").format(n);
+const $ = id => document.getElementById(id);
+let events=[], runs=[], selected=null, sortKey="points", descending=true;
+const safe = s => String(s ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function options(sel, entries, label) {
+  sel.replaceChildren(); if(label){const o=document.createElement("option");o.value="";o.textContent=label;sel.append(o);}
+  for(const v of entries){const o=document.createElement("option");o.value=String(v);o.textContent=String(v);sel.append(o);}
+}
+function filters() {
+  const day=$("day").value, server=$("server").value, guild=$("guild").value, query=$("search").value.toLocaleLowerCase();
+  return events.filter(e=>
+    ($("view").value==="all" || e.event_day_utc===day) &&
+    (!server || String(e.player_server)===server) &&
+    (!guild || String(e.player_guild||"")===guild) &&
+    (!query || String(e.player_name||"").toLocaleLowerCase().includes(query)));
+}
+function totals(source) {
+  const people=new Map;
+  source.forEach(e=>{
+    const key=String(e.player_server)+":"+String(e.player_id);
+    if(!people.has(key))people.set(key,{id:key,name:e.player_name,guild:e.player_guild||"—",server:e.player_server,points:0,events:0,types:new Set});
+    const p=people.get(key);p.name=e.player_name;p.guild=e.player_guild||p.guild;p.points+=Number(e.points);p.events++;p.types.add(e.event_type_code);
+  });
+  return [...people.values()];
+}
+function sorting(a,b) {
+  const v = sortKey==="rank"?"points":sortKey;
+  const A=a[v],B=b[v];
+  let n=(typeof A==="number"&&typeof B==="number")?A-B:String(A).localeCompare(String(B),undefined,{numeric:true});
+  return descending?-n:n;
+}
+function drawTrend() {
+  const canvas=$("trend"),c=canvas.getContext("2d"),W=canvas.width,H=canvas.height;c.clearRect(0,0,W,H);
+  const days=[...new Set(events.map(e=>e.event_day_utc))].sort();
+  const server=$("server").value,guild=$("guild").value,q=$("search").value.toLocaleLowerCase();
+  const values=days.map(d=>events.filter(e=>e.event_day_utc===d&&(!server||String(e.player_server)===server)&&(!guild||e.player_guild===guild)&&(!q||e.player_name.toLocaleLowerCase().includes(q))).reduce((s,e)=>s+Number(e.points),0));
+  if(!days.length)return;
+  const max=Math.max(1,...values),gap=(W-95)/days.length;
+  c.fillStyle="#9eb1c8";c.font="14px system-ui";c.fillText(fmt(max),8,20);c.fillText("0",45,H-35);
+  days.forEach((d,i)=>{const x=70+i*gap+gap*.13,h=values[i]/max*(H-70);
+    c.fillStyle="#69b9fa";c.fillRect(x,H-39-h,gap*.72,h);
+    c.fillStyle="#d6e5f5";c.fillText(d.slice(5),x,H-15);
+    c.fillText(fmt(values[i]),x,Math.max(18,H-47-h));});
+}
+function drawDetail(){
+ const root=$("detail");
+ const individual=events.filter(e=>String(e.player_server)+":"+String(e.player_id)===selected).sort((a,b)=>b.timestamp_utc.localeCompare(a.timestamp_utc));
+ if(!individual.length){root.textContent="Select a player from the leaderboard to see individual recorded score events.";return;}
+ const p=individual[0];
+ root.innerHTML="<strong>"+safe(p.player_name)+"</strong> · "+safe(p.player_guild)+" · S"+safe(p.player_server)+
+ "<p class='small'>"+individual.length+" recorded events across all dates. The event-type codes have not been mapped to game actions.</p>"+
+ "<div class='scroll'><table><thead><tr><th>Event time (UTC)</th><th>Type</th><th>Points</th><th>First seen (UTC)</th></tr></thead><tbody>"+
+ individual.map(e=>"<tr><td>"+safe(e.timestamp_utc)+"</td><td>"+safe(e.event_type_code)+"</td><td>"+fmt(Number(e.points))+"</td><td>"+safe(e.first_seen_at||"—")+"</td></tr>").join("")+
+ "</tbody></table></div>";
+}
+function render() {
+ const filtered=filters(),all=totals(filtered),ranked=[...all].sort((a,b)=>b.points-a.points||a.name.localeCompare(b.name));
+ const positions=new Map(ranked.map((p,i)=>[p.id,i+1]));
+ all.forEach(p=>p.rank=positions.get(p.id));all.sort(sorting);
+ $("total").textContent=fmt(filtered.reduce((s,e)=>s+Number(e.points),0));
+ $("players").textContent=fmt(all.length);$("events").textContent=fmt(filtered.length);
+ $("status").textContent=all.length?all.length+" players shown. Click a row for event details.":"No player events match this selection; missing data is not zero.";
+ $("board").querySelector("tbody").innerHTML=all.map(p=>"<tr data-id='"+safe(p.id)+"' class='"+(selected===p.id?"selected":"")+"'><td>"+p.rank+"</td><td>"+safe(p.name)+"</td><td>"+safe(p.guild)+"</td><td>S"+safe(p.server)+"</td><td>"+fmt(p.points)+"</td><td>"+p.events+"</td><td>"+[...p.types].sort().join(", ")+"</td></tr>").join("");
+ $("board").querySelectorAll("tbody tr").forEach(tr=>tr.addEventListener("click",()=>{selected=tr.dataset.id;render();}));
+ drawTrend();drawDetail();
+}
+function exportCsv(){
+ const list=totals(filters()).sort((a,b)=>b.points-a.points);
+ const data=[["rank","player_id","player","guild","server","points","event_count","date_utc"]];
+ list.forEach((p,i)=>data.push([i+1,p.id,p.name,p.guild,p.server,p.points,p.events,$("view").value==="all"?"all":$("day").value]));
+ const csv=data.map(r=>r.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(",")).join("\r\n");
+ const link=document.createElement("a");link.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+ link.download="expedition_frenzy_"+($("view").value==="all"?"all":$("day").value)+".csv";link.click();URL.revokeObjectURL(link.href);
+}
+async function init(){
+ try{
+ const res=await fetch("./data/expedition_frenzy/events.json",{cache:"no-store"});if(!res.ok)throw Error("HTTP "+res.status);
+ const store=await res.json();if(store.schema_version!==1)throw Error("Unsupported data schema");
+ events=(store.events||[]).filter(e=>e.category==="player"&&e.player_id&&e.timestamp_utc&&Number.isFinite(Number(e.points))).map(e=>({...e,event_day_utc:e.event_day_utc||e.timestamp_utc.slice(0,10)}));
+ runs=store.runs||[];
+ const days=[...new Set(events.map(e=>e.event_day_utc))].sort().reverse();
+ options($("day"),days);options($("server"),[...new Set(events.map(e=>e.player_server))].sort((a,b)=>a-b),"All servers");
+ options($("guild"),[...new Set(events.map(e=>e.player_guild).filter(Boolean))].sort(),"All guilds");
+ $("meta").textContent=fmt(events.length)+" distinct observed player event occurrences · "+fmt(runs.length)+" imported scan(s) · Daily buckets use UTC event date.";
+ $("last").textContent=runs.length?new Date(runs[runs.length-1].captured_at_utc).toISOString().replace("T"," ").slice(0,16)+" UTC":"No scans";
+ render();
+ }catch(e){$("status").textContent="Unable to load event history: "+e.message;$("meta").textContent="Data unavailable";}
+}
+["day","server","guild","search","view"].forEach(id=>$(id).addEventListener(id==="search"?"input":"change",render));
+document.querySelectorAll("th[data-sort]").forEach(th=>th.addEventListener("click",()=>{
+ if(sortKey===th.dataset.sort)descending=!descending;else{sortKey=th.dataset.sort;descending=sortKey!=="name"&&sortKey!=="guild";}
+ render();
+}));
+$("export").addEventListener("click",exportCsv);init();
+</script></body></html>

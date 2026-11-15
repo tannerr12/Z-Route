@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Z-Route | Expedition Frenzy Guild Rankings</title>
+<style>
+:root{color-scheme:dark;font:15px system-ui,-apple-system,Segoe UI,sans-serif;background:#091321;color:#e9f1fc}
+*{box-sizing:border-box}body{margin:0;padding:23px}main{max-width:1390px;margin:auto}h1{margin:0 0 5px;font-size:27px}p,.muted,small{color:#9eb1c8}
+.panel{background:#102035;border:1px solid #30465e;border-radius:12px;padding:18px;margin:15px 0}
+.controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.controls label{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+select,input,button{font:inherit;color:#e9f1fc;background:#15263a;border:1px solid #40556d;border-radius:8px;padding:9px}
+input{min-width:190px}button{cursor:pointer}button:hover{background:#244561}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}.metric{font-weight:750;font-size:28px;margin-top:6px}
+.scroll{overflow:auto}table{border-collapse:collapse;width:100%;min-width:790px}th,td{padding:10px 12px;border-bottom:1px solid #30465e;text-align:right}
+th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
+th{color:#a8bdd5;cursor:pointer}tbody tr:hover{background:#20364e}tbody tr{cursor:pointer}
+tbody tr.selected{background:#284864}a{color:#91cbff}
+.tag{display:inline-block;border-radius:5px;background:#26435c;padding:3px 7px;font-weight:650}
+.notice{font-size:13px;border-left:3px solid #719dd0;padding:9px 13px;background:#1b344c;color:#c8dbed}
+#detail{min-height:50px}#status{color:#b2c9df}
+@media(max-width:650px){body{padding:12px}.controls label{width:100%}.controls select,.controls input{flex:1}}
+</style></head><body><main>
+<header><h1>Expedition Frenzy · Guild Rankings</h1>
+<p>Captured leaderboard snapshots · Guild totals, participating commanders, and player score drill-down</p></header>
+<section class="panel"><div class="controls">
+<label>Snapshot <select id="snapshot"></select></label>
+<label>Server <select id="server"><option value="">Both servers</option></select></label>
+<label>Search guild / player <input id="search" type="search" placeholder="Guild tag, name, or commander"></label>
+<label>Sort guilds <select id="sort"><option value="points">Highest combined score</option><option value="count">Most players</option><option value="average">Highest average score</option><option value="best">Best individual score</option><option value="name">Guild name</option></select></label>
+<button id="exportGuild">Export guild CSV</button><button id="exportPlayers">Export player CSV</button>
+</div><p id="meta" class="muted"></p>
+<div class="notice">These are scores from the selected network leaderboard snapshot, not sums of Expedition Frenzy reward-event records. Each snapshot represents one observation; repeated scans must replace the same-day observation rather than add scores. Missing players are not assumed to have zero points.</div></section>
+<div class="metrics">
+<div class="panel"><small>Players represented</small><div class="metric" id="playerCount">—</div></div>
+<div class="panel"><small>Guild / server groups</small><div class="metric" id="guildCount">—</div></div>
+<div class="panel"><small>Combined recorded points</small><div class="metric" id="points">—</div></div>
+<div class="panel"><small>Top guild by points</small><div class="metric" id="topGuild" style="font-size:21px">—</div></div>
+</div>
+<section class="panel"><h2>Guild leaderboard</h2><div class="scroll"><table id="guildTable"><thead><tr><th>Rank</th><th>Guild</th><th>Server</th><th>Players</th><th>Combined points</th><th>Average / player</th><th>Top player</th><th>Top player score</th></tr></thead><tbody></tbody></table></div><p id="status"></p></section>
+<section class="panel"><h2>Guild player details</h2><div id="detail" class="muted">Select a guild above to see each player's global rank and score.</div></section>
+</main>
+<script>
+"use strict";
+const $=s=>document.getElementById(s),fmt=n=>new Intl.NumberFormat("en-CA").format(n),safe=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let snapshots=[],selectedGuild=null,currentGroups=[];
+function setOpts(el, values, fallback){el.replaceChildren();if(fallback){const o=new Option(fallback,"");el.add(o)}values.forEach(v=>el.add(new Option(String(v),String(v))))}
+function snapshot(){return snapshots.find(s=>s.snapshot_id===$("snapshot").value)||null}
+function matchingPlayers(){
+ const s=snapshot(),server=$("server").value,q=$("search").value.trim().toLocaleLowerCase();
+ if(!s)return [];
+ const players=(s.players||[]).filter(p=>!server||String(p.server)===server);
+ if(!q)return players;
+ const fullGuilds=new Set(players.filter(p=>(p.guild||"").toLocaleLowerCase().includes(q)||(p.guild_name||"").toLocaleLowerCase().includes(q)).map(p=>p.server+":"+(p.guild||"")));
+ return players.filter(p=>fullGuilds.has(p.server+":"+(p.guild||""))||(p.name||"").toLocaleLowerCase().includes(q));
+}
+function groupPlayers(players){
+ const groups=new Map;
+ for(const p of players){
+  const tag=p.guild||"",key=p.server+":"+tag;
+  if(!groups.has(key))groups.set(key,{key,server:p.server,tag,name:p.guild_name||"",players:[],points:0});
+  const g=groups.get(key);g.players.push(p);g.points+=Number(p.points)||0;
+ }
+ return [...groups.values()].map(g=>{
+  g.players.sort((a,b)=>Number(b.points)-Number(a.points));
+  g.count=g.players.length;g.average=g.count?g.points/g.count:0;g.best=g.players[0]||null;return g;
+ });
+}
+function renderDetails(){
+ const root=$("detail"),g=currentGroups.find(v=>v.key===selectedGuild);
+ if(!g){root.textContent="Select a guild above to inspect its members and leaderboard points.";return}
+ root.innerHTML="<h3>"+safe(g.tag||"Unaffiliated")+" · "+safe(g.name||"No guild name")+" · S"+safe(g.server)+"</h3>"+
+ "<p>"+fmt(g.count)+" players · "+fmt(g.points)+" total captured points · "+fmt(Math.round(g.average))+" average points per player</p>"+
+ "<div class='scroll'><table><thead><tr><th>Commander</th><th>Global rank</th><th>Player ID</th><th>Points</th></tr></thead><tbody>"+
+ g.players.map(p=>"<tr><td>"+safe(p.name)+"</td><td>"+fmt(p.rank)+"</td><td>"+safe(p.id)+"</td><td>"+fmt(p.points)+"</td></tr>").join("")+
+ "</tbody></table></div>";
+}
+function render(){
+ const players=matchingPlayers(),sort=$("sort").value;
+ currentGroups=groupPlayers(players);
+ currentGroups.sort((a,b)=>sort==="name"?(a.tag||"").localeCompare(b.tag||""):
+  sort==="count"?b.count-a.count||b.points-a.points:
+  sort==="average"?b.average-a.average||b.points-a.points:
+  sort==="best"?(b.best?.points||0)-(a.best?.points||0):
+  b.points-a.points||b.count-a.count);
+ $("playerCount").textContent=fmt(players.length);
+ $("guildCount").textContent=fmt(currentGroups.length);
+ $("points").textContent=fmt(players.reduce((n,p)=>n+(Number(p.points)||0),0));
+ $("topGuild").textContent=currentGroups.length?(currentGroups.slice().sort((a,b)=>b.points-a.points)[0].tag||"Unaffiliated"):"—";
+ $("guildTable").querySelector("tbody").innerHTML=currentGroups.map((g,i)=>
+  "<tr data-key='"+safe(g.key)+"' class='"+(selectedGuild===g.key?"selected":"")+"'><td>"+(i+1)+"</td>"+
+  "<td><span class='tag'>"+safe(g.tag||"Unaffiliated")+"</span> "+safe(g.name)+"</td>"+
+  "<td>S"+safe(g.server)+"</td><td>"+fmt(g.count)+"</td><td>"+fmt(g.points)+"</td>"+
+  "<td>"+fmt(Math.round(g.average))+"</td><td>"+safe(g.best?.name||"—")+"</td>"+
+  "<td>"+fmt(g.best?.points||0)+"</td></tr>").join("");
+ $("guildTable").querySelectorAll("tbody tr").forEach(row=>row.addEventListener("click",()=>{selectedGuild=row.dataset.key;render()}));
+ $("status").textContent=currentGroups.length?fmt(currentGroups.length)+" guild/server groups shown. Click a row for player details.":"No players match your filters.";
+ renderDetails();
+}
+function csv(rows,filename){
+ const data=rows.map(r=>r.map(v=>'"'+String(v??"").replace(/"/g,'""')+'"').join(",")).join("\r\n");
+ const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([data],{type:"text/csv;charset=utf-8"}));a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500);
+}
+function exportGuild(){
+ csv([["server","guild_tag","guild_name","players","combined_points","average_points","top_player","top_player_points"],...currentGroups.map(g=>[g.server,g.tag,g.name,g.count,g.points,Math.round(g.average),g.best?.name,g.best?.points])],"expedition_frenzy_guilds_"+$("snapshot").value+".csv")
+}
+function exportPlayers(){
+ csv([["server","guild","guild_name","rank","player_id","name","points"],...matchingPlayers().map(p=>[p.server,p.guild,p.guild_name,p.rank,p.id,p.name,p.points])],"expedition_frenzy_players_"+$("snapshot").value+".csv")
+}
+async function init(){
+ try{
+ const res=await fetch("./data/expedition_frenzy/rankings.json",{cache:"no-store"});if(!res.ok)throw Error("HTTP "+res.status);
+ const data=await res.json();if(data.schema_version!==1)throw Error("Unsupported schema");
+ snapshots=data.snapshots||[];snapshots.sort((a,b)=>b.captured_at_utc.localeCompare(a.captured_at_utc));
+ const snapSelect=$("snapshot");snapSelect.replaceChildren();
+ snapshots.forEach(s=>snapSelect.add(new Option(new Date(s.captured_at_utc).toISOString().replace("T"," ").slice(0,16)+" UTC · "+fmt(s.players.length)+" players",s.snapshot_id)));
+ setOpts($("server"),[...new Set(snapshots.flatMap(s=>s.players.map(p=>p.server)))].sort(),"Both servers");
+ $("meta").textContent=fmt(snapshots.length)+" published capture(s) · latest recorded "+(snapshots[0]?.captured_at_utc||"none")+
+ " · Guild counts reflect only ranked players represented in the selected snapshot.";
+ render();
+ }catch(err){$("status").textContent="Unable to load ranking snapshots: "+err.message;$("meta").textContent="Data unavailable"}
+}
+["snapshot","server","search","sort"].forEach(id=>$(id).addEventListener(id==="search"?"input":"change",()=>{selectedGuild=null;render()}));
+$("exportGuild").addEventListener("click",exportGuild);$("exportPlayers").addEventListener("click",exportPlayers);init();
+</script><script defer src="./site-nav.js?v=20261115-1"></script></body></html>

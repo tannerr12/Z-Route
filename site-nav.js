@@ -9,6 +9,7 @@
     ["activity.html","Player Activity"],
     ["vs.html","VS Analytics"],
     ["expedition-frenzy.html","Expedition Frenzy"],
+    ["expedition-guilds.html","Frenzy Guilds"],
     ["donations.html","Donations"],
     ["review.html","Performance Review"],
     ["tools.html","Tools Hub"],

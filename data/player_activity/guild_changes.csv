@@ -218,3 +218,4 @@ timestamp,player,guild,event,scanned_at,actor,game_event_time_utc,event_epoch_ms
 2026.11.17 04:43:34,SpaceCat888,,removed,2026-11-17T14:00:01.487316+00:00,GolferGirl124,2026-11-17T04:43:33.766+00:00,1794890613766,uop_37e4cf2f76f1dee5ccde8e9f51aa72d5,union_oplog_network,140156641405,unique_history_name_s125
 2026.11.18 05:19:29,KnightIsolde,,joined,2026-11-18T14:09:57.619696+00:00,,2026-11-18T05:19:28.778+00:00,1794979168778,uop_23fa61f2939976a76a1118e1b76bfbe9,union_oplog_network,141859782781,unique_history_name_s125
 2026.11.19 00:37:38,KnightIsolde,,left,2026-11-19T04:55:23.366793+00:00,,2026-11-19T00:37:37.658+00:00,1795048657658,uop_4339b1c53fbef409421c985590cb2cdf,union_oplog_network,141859782781,unique_history_name_s125
+2026.11.19 05:51:53,Eclips3,,removed,2026-11-19T14:09:29.143429+00:00,GolferGirl124,2026-11-19T05:51:52.733+00:00,1795067512733,uop_fab63032b0fc040fc2f3b227cfdb9dd9,union_oplog_network,138736550013,unique_history_name_s125

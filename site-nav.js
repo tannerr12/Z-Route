@@ -12,6 +12,7 @@
     ["expedition-guilds.html","Frenzy Guilds"],
     ["donations.html","Donations"],
     ["review.html","Performance Review"],
+    ["chopping-block.html","Chopping Block"],
     ["tools.html","Tools Hub"],
     ["equipment.html","Equipment"]
   ];

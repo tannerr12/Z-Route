@@ -16,7 +16,7 @@ function build(input,opts){
  }
  for(const p of rosterById.values())for(const a of new Set(p.aliases.map(key).filter(Boolean))){if(!names.has(a))names.set(a,new Set());names.get(a).add(p.id);}
  function identity(name,id){if(id)return "id:"+String(id);const ids=names.get(key(name));return ids?.size===1?"id:"+[...ids][0]:"name:"+key(name);}
- const map=new Map(),events=new Map();
+ const map=new Map(),events=new Map(),ambiguousIds=new Set();
  function row(name,id){const ident=identity(name,id),p=ident.startsWith("id:")?rosterById.get(ident.slice(3)):null;
   if(!map.has(ident))map.set(ident,{id:ident,name:p?.name||String(name).trim(),aliases:p?.aliases||[name],don:null,vs:new Map(),meta:null,missing:[],below:[],missingEntry:[],identityAmbiguous:!id&&(names.get(key(name))?.size||0)>1,current:!!p&&key(p.guild)==="d3ad"});
   return map.get(ident);
@@ -33,14 +33,14 @@ function build(input,opts){
  // weeks exclude known post-week joins unless other evidence places them in the week.
  for(const p of rosterById.values())if(key(p.guild)==="d3ad"){
   const es=events.get("id:"+p.id)||[],prior=es.filter(e=>e.date<end).at(-1),next=es.find(e=>e.date>=end);
-  if((prior?.kind==="left"&&!es.some(e=>e.kind==="join"&&e.date>=week&&e.date<end))||(next?.kind==="join"&&!prior))continue;
+  if(end<=today&&((prior?.kind==="left"&&!es.some(e=>e.kind==="join"&&e.date>=week&&e.date<end))||(next?.kind==="join"&&!prior)))continue;
   row(p.name,p.id);
  }
  // D3AD alliance-oplog departures and joins in the selected week are roster
  // evidence even if those players never appeared on a score list.
  for(const es of events.values())for(const e of es)if(e.date>=week&&e.date<end)row(e.name,e.id);
  function latest(list){const rows=list.filter(r=>r.username&&valid(r.points));const stamp=rows.map(r=>r.captured_at||"").sort().at(-1)||"";return stamp?rows.filter(r=>r.captured_at===stamp):rows;}
- function scoreMap(list){const out=new Map();for(const r of latest(list)){const m=row(r.username,r.player_id);out.set(m.id,Math.max(out.get(m.id)??0,Number(r.points)));}return out;}
+ function scoreMap(list){const out=new Map();for(const r of latest(list)){if(!r.player_id&&names.get(key(r.username))?.size>1)for(const id of names.get(key(r.username)))ambiguousIds.add("id:"+id);const m=row(r.username,r.player_id);out.set(m.id,Math.max(out.get(m.id)??0,Number(r.points)));}return out;}
  const dailyVS=new Map();
  for(const d of activeDays){const list=latest((input.vs||[]).filter(r=>r.week_start===week&&r.day===d));if(list.length)dailyVS.set(d,scoreMap(list));}
  const dailyDon=new Map();
@@ -57,6 +57,7 @@ function build(input,opts){
  const excluded={joined:0,left:0,total:0};
  const rows=[];
  for(const m of map.values()){
+  if(ambiguousIds.has(m.id))m.identityAmbiguous=true;
   const es=events.get(m.id)||[],joined=es.filter(e=>e.kind==="join").at(-1),weekEvents=es.filter(e=>e.date>=week&&e.date<end&&e.date<=today);
   const joinedWeek=weekEvents.some(e=>e.kind==="join"),leftWeek=weekEvents.some(e=>e.kind==="left");
   if(joined&&joined.date<=today)m.meta={...(m.meta||{}),joined_at:joined.date};
@@ -65,8 +66,8 @@ function build(input,opts){
   for(const d of activeDays){const list=dailyVS.get(d);if(!list){m.missing.push(d);continue;}if(list.has(m.id)){m.vs.set(d,list.get(m.id));continue;}if(m.identityAmbiguous){m.missing.push(d);continue;}m.vs.set(d,0);m.missingEntry.push(d);}
   if(weeklyDon){m.don=weeklyDon.has(m.id)?weeklyDon.get(m.id):m.identityAmbiguous?null:0;m.donAbsent=!weeklyDon.has(m.id)&&m.don===0;}
   else if(dailyDon.size){const lists=[...dailyDon.values()],has=lists.some(x=>x.has(m.id));m.don=m.identityAmbiguous?null:lists.reduce((sum,x)=>sum+(x.get(m.id)??0),0);m.donAbsent=!has&&m.don===0;}
-  m.lowDon=m.don!==null&&m.don<effectiveDonGoal;
-  m.below=activeDays.filter(d=>m.vs.has(d)&&m.vs.get(d)<vsGoal);
+  m.lowDon=!m.identityAmbiguous&&m.don!==null&&m.don<effectiveDonGoal;
+  m.below=m.identityAmbiguous?[]:activeDays.filter(d=>m.vs.has(d)&&m.vs.get(d)<vsGoal);
   m.vsIssues=m.below.length>0;m.review=m.lowDon||m.vsIssues;
   rows.push(m);
  }

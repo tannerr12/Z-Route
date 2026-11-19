@@ -6,7 +6,7 @@
 @media print{body{background:white;color:black}nav,.tools,.actions{display:none}.panel,td:first-child{background:white;color:black}table{font-size:10px}}
 </style></head><body><main>
 <header><div><h1>Alliance Performance Review</h1><p class="muted">Management-style review · member donations + individual VS days · Monday UTC reset</p></div></header>
-<section class="panel tools"><label>Guild <select id="guild"></select></label><label>Week starting <select id="week"></select></label><label>Donation minimum <input id="donGoal" type="number" min="0" value="25200" step="100"></label><label>Daily VS goal <input id="vsGoal" type="number" min="0" value="1000000" step="10000"></label><label>Show <select id="filter"><option value="all">All recorded players</option><option value="review">Needs review</option><option value="don">Low donations</option><option value="vs">VS concerns</option><option value="missing">Missing records</option></select></label><label>Search <input id="search" placeholder="Player name"></label><button id="copyBad" type="button" title="Copy low-donation and below-target VS members as game HTML">Copy Bad Standings</button><span id="copyStatus" role="status" aria-live="polite" class="muted"></span></section>
+<section class="panel tools"><label>Guild <select id="guild"></select></label><label>Week starting <select id="week"></select></label><label>Weekly donation minimum <input id="donGoal" type="number" min="0" value="25200" step="100"></label><label>Daily VS goal <input id="vsGoal" type="number" min="0" value="1000000" step="10000"></label><label>Show <select id="filter"><option value="all">All members</option><option value="review">Needs review</option><option value="don">Low donations</option><option value="vs">VS concerns</option><option value="missing">Missing records</option></select></label><label>Search <input id="search" placeholder="Player name"></label><label><input id="excludeToday" type="checkbox" checked> Exclude today (UTC)</label><label><input id="excludeJoined" type="checkbox" checked> Exclude joined this week</label><label><input id="excludeLeft" type="checkbox" checked> Exclude left / removed this week</label><button id="copyBad" type="button" title="Copy visible low-donation and below-target VS members as game HTML">Copy Bad Standings</button><span id="copyStatus" role="status" aria-live="polite" class="muted"></span></section>
 <p id="status" role="status">Loading published records…</p><p class="warning" id="dataNotice"></p>
 <section class="cards">
 <div class="panel"><small>Players for review</small><strong id="review">—</strong></div>
@@ -15,13 +15,13 @@
 <div class="panel"><small>Members observed</small><strong id="total">—</strong></div>
 <div class="panel"><small>Join date / shield / Frenzy</small><strong id="coverage">—</strong></div>
 </section>
-<section class="panel"><h2>Individual performance matrix</h2><p class="muted">Click a column heading to sort; click it again to reverse. ✓ meets goal · ▼ below goal · — no record. Missing is not zero. The VS threshold applies <b>per day</b>, not to a weekly total. A current week is provisional.</p><div class="scroll"><table><thead><tr><th data-sort="name" aria-sort="none" role="button" tabindex="0" title="Sort by Player">Player</th><th data-sort="don" aria-sort="none" role="button" tabindex="0" title="Sort by Donations">Donations</th><th data-sort="donFlag" aria-sort="none" role="button" tabindex="0" title="Sort by Donation flag">Donation flag</th><th data-sort="joined" aria-sort="none" role="button" tabindex="0" title="Sort by Join date">Join date</th><th data-sort="shield" aria-sort="none" role="button" tabindex="0" title="Sort by Shield list">Shield list</th><th data-sort="frenzy" aria-sort="none" role="button" tabindex="0" title="Sort by Frenzy">Frenzy</th><th data-sort="MON" aria-sort="none" role="button" tabindex="0" title="Sort by MON">MON</th><th data-sort="TUE" aria-sort="none" role="button" tabindex="0" title="Sort by TUE">TUE</th><th data-sort="WED" aria-sort="none" role="button" tabindex="0" title="Sort by WED">WED</th><th data-sort="THU" aria-sort="none" role="button" tabindex="0" title="Sort by THU">THU</th><th data-sort="FRI" aria-sort="none" role="button" tabindex="0" title="Sort by FRI">FRI</th><th data-sort="SAT" aria-sort="none" role="button" tabindex="0" title="Sort by SAT">SAT</th><th data-sort="total" aria-sort="none" role="button" tabindex="0" title="Sort by Recorded VS total">Recorded VS total</th><th data-sort="below" aria-sort="none" role="button" tabindex="0" title="Sort by VS days below">VS days below</th><th data-sort="missing" aria-sort="none" role="button" tabindex="0" title="Sort by VS days missing">VS days missing</th><th data-sort="review" aria-sort="none" role="button" tabindex="0" title="Sort by Review">Review</th></tr></thead><tbody id="rows"></tbody></table></div></section>
+<section class="panel"><h2>Individual performance matrix</h2><p class="muted">Click a column heading to sort; click it again to reverse. ✓ meets goal · ▼ below goal · 0* absent from captured list · — unknown or excluded. The VS threshold applies <b>per day</b>, not to a weekly total. A current week is provisional.</p><div class="scroll"><table><thead><tr><th data-sort="name" aria-sort="none" role="button" tabindex="0" title="Sort by Player">Player</th><th data-sort="don" aria-sort="none" role="button" tabindex="0" title="Sort by Donations">Donations</th><th data-sort="donFlag" aria-sort="none" role="button" tabindex="0" title="Sort by Donation flag">Donation flag</th><th data-sort="joined" aria-sort="none" role="button" tabindex="0" title="Sort by Join date">Join date</th><th data-sort="shield" aria-sort="none" role="button" tabindex="0" title="Sort by Shield list">Shield list</th><th data-sort="frenzy" aria-sort="none" role="button" tabindex="0" title="Sort by Frenzy">Frenzy</th><th data-sort="MON" aria-sort="none" role="button" tabindex="0" title="Sort by MON">MON</th><th data-sort="TUE" aria-sort="none" role="button" tabindex="0" title="Sort by TUE">TUE</th><th data-sort="WED" aria-sort="none" role="button" tabindex="0" title="Sort by WED">WED</th><th data-sort="THU" aria-sort="none" role="button" tabindex="0" title="Sort by THU">THU</th><th data-sort="FRI" aria-sort="none" role="button" tabindex="0" title="Sort by FRI">FRI</th><th data-sort="SAT" aria-sort="none" role="button" tabindex="0" title="Sort by SAT">SAT</th><th data-sort="total" aria-sort="none" role="button" tabindex="0" title="Sort by Recorded VS total">Recorded VS total</th><th data-sort="below" aria-sort="none" role="button" tabindex="0" title="Sort by VS days below">VS days below</th><th data-sort="missing" aria-sort="none" role="button" tabindex="0" title="Sort by VS days missing">VS days missing</th><th data-sort="review" aria-sort="none" role="button" tabindex="0" title="Sort by Review">Review</th></tr></thead><tbody id="rows"></tbody></table></div></section>
 <section class="summary"><div class="panel"><h2>VS underperformance by day</h2><ul id="underDays"></ul></div><div class="panel"><h2>Missing VS records by day</h2><ul id="missingDays"></ul></div><div class="panel"><h2>Recommended actions</h2><ol id="actions"></ol></div></section>
 <section class="panel actions"><button id="download">Export review CSV</button><button id="print">Print review</button><span class="muted">Optional management metadata: data/review/&lt;guild&gt;/members.csv (username,joined_at,no_shield,frenzy). Unknown data is displayed as —.</span></section>
-</main><script>
+</main><script src="./review-model.js?v=20261119-1"></script><script>
 'use strict';
 const $=id=>document.getElementById(id),DAYS=['MON','TUE','WED','THU','FRI','SAT'],fmt=n=>Number(n).toLocaleString('en-CA');
-const state={guilds:[],don:[],vs:[],members:[],weeks:[],current:[],sortKey:'review',sortDir:'desc'};
+const state={guilds:[],don:[],dailyDon:[],vs:[],members:[],roster:[],changes:[],rosterAt:'',weeks:[],current:[],visible:[],sortKey:'review',sortDir:'desc',loadSeq:0};
 function csv(text){let rows=[],row=[],cell='',quote=false;for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quote&&text[i+1]==='"'){cell+='"';i++}else quote=!quote}else if(c===','&&!quote){row.push(cell);cell=''}else if((c==='\n'||c==='\r')&&!quote){if(c==='\r'&&text[i+1]==='\n')i++;row.push(cell);if(row.some(x=>x.trim()))rows.push(row);row=[];cell=''}else cell+=c}row.push(cell);if(row.some(x=>x.trim()))rows.push(row);let head=(rows.shift()||[]).map((x,i)=>i?x.trim():x.replace(/^\uFEFF/,'').trim());return rows.map(r=>Object.fromEntries(head.map((k,i)=>[k,r[i]||''])))}
 const key=s=>String(s||'').trim().toLocaleLowerCase();
 const validNum=s=>s!==undefined&&String(s).trim()!==''&&Number.isSafeInteger(Number(s))&&Number(s)>=0;
@@ -40,7 +40,7 @@ function sortValue(m,col){
  if(DAYS.includes(col))return m.vs.has(col)?m.vs.get(col):null;
  if(col==='total')return m.vs.size?[...m.vs.values()].reduce((a,b)=>a+b,0):null;
  if(col==='below')return m.below.length;
- if(col==='missing')return m.missing.length;
+ if(col==='missing')return m.missing.length+m.missingEntry.length;
  if(col==='review')return Number(m.review);
  return m.name;
 }
@@ -64,53 +64,43 @@ function selectSort(column){
  else{state.sortKey=column;state.sortDir=column==='name'||column==='joined'?'asc':'desc'}
  build();
 }
-function build(){const w=$('week').value,donGoal=Math.max(0,Number($('donGoal').value)||0),vsGoal=Math.max(0,Number($('vsGoal').value)||0);
- const now=new Date(),start=new Date(w+'T00:00:00Z');
- // The current week's future VS days cannot be missing yet.
- const activeDays=DAYS.filter((d,i)=>new Date(start.getTime()+i*86400000)<=now);
- const map=new Map();function row(name){const id=key(name);if(!map.has(id))map.set(id,{name:name.trim(),don:null,vs:new Map(),meta:null});return map.get(id)}
- for(const d of state.don.filter(x=>x.week_start===w&&x.username&&validNum(x.points))){const m=row(d.username);m.don=Number(d.points);m.name=d.username.trim()}
- for(const v of state.vs.filter(x=>x.week_start===w&&DAYS.includes(x.day)&&x.username&&validNum(x.points))){const m=row(v.username);m.vs.set(v.day,Number(v.points))}
- const meta=new Map(state.members.filter(m=>m.username).map(m=>[key(m.username),m]));
- for(const [id,m] of map){m.meta=meta.get(id)||null;m.lowDon=m.don!==null&&m.don<donGoal;m.below=DAYS.filter(d=>m.vs.has(d)&&m.vs.get(d)<vsGoal);m.missing=activeDays.filter(d=>!m.vs.has(d));m.vsIssues=m.below.length>0||m.missing.length>0;m.review=m.lowDon||m.vsIssues}
- state.current=[...map.values()].sort(compareMembers);
+function build(){const w=$('week').value;if(!validWeek(w)){state.current=[];state.visible=[];return;}const donGoal=Math.max(0,Number($('donGoal').value)||0),vsGoal=Math.max(0,Number($('vsGoal').value)||0),today=new Date().toISOString().slice(0,10);
+ const model=ZRouteReview.build(state,{week:w,today,excludeToday:$('excludeToday').checked,excludeJoined:$('excludeJoined').checked,excludeLeft:$('excludeLeft').checked,donGoal,vsGoal,guild:$('guild').value});
+ state.current=model.rows.sort(compareMembers);
  applySort();
  const r=state.current;
  $('review').textContent=fmt(r.filter(x=>x.review).length);$('lowDon').textContent=fmt(r.filter(x=>x.lowDon).length);
  $('vsIssues').textContent=fmt(r.filter(x=>x.vsIssues).length);$('total').textContent=fmt(r.length);
  $('coverage').textContent=fmt(r.filter(x=>x.meta).length)+' / '+fmt(r.length);
- const end=new Date(w+'T00:00:00Z');end.setUTCDate(end.getUTCDate()+7);
- const demo=[...state.don,...state.vs].some(x=>String(x.evidence||'').toUpperCase().includes('DEMO'));
- $('dataNotice').textContent=(demo?'DEMO records present — figures are not verified management results. ':'')+
- (end>new Date()?'Current week: flags are provisional; future unrecorded days are excluded. ':'')+
- (!state.members.length?'No join/shield/Frenzy metadata available. ':'')+
- 'Only members present in VS or donation files are included; unknown alliance members cannot be counted.';
- const filter=$('filter').value,search=key($('search').value),body=$('rows');body.replaceChildren();
+ const demo=[...state.don,...state.dailyDon,...state.vs].some(x=>String(x.evidence||'').toUpperCase().includes('DEMO'));
+ $('dataNotice').textContent=[demo?'DEMO data — verify results.':'','Donation target: '+fmt(model.effectiveDonGoal)+' ('+model.donationDays+'/7 days; '+model.donationSource+' data).','VS coverage: '+model.vsDays.length+'/'+model.activeDays.length+' eligible days.',$('excludeToday').checked?'Today UTC excluded from both metrics.':'Today may contain unfinished scores.','Excluded '+model.excluded.total+' members (joined '+model.excluded.joined+', left/removed '+model.excluded.left+'; counts can overlap).',key($('guild').value)==='d3ad'?(model.rosterCount?'Current D3AD roster: '+model.rosterCount+' · '+(state.rosterAt||'scan date unknown')+'. Historical membership inferred from available logs and scores.':'D3AD roster unavailable; using score and membership-log records only.'):'Other guilds use available score records; no verified roster or membership log.','Absent from captured list = zero; uncaptured list = unknown.'].filter(Boolean).join(' ');
+ const filter=$('filter').value,body=$('rows');state.visible=ZRouteReview.visible(r,filter,$('search').value);body.replaceChildren();
  function cell(tr,text,cls){const td=document.createElement('td');td.textContent=text;td.className=cls||'';tr.append(td)}
- for(const m of r.filter(x=>key(x.name).includes(search)).filter(x=>filter==='all'||filter==='review'&&x.review||filter==='don'&&x.lowDon||filter==='vs'&&x.vsIssues||filter==='missing'&&(x.don===null||x.missing.length))){const tr=document.createElement('tr'),joined=m.meta?.joined_at||'—',shield=m.meta?value(key(m.meta.no_shield)):null,frenzy=m.meta?value(key(m.meta.frenzy)):null;
- cell(tr,m.name);cell(tr,m.don===null?'—':fmt(m.don));cell(tr,m.don===null?'Missing':m.lowDon?'▼ Low':'✓ OK',m.lowDon?'bad':m.don===null?'quiet':'good');cell(tr,joined);
+ for(const m of state.visible){const tr=document.createElement('tr'),joined=m.meta?.joined_at||'—',shield=m.meta?value(key(m.meta.no_shield)):null,frenzy=m.meta?value(key(m.meta.frenzy)):null;
+ cell(tr,m.name);cell(tr,m.don===null?'—':fmt(m.don)+(m.donAbsent?'*':''));cell(tr,m.don===null?'Unknown':m.lowDon?'▼ Low':'✓ OK',m.lowDon?'bad':m.don===null?'quiet':'good');cell(tr,joined);
  cell(tr,shield===null?'—':shield?'On list':'Not listed',shield?'bad':'quiet');cell(tr,frenzy===null?'—':frenzy?'✓ Yes':'✕ No',frenzy===false?'bad':'quiet');
- for(const day of DAYS){const v=m.vs.get(day);cell(tr,v===undefined?'—':(v>=vsGoal?'✓ ':'▼ ')+fmt(v),v===undefined?'quiet':v>=vsGoal?'good':'bad')}
- const total=[...m.vs.values()].reduce((a,b)=>a+b,0);cell(tr,m.vs.size?fmt(total):'—');cell(tr,String(m.below.length),m.below.length?'bad':'');cell(tr,String(m.missing.length),m.missing.length?'warning':'');
- cell(tr,m.review?'Needs review':'No score flags',m.review?'bad':'good');body.append(tr)}
- function bullets(id,predicate){const list=$(id);list.replaceChildren();for(const d of DAYS){const hits=r.filter(x=>predicate(x,d)).map(x=>x.name);const li=document.createElement('li');li.textContent=d+': '+(hits.length?hits.length+' players · '+hits.slice(0,12).join(', ')+(hits.length>12?'…':''):'none');list.append(li)}}
- bullets('underDays',(m,d)=>m.below.includes(d));bullets('missingDays',(m,d)=>m.missing.includes(d));
+ for(const day of DAYS){const v=m.vs.get(day);cell(tr,v===undefined?'—':(v>=vsGoal?'✓ ':'▼ ')+fmt(v)+(m.missingEntry.includes(day)?'*':''),v===undefined?'quiet':v>=vsGoal?'good':'bad')}
+ const total=[...m.vs.values()].reduce((a,b)=>a+b,0);cell(tr,m.vs.size?fmt(total):'—');cell(tr,String(m.below.length),m.below.length?'bad':'');cell(tr,String(m.missing.length+m.missingEntry.length),m.missing.length||m.missingEntry.length?'warning':'');
+ cell(tr,[m.review?'Needs review':m.don===null||m.missing.length?'Incomplete data':'No score flags',m.joinedWeek?'Joined this week':'',m.leftWeek?'Left / removed':'',m.identityAmbiguous?'Ambiguous identity':''].filter(Boolean).join(' · '),m.review?'bad':m.don===null||m.missing.length?'warning':'good');body.append(tr)}
+ function bullets(id,predicate){const list=$(id);list.replaceChildren();for(const d of model.activeDays){const hits=r.filter(x=>predicate(x,d)).map(x=>x.name);const li=document.createElement('li');li.textContent=d+': '+(hits.length?hits.length+' players · '+hits.slice(0,12).join(', ')+(hits.length>12?'…':''):'none');list.append(li)}}
+ bullets('underDays',(m,d)=>m.below.includes(d));bullets('missingDays',(m,d)=>m.missing.includes(d)||m.missingEntry.includes(d));
  const actions=$('actions');actions.replaceChildren();for(const str of [
  'Review repeated daily VS scores below '+fmt(vsGoal)+' ('+r.filter(m=>m.below.length>=2).length+' members).',
- 'Follow up on incomplete leaderboard records; missing values are not proof of non-participation.',
- 'Check '+r.filter(m=>m.lowDon).length+' recorded members below '+fmt(donGoal)+' donations.',
- 'Request join-date, No Shield and Frenzy tracking for management’s complete review.']){const li=document.createElement('li');li.textContent=str;actions.append(li)}
- $('status').textContent=$('guild').value+' · week '+w+' UTC · '+fmt(r.length)+' distinct recorded members';
+ 'Absent entries in captured lists are zero; missing scans remain unknown.',
+ 'Check '+r.filter(m=>m.lowDon).length+' recorded members below '+fmt(model.effectiveDonGoal)+' adjusted donations.',
+ 'Copy Bad Standings uses only visible flagged players and respects the Show filter.']){const li=document.createElement('li');li.textContent=str;actions.append(li)}
+ $('status').textContent=$('guild').value+' · week '+w+' UTC · '+fmt(state.visible.length)+' visible / '+fmt(r.length)+' eligible members';$('copyStatus').textContent='';
 }
-async function loadGuild(){const g=$('guild').value;if(!g)return;$('status').textContent='Loading '+g+'…';try{const path=encodeURIComponent(g);const [don,vs,metadata]=await Promise.all([
- getCSV('./data/donations/'+path+'/donations.csv',true),
- getCSV('./data/vs/'+path+'/rankings.csv',true),
- getCSV('./data/review/'+path+'/members.csv',true)]);
- state.don=don.filter(r=>validWeek(r.week_start));state.vs=vs.filter(r=>validWeek(r.week_start));state.members=metadata;
- state.weeks=[...new Set([...state.don,...state.vs].map(x=>x.week_start))].sort().reverse();
- const prior=$('week').value;$('week').replaceChildren(...state.weeks.map(w=>new Option(w,w)));if(state.weeks.includes(prior))$('week').value=prior;
- if(state.weeks.length)build();else {$('status').textContent='No VS or donation weeks published for '+g;state.current=[];document.querySelector('#rows').replaceChildren()}
-}catch(e){$('status').textContent='Review failed: '+e.message}}
+async function loadGuild(){const g=$('guild').value;if(!g)return;const seq=++state.loadSeq,prior=$('week').value;$('status').textContent='Loading '+g+'…';state.current=[];state.visible=[];state.weeks=[];$('week').replaceChildren();$('rows').replaceChildren();try{const path=encodeURIComponent(g),isD3=key(g)==='d3ad';const [don,dailyDon,vs,metadata,roster,changes,serverInfo]=await Promise.all([
+ getCSV('./data/donations/'+path+'/donations.csv',true),getCSV('./data/donations/'+path+'/daily.csv',true),getCSV('./data/vs/'+path+'/rankings.csv',true),getCSV('./data/review/'+path+'/members.csv',true),
+ isD3?getCSV('./data/servers/125/world-players.csv',true):[],isD3?getCSV('./data/player_activity/guild_changes.csv',true):[],isD3?fetch('./data/servers.json',{cache:'no-store'}).then(r=>r.ok?r.json():{}).catch(()=>({})):{}]);
+ if(seq!==state.loadSeq)return;
+ state.don=don.filter(r=>validWeek(r.week_start));state.dailyDon=dailyDon.filter(r=>validWeek(r.week_start));state.vs=vs.filter(r=>validWeek(r.week_start));state.members=metadata;state.roster=roster;state.changes=changes;state.rosterAt=serverInfo.servers?.find(x=>String(x.id)==='125')?.last_scan_at_utc||'';
+ const now=new Date(),monday=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate()-(now.getUTCDay()+6)%7)).toISOString().slice(0,10);
+ state.weeks=[...new Set([...state.don,...state.dailyDon,...state.vs].map(x=>x.week_start).concat(isD3&&roster.length?[monday]:[]))].sort().reverse();
+ $('week').replaceChildren(...state.weeks.map(w=>new Option(w,w)));if(state.weeks.includes(prior))$('week').value=prior;
+ if(state.weeks.length)build();else {$('status').textContent='No VS or donation weeks published for '+g;state.current=[];state.visible=[];document.querySelector('#rows').replaceChildren()}
+ }catch(e){if(seq===state.loadSeq)$('status').textContent='Review failed: '+e.message}}
 async function init(){try{const paths=['./data/donations/guilds.json','./data/vs/guilds.json'];const results=await Promise.all(paths.map(async p=>{try{const r=await fetch(p,{cache:'no-store'});if(!r.ok)return [];return (await r.json()).guilds||[]}catch{return []}}));const groups=new Map();for(const list of results)for(const x of list)if(x.name&&/^[A-Za-z0-9_-]+$/.test(x.folder)&&key(x.name)===key(x.folder))groups.set(x.name,x.folder);state.guilds=[...groups.keys()].sort();$('guild').replaceChildren(...state.guilds.map(x=>new Option(x,x)));if(state.guilds.includes('D3AD'))$('guild').value='D3AD';if(state.guilds.length)loadGuild();else $('status').textContent='No published guild manifests found'}catch(e){$('status').textContent=e.message}}
 document.querySelectorAll('th[data-sort]').forEach(th=>{
  th.addEventListener('click',()=>selectSort(th.dataset.sort));
@@ -118,25 +108,25 @@ document.querySelectorAll('th[data-sort]').forEach(th=>{
    if(event.key==='Enter'||event.key===' '){event.preventDefault();selectSort(th.dataset.sort)}
  });
 });
-$('guild').addEventListener('change',loadGuild);['week','donGoal','vsGoal','filter','search'].forEach(id=>$(id).addEventListener('input',build));
+$('guild').addEventListener('change',loadGuild);['week','donGoal','vsGoal','filter','search','excludeToday','excludeJoined','excludeLeft'].forEach(id=>$(id).addEventListener('input',build));
 // In-game paste format: one player per literal <br>; no guild prefixes.
-// Missing records are unknown, never interpreted as low/zero contributions.
+// Absent members on captured lists score zero; unavailable lists remain unknown.
 const DAY_SHORT={MON:'M',TUE:'Tu',WED:'W',THU:'Th',FRI:'F',SAT:'Sa'};
 function plainPlayerName(name){return String(name||'').replace(/^\s*\[[^\]]{1,20}\]\s*/,'').trim()}
 function htmlSafeName(name){return plainPlayerName(name).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-function badStandingsText(members){
- const flagged=members.filter(m=>m.lowDon||m.below.length>0);
+function badStandingsText(members,filter){
+ const flagged=ZRouteReview.bad(members,filter);
  return flagged.map(m=>{
-   const donation=m.don===null?'—':fmt(m.don);
-   const days=DAYS.filter(day=>m.below.includes(day)).map(day=>DAY_SHORT[day]).join(':')||'—';
+   const donation=m.lowDon&&filter!=='vs'?fmt(m.don):'—';
+   const days=filter==='don'?'—':DAYS.filter(day=>m.below.includes(day)).map(day=>DAY_SHORT[day]).join(':')||'—';
    return htmlSafeName(m.name)+' D:'+donation+' V:'+days;
  }).join('<br>');
 }
 async function copyBadStandings(){
- const bad=state.current.filter(m=>m.lowDon||m.below.length>0);
+ const filter=$('filter').value,bad=ZRouteReview.bad(state.visible,filter);
  const output=$('copyStatus');
- if(!bad.length){output.textContent='No recorded below-target scores for this week.';return}
- const payload=badStandingsText(state.current);
+ if(!bad.length){output.textContent='No visible players below the selected targets.';return}
+ const payload=badStandingsText(bad,filter);
  try{
    if(navigator.clipboard&&window.isSecureContext){
      await navigator.clipboard.writeText(payload);
@@ -160,6 +150,6 @@ async function copyBadStandings(){
 }
 $('copyBad').addEventListener('click',copyBadStandings);
 $('print').addEventListener('click',()=>window.print());
-$('download').addEventListener('click',()=>{const header=['player','donations','donation_low',...DAYS,'vs_below_days','vs_missing_days','review'];const lines=[header.join(',')];const quote=v=>'"'+String(v??'').replaceAll('"','""')+'"';for(const m of state.current){lines.push([m.name,m.don??'',m.lowDon,...DAYS.map(d=>m.vs.get(d)??''),m.below.join('|'),m.missing.join('|'),m.review].map(quote).join(','))}const blob=new Blob([lines.join('\r\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='zroute-review-'+($('guild').value||'guild')+'-'+($('week').value||'week')+'.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)});
+$('download').addEventListener('click',()=>{const header=['player','donations','donation_low',...DAYS,'vs_below_days','vs_missing_days','review'];const lines=[header.join(',')];const quote=v=>'"'+String(v??'').replaceAll('"','""')+'"';for(const m of state.visible){lines.push([m.name,m.don??'',m.lowDon,...DAYS.map(d=>m.vs.get(d)??''),m.below.join('|'),m.missing.join('|'),m.review].map(quote).join(','))}const blob=new Blob([lines.join('\r\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='zroute-review-'+($('guild').value||'guild')+'-'+($('week').value||'week')+'.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)});
 init();
 </script></body><script defer src="./site-nav.js"></script></html>

@@ -147,9 +147,9 @@ function extractRange(b,model,vs,donDaily,attacks,events,changes,snapshots,deriv
 
 // Relative peer standing. Zero is always zero. Positive ties receive the mean
 // of their occupied positions; unknown never becomes a zero.
-function standing(rows,field){const list=rows.filter(r=>r[field]!==null).sort((a,b)=>a[field]-b[field]);const map=new Map();let i=0;while(i<list.length){let j=i+1;while(j<list.length&&list[j][field]===list[i][field])j++;const score=list[i][field]===0?0:100*((i+1+j)/2)/list.length;for(let k=i;k<j;k++)map.set(list[k].id,score);i=j;}return map;}
+function standing(rows,field){const list=rows.filter(r=>Number.isFinite(r[field])).sort((a,b)=>a[field]-b[field]);const map=new Map();let i=0;while(i<list.length){let j=i+1;while(j<list.length&&list[j][field]===list[i][field])j++;const score=list[i][field]===0?0:100*((i+1+j)/2)/list.length;for(let k=i;k<j;k++)map.set(list[k].id,score);i=j;}return map;}
 function rank(rows,weights){
- const fields=["vs","donations","frenzy","kills"],enabled=fields.filter(f=>weights[f]>0&&rows.some(r=>r[f]!==null));const total=enabled.reduce((s,f)=>s+weights[f],0),maps=Object.fromEntries(enabled.map(f=>[f,standing(rows,f)]));
+ const fields=["vs","donations","frenzy","kills","power","activity"],enabled=fields.filter(f=>weights[f]>0&&rows.some(r=>Number.isFinite(r[f])));const total=enabled.reduce((s,f)=>s+weights[f],0),maps=Object.fromEntries(enabled.map(f=>[f,standing(rows,f)]));
  const scored=rows.map(r=>{const scores=Object.fromEntries(fields.map(f=>[f,maps[f]?.get(r.id)??null]));const known=enabled.filter(f=>scores[f]!==null);const denom=known.reduce((s,f)=>s+weights[f],0);
  const score=denom?known.reduce((s,f)=>s+scores[f]*weights[f],0)/denom:null;
  const provisional=["vs","donations"].some(f=>weights[f]>0&&!enabled.includes(f))||known.length!==enabled.length||r.flagged||r.newJoin;

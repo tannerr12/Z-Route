@@ -65,3 +65,5 @@ test('finalized donation IDs disambiguate shared names and replace partial score
  assert.equal(r[0].flagged,false);
  assert.equal(r[1].donations,0);
 });
+
+ test('optional power and activity weights preserve missing inputs',()=>{const Z=require('./chopping-block');const rows=[{id:'1',name:'A',vs:1,donations:1,kills:0,frenzy:0,power:100,activity:2},{id:'2',name:'B',vs:1,donations:1,kills:0,frenzy:0,power:null,activity:1}];const r=Z.rank(rows,{vs:0,donations:0,frenzy:0,kills:0,power:10,activity:15});assert.equal(r.rows.find(x=>x.id==='2').provisional,true);assert.ok(!r.rows.find(x=>x.id==='1').provisional);});

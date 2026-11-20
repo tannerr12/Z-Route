@@ -1,0 +1,7 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),{assess}=require('./alliance-policy');
+const rows=[{id:'1',name:'A',rank:1,score:10,donations:0},{id:'2',name:'B',rank:2,score:90,donations:20},{id:'3',name:'New',rank:null,score:0,provisional:true,donations:0}];
+const day=(d,m=new Map([['2',2000000]]),ambiguous=new Set())=>[d,{map:m,ambiguous}];
+test('weekdays exclude today and Saturday; missing players on captured days are zero',()=>{const r=assess(rows,[day('2026-11-19'),day('2026-11-20'),day('2026-11-14')],'2026-11-20');assert.equal(r.completedDays,1);assert.equal(r.flags.get('1').average,0);assert.equal(r.flags.get('2').belowMinimum,false);assert.equal(r.flags.get('3').belowMinimum,false);assert.equal(r.top[0].id,'2');assert.equal(r.bottom[0].id,'1');});
+test('no captured complete weekdays does not manufacture an average',()=>{assert.equal(assess(rows,[],'2026-11-20').flags.get('1').average,null);});
+test('ambiguous member is unknown; zero cutoff disables low-donor flag',()=>{const r=assess(rows,[day('2026-11-19',new Map(),new Set(['1']))],'2026-11-20',1000000,0);assert.equal(r.flags.get('1').average,null);assert.equal(r.flags.get('1').lowDonor,false);});
+test('donation cutoff includes ties and excludes provisional rows',()=>{const r=assess([...rows,{id:'4',name:'Tie',rank:1,score:10,donations:0}],[],'2026-11-20');assert.equal(r.flags.get('4').lowDonor,true);assert.equal(r.flags.get('3').lowDonor,false);});

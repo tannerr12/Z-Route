@@ -13,6 +13,7 @@
     ["donations.html","Donations"],
     ["review.html","Performance Review"],
     ["chopping-block.html","Chopping Block"],
+    ["scan-health.html","Scan Health"],
     ["tools.html","Tools Hub"],
     ["equipment.html","Equipment"]
   ];

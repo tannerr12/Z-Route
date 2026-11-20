@@ -16,7 +16,7 @@ To rotate access, replace `NAP_KEY_SHA256`. Every subsequent refresh checks the 
 
 - `NAP` header is detected after the legend, accepting the current `Agressor` spelling. Aggressor/victim alliance columns are resolved beside those headings. Unexpected layouts stop with an error.
 - `NAPCont` is a contact directory, accepting `Allaince`. Columns after Discord are retained as notes/extra contacts. Empty contact details remain blank, not invented.
-- Dates with explicit years normalize as US month/day/year. Dates lacking a year stay raw and are flagged; the spreadsheet's Chicago timezone does not alter incident date strings. Source row order remains available.
+- Dates with explicit years normalize as US month/day/year. Missing years are inferred from the preceding explicit-year anchor and chronological row order, including December–January rollover; inferred dates retain their raw source and anchor row. Invalid dates, missing anchors and chronology conflicts stay flagged; the spreadsheet's Chicago timezone does not alter incident date strings. Source row order remains available.
 - G has no heading; G values, H authorization text, I coordinator text, and J onward notes remain raw. These are not automatically treated as penalties, incident confirmation, authorization of the original attack, or completed retaliation.
 - Victim `Total` rows are separated from incidents. Exactly identical rows are grouped with all original row references and a review warning; grouping is not proof they represent one event. No score deduction or destructive deduplication occurs.
 - Row colours matching the red/yellow legend are shown as source flags, never evidence establishing a violation. Conditional formatting is not interpreted as case status.

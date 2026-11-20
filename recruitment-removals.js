@@ -33,6 +33,8 @@ function removedIdentity(rows,players){
  let removedEvents=0,publishedIds=0,rosterMatched=0;
  for(const row of rows||[]){
   if(String(row.event||'').trim().toLowerCase()!=='removed')continue;
+  // Do not fall back to a name when the published identity is disputed.
+  if(row.player_id_source==='conflicting_identity')continue;
   removedEvents++;
   const id=String(row.player_id||'').trim();
   if(id){

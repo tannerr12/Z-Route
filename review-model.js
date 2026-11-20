@@ -23,6 +23,9 @@ function build(input,opts){
  }
  const seenEvents=new Set();
  for(const e of isD3?input.changes||[]:[]){const t=day(e.game_event_time_utc||e.timestamp),kind=key(e.event);
+  // A preserved historical ID with contradictory roster evidence is not
+  // sufficient evidence for automatic membership inclusion or exclusion.
+  if(e.player_id_source==="conflicting_identity")continue;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(t)||t>today||!e.player||!["joined","join","left","removed","kicked","leave"].includes(kind)||(key(e.guild)&&key(e.guild)!=="d3ad"))continue;
   if(e.event_id&&seenEvents.has(e.event_id))continue;if(e.event_id)seenEvents.add(e.event_id);
   const id=identity(e.player,e.player_id);if(!events.has(id))events.set(id,[]);
@@ -69,7 +72,9 @@ function build(input,opts){
  const baselineCount=baselineDay?Math.max(0,Math.min(7,Math.round((Date.parse(baselineDay+"T00:00:00Z")-Date.parse(week+"T00:00:00Z"))/86400000))):0;
  const weeklyRows=weeklyAllowed?latest((input.don||[]).filter(r=>r.week_start===week&&(!r.captured_at||day(r.captured_at)<=today))):[];
  const weeklyDon=weeklyRows.length?scoreMap(weeklyRows):null;
- const donationDays=baselineRecords.length?baselineCount:weeklyDon?(fullWeek?7:Math.max(0,activeDate.filter(d=>d<=day(weeklyRows[0].captured_at||today)).length)):dailyDon.size;
+ // Coverage belongs to the capture, even after the selected week ends.
+ // A midweek snapshot must not acquire a full-week target as time passes.
+ const donationDays=baselineRecords.length?baselineCount:weeklyDon?activeDate.filter(d=>d<=day(weeklyRows[0].captured_at||today)).length:dailyDon.size;
  const effectiveDonGoal=Math.ceil(donGoal*donationDays/7);
  // Membership metadata is optional and not the basis for zero fill.
  for(const m of input.members||[])if(m.username){const ident=identity(m.username,m.player_id);if(map.has(ident))map.get(ident).meta={...m};}

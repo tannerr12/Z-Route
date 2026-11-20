@@ -20,7 +20,7 @@
 <section class="panel"><h2>Guild member rankings</h2><p class="muted" id="summary"></p><div class="scroll"><table><thead><tr id="heading"></tr></thead><tbody id="rows"></tbody></table></div></section>
 <details class="panel"><summary>Data and matching notes</summary><div id="notes"></div></details>
 </div>
-</main><script src="./chopping-block.js?v=20261120-donation-rollover"></script><script>
+</main><script src="./chopping-block.js?v=20261120-identity"></script><script>
 "use strict";
 const $=id=>document.getElementById(id),Z=ZRouteChoppingBlock,el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);return n;},fmt=n=>n==null?"Unknown":Number(n).toLocaleString(undefined,{maximumFractionDigits:1}),stamp=s=>s?new Date(s).toLocaleString():"Unknown";
 let data,shown=[],sortKey="rank",direction=1,lastRange=null,lastSnapshot="";

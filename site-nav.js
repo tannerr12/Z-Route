@@ -14,7 +14,7 @@
     ["review.html","Performance Review"],
     ["chopping-block.html","Chopping Block"],
     ["scan-health.html","Scan Health"],
-    ["incidents.html","Private Incidents"],
+    ["incidents.html","NAP & Contacts"],
     ["tools.html","Tools Hub"],
     ["equipment.html","Equipment"]
   ];

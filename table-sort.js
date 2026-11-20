@@ -2,9 +2,9 @@
 (function(root){
 'use strict';
 const textOrder=new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
-const PLAYER_FIELDS=new Set(['player','alliance','level','power','kills','signals','lastChange','location','shield']);
+const PLAYER_FIELDS=new Set(['player','alliance','level','power','kills','napCount','signals','lastChange','location','shield']);
 const GUILD_FIELDS=new Set(['rank','guildName','guildPower','guildCoverage']);
-const DESC_FIRST=new Set(['level','power','kills','signals','lastChange','guildPower','guildCoverage']);
+const DESC_FIRST=new Set(['level','power','kills','napCount','signals','lastChange','guildPower','guildCoverage']);
 function nextSort(current,key,fields){
  if(!fields.has(key))return current;
  if(current&&current.key===key){
@@ -36,6 +36,7 @@ function playerValue(p,key){
  case 'level':{const level=numberOrNull(p.level);return level!==null&&level>0?level:null;}
  case 'power':return numberOrNull(p.power);
  case 'kills':return numberOrNull(p.kills);
+ case 'napCount':return numberOrNull(p.napCount);
  case 'signals':return p.signal?.types?.length??0;
  case 'lastChange':return timestamp(p.signal?.lastChangeAt);
  case 'location':return numberOrNull(p.x);

@@ -8,6 +8,7 @@ on:
       - '**.html'
       - 'scripts/**'
       - 'services/incidents/**'
+      - 'services/nap-sheets/**'
       - '.github/workflows/dashboard-checks.yml'
   pull_request:
     paths:
@@ -15,6 +16,7 @@ on:
       - '**.html'
       - 'scripts/**'
       - 'services/incidents/**'
+      - 'services/nap-sheets/**'
       - '.github/workflows/dashboard-checks.yml'
 
 permissions:
@@ -41,3 +43,6 @@ jobs:
 
       - name: Run private incident authorization and storage checks
         run: python -m unittest discover -v -s services/incidents -p 'test_*.py'
+
+      - name: Validate Google-hosted NAP view syntax
+        run: node services/nap-sheets/check-syntax.cjs

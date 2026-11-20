@@ -17,7 +17,7 @@ function roster(rows){
 }
 function resolve(name,model){const ids=model.names.get(key(name));return ids?.size===1?[...ids][0]:null;}
 function newest(rows){const valid=rows.filter(r=>key(r.username)&&count(r.points)!==null);const stamp=maxTime(valid);return {rows:stamp?valid.filter(r=>r.captured_at===stamp):valid,stamp};}
-function scores(rows,model){const {rows:latest,stamp}=newest(rows);const map=new Map(),ambiguous=new Set(),unmatched=new Set(),duplicates=new Set();for(const r of latest){const id=resolve(r.username,model);if(!id){unmatched.add(r.username);for(const candidate of model.names.get(key(r.username))||[])ambiguous.add(candidate);continue;}if(!map.has(id))map.set(id,count(r.points));else{duplicates.add(id);map.set(id,Math.max(map.get(id),count(r.points)));}}return {map,stamp,available:latest.length>0,ambiguous,unmatched,duplicates,size:latest.length};}
+function scores(rows,model){const {rows:latest,stamp}=newest(rows);const map=new Map(),ambiguous=new Set(),unmatched=new Set(),duplicates=new Set();const unknowns=rows.filter(r=>String(r.source||"").startsWith("UNKNOWN_"));for(const r of unknowns){const id=r.player_id?String(r.player_id):resolve(r.username,model);if(id)ambiguous.add(id);}for(const r of latest){const id=resolve(r.username,model);if(!id){unmatched.add(r.username);for(const candidate of model.names.get(key(r.username))||[])ambiguous.add(candidate);continue;}if(!map.has(id))map.set(id,count(r.points));else{duplicates.add(id);map.set(id,Math.max(map.get(id),count(r.points)));}}return {map,stamp,available:latest.length>0||unknowns.length>0,ambiguous,unmatched,duplicates,size:latest.length};}
 function weekly(week,vs,don,model){const v=vs.filter(r=>r.week_start===week),d=don.filter(r=>r.week_start===week);const total=scores(v.filter(r=>["WEEKLY","WEEK","TOTAL"].includes(String(r.day).toUpperCase())),model);const daily=days.map(day=>[day,scores(v.filter(r=>String(r.day).toUpperCase()===day),model)]).filter(([,x])=>x.available);const donation=scores(d,model);return {week,total,daily,donation,vsAvailable:total.available||daily.length>0};}
 function nextWeek(w){const t=Date.parse(w+"T00:00:00Z");return new Date(t+7*86400000).toISOString().slice(0,10);}
 function frenzySnapshots(store){
@@ -88,9 +88,13 @@ function killRange(p,b){
  if(conflict||!first||!last||last[0]<start||first[0]===last[0]||last[1]<first[1]||start-first[0]>3*86400000||end-last[0]>3*86400000||sorted.some((x,i)=>i>0&&x[0]>=start&&x[1]<sorted[i-1][1]))return {value:null,from:at(first),to:at(last)};
  return {value:last[1]-first[1],from:at(first),to:at(last)};
 }
-function extractRange(b,model,vs,donDaily,attacks,events,changes,snapshots){
+function extractRange(b,model,vs,donDaily,attacks,events,changes,snapshots,derivedDaily=[]){
  const inRange=d=>d>=b.start&&d<b.end;
- const v=dailySets(vs,vsDay,b,model),d=dailySets(donDaily,r=>r.game_date,b,model);
+ // A completed-day delta replaces that day's raw partial Today snapshot.
+ // An explicit UNKNOWN row protects its player from an inferred zero.
+ const finalized=new Set(derivedDaily.filter(x=>x.game_date>=b.start&&x.game_date<b.end).map(x=>x.game_date));
+ const preferred=donDaily.filter(x=>!finalized.has(x.game_date)).concat(derivedDaily);
+ const v=dailySets(vs,vsDay,b,model),d=dailySets(preferred,r=>r.game_date,b,model);
  const snapshot=(snapshots||[]).find(s=>inRange(date(s.captured_at_utc))&&Date.parse(s.captured_at_utc)<=b.now);
  const board=frenzyBoard(snapshot,model);
  const joins=new Map(),war=new Map(),seen=new Set();
@@ -113,7 +117,7 @@ function extractRange(b,model,vs,donDaily,attacks,events,changes,snapshots){
   const flagged=[...v,...d].some(([,x])=>x.ambiguous.has(id)||x.duplicates.has(id))||frenzyStatus==="ambiguous";
   return {...p,kills:kr.value,killsFrom:kr.from,killsTo:kr.to,vs:dailyTotal(v,id),donations:dailyTotal(d,id),vsListed:v.some(([,x])=>x.map.has(id)),donListed:d.some(([,x])=>x.map.has(id)),missed:v.filter(([,x])=>!x.map.has(id)&&!x.ambiguous.has(id)).map(([day])=>day),frenzy:fp,frenzyStatus,frenzyOtherGuild:board.otherGuild.get(id)||"",frenzyRed:frenzyStatus==="missing"||frenzyStatus==="zero",war:war.get(id)??null,joined,newJoin,flagged};
  });
- return {rows,v,d,board,snapshot,warCount:seen.size,vsExpected,donExpected:expected};
+ return {rows,v,d,board,snapshot,warCount:seen.size,vsExpected,donExpected:expected,finalizedDays:[...finalized].sort()};
 }
 
 // Relative peer standing. Zero is always zero. Positive ties receive the mean

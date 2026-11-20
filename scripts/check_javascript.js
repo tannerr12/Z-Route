@@ -12,6 +12,7 @@ for(const directory of [root,__dirname]){
   if(entry.name.endsWith('.js')){
    new vm.Script(source,{filename:file});checked++;
   }else if(entry.name.endsWith('.html')){
+   if(!source.trim())throw new Error('Empty or incomplete standalone HTML page: '+file);
    let index=0;
    for(const match of source.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)){
     if(/\bsrc\s*=|\btype\s*=\s*["']application\//i.test(match[1]))continue;

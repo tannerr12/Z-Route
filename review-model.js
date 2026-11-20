@@ -1,4 +1,4 @@
-/* Pure performance review model. All dates are game UTC calendar dates. */
+/* Pure performance review model. Game donation dates use scanner UTC-2; the UI exclude-today cutoff is UTC. */
 (function(root,factory){const api=factory();if(typeof module==="object"&&module.exports)module.exports=api;else root.ZRouteReview=api;})(globalThis,function(){
 "use strict";
 const DAYS=["MON","TUE","WED","THU","FRI","SAT"],key=s=>String(s??"").trim().normalize("NFC").toLowerCase(),day=t=>String(t||"").slice(0,10).replace(/\./g,"-"),add=(d,n)=>new Date(Date.parse(d+"T00:00:00Z")+86400000*n).toISOString().slice(0,10);

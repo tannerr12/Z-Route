@@ -43,14 +43,33 @@ function build(input,opts){
  function scoreMap(list){const out=new Map();for(const r of latest(list)){if(!r.player_id&&names.get(key(r.username))?.size>1)for(const id of names.get(key(r.username)))ambiguousIds.add("id:"+id);const m=row(r.username,r.player_id);out.set(m.id,Math.max(out.get(m.id)??0,Number(r.points)));}return out;}
  const dailyVS=new Map();
  for(const d of activeDays){const list=latest((input.vs||[]).filter(r=>r.week_start===week&&r.day===d));if(list.length)dailyVS.set(d,scoreMap(list));}
- const dailyDon=new Map();
- for(const d of activeDate){const list=latest((input.dailyDon||[]).filter(r=>r.week_start===week&&r.game_date===d));if(list.length)dailyDon.set(d,scoreMap(list));}
+ const dailyDon=new Map(),unknownDaily=new Set(),finalizedDays=[];
+ for(const d of activeDate){
+  const derived=(input.derivedDon||[]).filter(r=>r.week_start===week&&r.game_date===d);
+  const usingDerived=derived.length>0;
+  const selected=usingDerived?derived:(input.dailyDon||[]).filter(r=>r.week_start===week&&r.game_date===d);
+  if(usingDerived)for(const r of derived)if(String(r.source||"").startsWith("UNKNOWN_")){
+   unknownDaily.add(identity(r.username,r.player_id));row(r.username,r.player_id);
+  }
+  const list=latest(selected);
+  if(list.length){dailyDon.set(d,scoreMap(list));if(usingDerived)finalizedDays.push(d);}
+ }
  // If excluding today in the current week, a weekly cumulative snapshot
  // may contain today's points. Use daily records exclusively in that case.
  const fullWeek=end<=today,weeklyAllowed=activeDate.length>0&&(fullWeek||!excludeToday);
+ // Most recently captured pre-day cumulative value is authoritative for
+ // days strictly before that game date; it excludes the ongoing game day.
+ const usableBaselines=isD3?(input.baselines||[]).filter(r=>
+  r.week_start===week&&r.game_date<=today&&r.game_date>week&&
+  valid(r.pre_day_total)&&r.player_id&&r.captured_at):[];
+ const baselineDays=[...new Set(usableBaselines.map(r=>r.game_date))].sort();
+ const baselineDay=excludeToday||fullWeek?baselineDays.at(-1)||"":""; 
+ const baselineRecords=baselineDay?usableBaselines.filter(r=>r.game_date===baselineDay):[];
+ const baselineMap=new Map(baselineRecords.map(r=>["id:"+r.player_id,Number(r.pre_day_total)]));
+ const baselineCount=baselineDay?Math.max(0,Math.min(7,Math.round((Date.parse(baselineDay+"T00:00:00Z")-Date.parse(week+"T00:00:00Z"))/86400000))):0;
  const weeklyRows=weeklyAllowed?latest((input.don||[]).filter(r=>r.week_start===week&&(!r.captured_at||day(r.captured_at)<=today))):[];
  const weeklyDon=weeklyRows.length?scoreMap(weeklyRows):null;
- const donationDays=weeklyDon?(fullWeek?7:Math.max(0,activeDate.filter(d=>d<=day(weeklyRows[0].captured_at||today)).length)):dailyDon.size;
+ const donationDays=baselineRecords.length?baselineCount:weeklyDon?(fullWeek?7:Math.max(0,activeDate.filter(d=>d<=day(weeklyRows[0].captured_at||today)).length)):dailyDon.size;
  const effectiveDonGoal=Math.ceil(donGoal*donationDays/7);
  // Membership metadata is optional and not the basis for zero fill.
  for(const m of input.members||[])if(m.username){const ident=identity(m.username,m.player_id);if(map.has(ident))map.get(ident).meta={...m};}
@@ -64,14 +83,17 @@ function build(input,opts){
   m.joinedWeek=joinedWeek;m.leftWeek=leftWeek;
   if(excludeJoined&&joinedWeek||excludeLeft&&leftWeek){if(excludeJoined&&joinedWeek)excluded.joined++;if(excludeLeft&&leftWeek)excluded.left++;excluded.total++;continue;}
   for(const d of activeDays){const list=dailyVS.get(d);if(!list){m.missing.push(d);continue;}if(list.has(m.id)){m.vs.set(d,list.get(m.id));continue;}if(m.identityAmbiguous){m.missing.push(d);continue;}m.vs.set(d,0);m.missingEntry.push(d);}
-  if(weeklyDon){m.don=weeklyDon.has(m.id)?weeklyDon.get(m.id):m.identityAmbiguous?null:0;m.donAbsent=!weeklyDon.has(m.id)&&m.don===0;}
-  else if(dailyDon.size){const lists=[...dailyDon.values()],has=lists.some(x=>x.has(m.id));m.don=m.identityAmbiguous?null:lists.reduce((sum,x)=>sum+(x.get(m.id)??0),0);m.donAbsent=!has&&m.don===0;}
+  if(baselineRecords.length){
+   m.don=m.identityAmbiguous?null:baselineMap.get(m.id)??0;
+   m.donAbsent=!baselineMap.has(m.id)&&m.don===0;
+  }else if(weeklyDon){m.don=weeklyDon.has(m.id)?weeklyDon.get(m.id):m.identityAmbiguous?null:0;m.donAbsent=!weeklyDon.has(m.id)&&m.don===0;}
+  else if(dailyDon.size){const lists=[...dailyDon.values()],has=lists.some(x=>x.has(m.id));m.don=m.identityAmbiguous||unknownDaily.has(m.id)?null:lists.reduce((sum,x)=>sum+(x.get(m.id)??0),0);m.donAbsent=!has&&m.don===0;}
   m.lowDon=!m.identityAmbiguous&&m.don!==null&&m.don<effectiveDonGoal;
   m.below=m.identityAmbiguous?[]:activeDays.filter(d=>m.vs.has(d)&&m.vs.get(d)<vsGoal);
   m.vsIssues=m.below.length>0;m.review=m.lowDon||m.vsIssues;
   rows.push(m);
  }
- return {rows,activeDays,activeDate,vsDays:[...dailyVS.keys()],donationDays,effectiveDonGoal,donationSource:weeklyDon?"weekly":dailyDon.size?"daily":"unavailable",excluded,rosterCount:[...rosterById.values()].filter(p=>key(p.guild)==="d3ad").length};
+ return {rows,activeDays,activeDate,vsDays:[...dailyVS.keys()],donationDays,effectiveDonGoal,donationSource:baselineRecords.length?"pre-day verified ("+baselineDay+")":weeklyDon?"weekly":dailyDon.size?"daily":"unavailable",finalizedDays,excluded,rosterCount:[...rosterById.values()].filter(p=>key(p.guild)==="d3ad").length};
 }
 function visible(rows,filter,search){const q=key(search);return rows.filter(m=>(!q||[m.name,...(m.aliases||[])].some(s=>key(s).includes(q)))&&(filter==="all"||filter==="review"&&m.review||filter==="don"&&m.lowDon||filter==="vs"&&m.vsIssues||filter==="missing"&&(m.don===null||m.donAbsent||m.missing.length||m.missingEntry.length)));}
 function bad(rows,filter){return rows.filter(m=>filter==="don"?m.lowDon:filter==="vs"?m.vsIssues:m.review);}

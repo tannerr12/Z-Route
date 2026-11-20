@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Z-Route | Scan Health</title><style>
+:root{color-scheme:dark;background:#091321;color:#e9f1fc;font:15px/1.5 system-ui,sans-serif}*{box-sizing:border-box}body{margin:0;padding:20px}main{max-width:1400px;margin:auto}h1{margin:0}h2{font-size:20px}p,small{color:#a9bdd1}a{color:#99ceff}.panel{margin:16px 0;padding:18px;background:#102035;border:1px solid #30465e;border-radius:12px}.controls{display:flex;gap:15px;flex-wrap:wrap;align-items:center}button,select{font:inherit;background:#173149;color:#e9f1fc;border:1px solid #506c85;border-radius:8px;padding:8px 12px}button{cursor:pointer}button:disabled{opacity:.5;cursor:wait}.scroll{overflow:auto}table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}th,td{text-align:left;padding:11px 13px;border-bottom:1px solid #30465e;white-space:nowrap}th{color:#b8cfe4}td small{display:block}.badge{display:inline-block;padding:3px 9px;border-radius:7px;background:#25415c}.good{background:#153e38;color:#a2e4c5}.warn{background:#493b24;color:#ffda94}.bad{background:#4a2734;color:#ffb8b8}.tiles{display:flex;gap:12px;flex-wrap:wrap}.tile{flex:1;min-width:160px;padding:16px;background:#162d44;border-radius:10px}.tile b{display:block;font-size:27px}.note{border-left:3px solid #8cb9df;padding-left:14px}#status{overflow-wrap:anywhere}li{margin:6px 0}button:focus-visible,select:focus-visible{outline:2px solid #a4d2ff;outline-offset:3px}@media(max-width:650px){body{padding:12px}.panel{padding:13px}}
+</style></head><body><main>
+<h1>Scan Health</h1><p>Check the published evidence behind recruitment and contribution rankings.</p>
+<section class="panel controls"><label>History <select id="period"><option value="7">7 game days</option><option value="14" selected>14 game days</option></select></label><label><input id="excludeToday" type="checkbox" checked> Exclude today (game UTC−2)</label><button id="refresh" type="button">Refresh data</button><button id="copy" type="button" disabled>Copy summary</button></section>
+<p id="status" role="status" aria-live="polite">Loading scan health…</p>
+<section class="panel"><h2>Attention needed</h2><ul id="warnings"></ul><p class="note">This page checks published files. It cannot observe the live scanner, ad failures or emulator state. Missing captures remain unknown and do not prove player inactivity.</p></section>
+<section class="panel"><h2>World-map captures</h2><p>Field coverage is measured among observed bases, not the whole world. Capture times come from the loaded CSV, so a newer server directory cannot hide an older file.</p><div class="scroll"><table><thead><tr><th>Server</th><th>Capture health</th><th>Last capture (UTC)</th><th>Observed bases</th><th>Power coverage</th><th>Kills coverage</th><th>With history</th></tr></thead><tbody id="servers"></tbody></table></div></section>
+<section class="panel"><h2>D3AD kill-gain evidence</h2><div id="killCoverage" class="tiles"></div><p>Uses the chopping-block model and its game UTC−2 boundaries and scan tolerance. A missing baseline stays unknown; these are scan-observed estimates.</p></section>
+<section class="panel"><h2>D3AD daily score coverage</h2><p id="dailyNote"></p><div class="scroll"><table><thead><tr><th>Game date (UTC−2)</th><th>VS capture</th><th>VS rows</th><th>Donations</th><th>Scored / unknown rows</th><th>Latest donation capture (UTC)</th></tr></thead><tbody id="days"></tbody></table></div></section>
+<section class="panel"><h2>Server 125 activity logs</h2><p>Last captured is when the scanner read the log. Latest event is when a recorded game event happened; an old event alone does not mean the scan failed.</p><div class="scroll"><table><thead><tr><th>Feed</th><th>Last captured (UTC)</th><th>Latest recorded event (UTC)</th><th>Unique event IDs</th><th>Rows without ID</th></tr></thead><tbody id="activity"></tbody></table></div></section>
+<p>Use <a href="./review.html">Performance Review</a> or <a href="./chopping-block.html">Chopping Block</a> after checking missing or partial captures.</p>
+</main><script src="./chopping-block.js?v=20261120-health"></script><script src="./scan-health.js"></script><script>
+'use strict';
+const $=id=>document.getElementById(id),H=ZRouteScanHealth,Z=ZRouteChoppingBlock;
+let state=null,copyText='',loading=false;
+const time=n=>n===null?'Unknown':new Date(n).toISOString().replace('T',' ').replace(/\.\d{3}Z$/,' UTC');
+const fmt=n=>n.toLocaleString();
+function cell(tr,value,badge=false){const td=document.createElement('td');if(badge){const span=document.createElement('span');span.textContent=value;span.className='badge '+(['Recent','Captured','Finalized'].includes(value)?'good':['Missing','Unavailable','Stale','Unusable'].includes(value)?'bad':'warn');td.append(span);}else td.textContent=value;tr.append(td);}
+function render(){
+ if(!state)return;
+ const now=Date.now(),days=H.dailyCoverage(state.vs,state.raw,state.derived,{now,length:Number($('period').value),excludeToday:$('excludeToday').checked});
+ const servers=state.servers.map(s=>({...s,status:s.available?(s.captured===null?'Unknown':now-s.captured<86400000?'Recent':now-s.captured<259200000?'Aging':'Stale'):'Unavailable'}));
+ const warnings=H.warnings(servers,days,state.feeds,state.activity,now);$('warnings').replaceChildren();
+ for(const text of warnings.length?warnings:['No missing captures or stale map files found in the selected period.']){const li=document.createElement('li');li.textContent=text;$('warnings').append(li);}
+ const body=$('servers');body.replaceChildren();
+ const coverage=(n,total)=>total?fmt(n)+' / '+fmt(total)+' ('+(n/total*100).toFixed(1)+'%)':'Unknown';
+ for(const s of servers){const tr=document.createElement('tr');cell(tr,'S'+s.server);cell(tr,s.status,true);cell(tr,time(s.captured));cell(tr,s.available?fmt(s.count):'Unknown');cell(tr,coverage(s.power,s.count));cell(tr,coverage(s.kills,s.count));cell(tr,coverage(s.history,s.count));body.append(tr);}
+ $('killCoverage').replaceChildren();
+ for(const length of [3,7,14]){const b=Z.bounds(length,now),known=state.members.filter(p=>Z.killRange(p,b).value!==null).length;const tile=document.createElement('div');tile.className='tile';const label=document.createElement('small');label.textContent=length+' days · known kill gains';const n=document.createElement('b');n.textContent=state.rosterAvailable?known+' / '+state.members.length:'Unavailable';tile.append(label,n);$('killCoverage').append(tile);}
+ $('days').replaceChildren();for(const d of [...days].reverse()){const tr=document.createElement('tr');cell(tr,d.date);cell(tr,d.vs.state,true);cell(tr,d.vs.scored);cell(tr,d.donations.state,true);cell(tr,d.donations.scored+' / '+d.donations.unknown);cell(tr,time(d.donations.captured));$('days').append(tr);}
+ $('dailyNote').textContent=days[0].date+' to '+days.at(-1).date+'. Finalized differences replace raw snapshots. Raw captures may omit late donations; explicit unknown differences are shown separately. Sunday has no scheduled VS list. '+(!$('excludeToday').checked?'Today may be unfinished.':'');
+ $('activity').replaceChildren();for(const [name,a] of Object.entries(state.activity)){const tr=document.createElement('tr');cell(tr,name+(a.available?'':' · unavailable'));cell(tr,time(a.captured));cell(tr,time(a.latestEvent));cell(tr,a.available?a.events:'Unknown');cell(tr,a.available?a.unkeyed:'Unknown');$('activity').append(tr);}
+ copyText=['Z-Route scan health · '+days[0].date+' to '+days.at(-1).date+' (game UTC-2)',...servers.map(s=>'S'+s.server+': '+s.status+', '+s.count+' observed bases, capture '+time(s.captured)),...warnings].join('\n');
+ $('copy').disabled=false;
+}
+async function feed(path,kind='csv'){
+ try{const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);return {available:true,value:kind==='json'?await r.json():Z.csv(await r.text())};}
+ catch(e){return {available:false,value:kind==='json'?{}:[],error:e.message};}
+}
+async function load(){
+ if(loading)return;loading=true;$('refresh').disabled=true;$('copy').disabled=true;$('status').textContent='Loading published files…';
+ try{
+  const manifest=await feed('./data/servers.json','json');if(!manifest.available||!Array.isArray(manifest.value.servers))throw Error('Server directory unavailable');
+  const entries=manifest.value.servers.filter(s=>/^\d+$/.test(String(s.id))&&/^data\/servers\/\d+\/world-players\.csv$/.test(s.data));
+  let members=[],rosterAvailable=false;const now=Date.now();
+  const serverTask=Promise.all(entries.map(async entry=>{const r=await feed('./'+entry.data);const summary=H.serverSummary(entry,r.value,now,r.available);if(String(entry.id)==='125'&&r.available){members=Z.roster(r.value.filter(p=>String(p.alliance_tag||'').trim().toLowerCase()==='d3ad')).members;rosterAvailable=true;}return summary;}));
+  const [servers,vs,raw,derived,war,changes]=await Promise.all([serverTask,feed('./data/vs/D3AD/rankings.csv'),feed('./data/donations/D3AD/daily.csv'),feed('./data/donations/D3AD/derived_daily.csv'),feed('./data/player_activity/attacks.csv'),feed('./data/player_activity/guild_changes.csv')]);
+  state={servers,members,rosterAvailable,vs:vs.value,raw:raw.value,derived:derived.value,feeds:{VS:vs,'Raw donations':raw,'Finalized donations':derived,War:war,'Join/Leave':changes},activity:{War:H.activitySummary(war.value,now,war.available),'Join/Leave':H.activitySummary(changes.value,now,changes.available)}};
+  render();$('status').textContent='Loaded '+servers.length+' server files · checked '+time(now)+'.';
+ }catch(e){state=null;$('status').textContent='Unable to check scan health: '+e.message;$('copy').disabled=true;}
+ finally{loading=false;$('refresh').disabled=false;}
+}
+$('period').addEventListener('input',render);$('excludeToday').addEventListener('change',render);$('refresh').addEventListener('click',load);
+$('copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(copyText);$('status').textContent='Scan summary copied.';}catch{$('status').textContent='Clipboard unavailable. Select the visible summary to copy it manually.';}});
+load();
+</script><script defer src="./site-nav.js"></script></body></html>

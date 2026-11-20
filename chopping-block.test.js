@@ -13,13 +13,22 @@ test('conflicting membership IDs do not create a new-join ranking exemption',()=
  assert.equal(weekly.rows[0].newJoin,false);
 });
 
-test('3/7/14 day bounds use UTC calendar days across a year boundary',()=>{
+test('3/7/14 day bounds use game UTC-2 calendar days across a year boundary',()=>{
  for(const n of [3,7,14]){
-  const b=Z.bounds(n,Date.parse('2027-01-02T00:01:00Z'));
+  const b=Z.bounds(n,Date.parse('2027-01-02T02:01:00Z'));
   assert.equal((Date.parse(b.end)-Date.parse(b.start))/86400000,n);
   assert.equal(b.end,'2027-01-03');
  }
  assert.throws(()=>Z.bounds(5,NOW));
+});
+
+test('rolling game days reset at 02:00 UTC and kill baselines use that boundary',()=>{
+ assert.equal(Z.bounds(3,Date.parse('2026-11-20T01:59:59Z')).today,'2026-11-19');
+ const b=Z.bounds(3,Date.parse('2026-11-20T03:00:00Z'));
+ assert.equal(b.today,'2026-11-20');
+ assert.equal(b.startUtcMs,Date.parse('2026-11-18T02:00:00Z'));
+ const p={history:[{observed_at:'2026-11-18T01:59:00Z',kills:10}],killsAt:'2026-11-18T02:30:00Z',kills:20};
+ assert.equal(Z.killRange(p,b).value,10);
 });
 
 test('kill gains require a baseline and reject decreasing counters',()=>{

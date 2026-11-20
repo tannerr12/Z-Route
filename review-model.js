@@ -1,7 +1,14 @@
-/* Pure performance review model. Game donation dates use scanner UTC-2; the UI exclude-today cutoff is UTC. */
+/* Performance review dates follow the scanner game clock: fixed UTC-2 (not DST-adjusted). */
 (function(root,factory){const api=factory();if(typeof module==="object"&&module.exports)module.exports=api;else root.ZRouteReview=api;})(globalThis,function(){
 "use strict";
-const DAYS=["MON","TUE","WED","THU","FRI","SAT"],key=s=>String(s??"").trim().normalize("NFC").toLowerCase(),day=t=>String(t||"").slice(0,10).replace(/\./g,"-"),add=(d,n)=>new Date(Date.parse(d+"T00:00:00Z")+86400000*n).toISOString().slice(0,10);
+const DAYS=["MON","TUE","WED","THU","FRI","SAT"],OFFSET_MS=2*60*60*1000,key=s=>String(s??"").trim().normalize("NFC").toLowerCase();
+function gameDay(t){
+ if(typeof t==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(t))return t;
+ if(typeof t==="string"&&/^\d{4}\.\d{2}\.\d{2}(?: |$)/.test(t))return t.slice(0,10).replace(/\./g,"-"); // in-game timestamp
+ const value=t instanceof Date?t.getTime():typeof t==="number"?t:Date.parse(String(t||""));
+ return Number.isFinite(value)?new Date(value-OFFSET_MS).toISOString().slice(0,10):"";
+}
+const day=gameDay,add=(d,n)=>new Date(Date.parse(d+"T00:00:00Z")+86400000*n).toISOString().slice(0,10);
 const valid=v=>v!=null&&String(v).trim()!==""&&Number.isSafeInteger(Number(v))&&Number(v)>=0;
 function arr(v){try{const a=JSON.parse(v||"[]");return Array.isArray(a)?a:[];}catch{return [];}}
 function build(input,opts){
@@ -102,5 +109,6 @@ function build(input,opts){
 }
 function visible(rows,filter,search){const q=key(search);return rows.filter(m=>(!q||[m.name,...(m.aliases||[])].some(s=>key(s).includes(q)))&&(filter==="all"||filter==="review"&&m.review||filter==="don"&&m.lowDon||filter==="vs"&&m.vsIssues||filter==="missing"&&(m.don===null||m.donAbsent||m.missing.length||m.missingEntry.length)));}
 function bad(rows,filter){return rows.filter(m=>filter==="don"?m.lowDon:filter==="vs"?m.vsIssues:m.review);}
-return {build,visible,bad};
+return {build,visible,bad,gameDay};
 });
+

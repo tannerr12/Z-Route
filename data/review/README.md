@@ -14,12 +14,13 @@ marked ambiguous rather than used for automatic bad-standings flags.
 The donation minimum is prorated to the days covered by the selected data.
 For example, a Wednesday weekly snapshot covers three days, even when reviewing
 that week later. A snapshot captured after the week ends covers all seven days.
-Excluding today (UTC) prefers a verified pre-day cumulative baseline when
+Excluding today (game UTC−2) prefers a verified pre-day cumulative baseline when
 available, otherwise daily donation records, to avoid including today's
 cumulative points. Completed-day differences in `derived_daily.csv` replace
 partial raw daily captures; `baselines.csv` supplies verified pre-day totals.
-Explicit unknown differences remain unknown. Scanner donation dates use the
-game UTC−2 clock, so boundary hours can differ from the UTC exclude-today cutoff.
+Explicit unknown differences remain unknown. Review weeks, exclude-today,
+rolling periods and kill baselines use the fixed game UTC−2 clock, which resets
+at 02:00 UTC and does not observe daylight saving time.
 
 Join and departure exclusion switches use the published membership log.
 Records marked `player_id_source=conflicting_identity` are not used for

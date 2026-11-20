@@ -3,7 +3,14 @@
 "use strict";
 const key=s=>String(s??"").trim().normalize("NFC").toLowerCase();
 const count=v=>{if(v==null||String(v).trim()==="")return null;const n=Number(v);return Number.isSafeInteger(n)&&n>=0?n:null;};
-const date=s=>String(s||"").slice(0,10);
+const GAME_OFFSET_MS=2*60*60*1000;
+function gameDay(t){
+ if(typeof t==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(t))return t;
+ if(typeof t==="string"&&/^\d{4}\.\d{2}\.\d{2}(?: |$)/.test(t))return t.slice(0,10).replace(/\./g,"-");
+ const value=t instanceof Date?t.getTime():typeof t==="number"?t:Date.parse(String(t||""));
+ return Number.isFinite(value)?new Date(value-GAME_OFFSET_MS).toISOString().slice(0,10):"";
+}
+const date=gameDay;
 const validDay=s=>/^\d{4}-\d{2}-\d{2}$/.test(s);
 const maxTime=rows=>rows.reduce((a,r)=>String(r.captured_at||"")>a?String(r.captured_at):a,"");
 const days=["MON","TUE","WED","THU","FRI","SAT"];
@@ -76,8 +83,10 @@ function extract(week,model,vs,don,attacks,events,changes,snapshot=null){
 function addDays(d,n){return new Date(Date.parse(d+"T00:00:00Z")+n*86400000).toISOString().slice(0,10);}
 function bounds(length,now=Date.now()){
  if(![3,7,14].includes(Number(length)))throw Error("Choose 3, 7 or 14 days");
- const today=new Date(now).toISOString().slice(0,10),start=addDays(today,1-Number(length)),end=addDays(today,1);
- return {start,end,today,length:Number(length),now:Number(now)};
+ const today=gameDay(now),start=addDays(today,1-Number(length)),end=addDays(today,1);
+ return {start,end,today,length:Number(length),now:Number(now),
+         startUtcMs:Date.parse(start+"T00:00:00Z")+GAME_OFFSET_MS,
+         endUtcMs:Date.parse(end+"T00:00:00Z")+GAME_OFFSET_MS};
 }
 function dayRange(b){return Array.from({length:b.length},(_,i)=>addDays(b.start,i));}
 function vsDay(r){const i=days.indexOf(String(r.day).toUpperCase());return i>=0&&validDay(r.week_start)?addDays(r.week_start,i):"";}
@@ -93,7 +102,7 @@ function dailyTotal(list,id){
 // Recorded absolute kill measurements only. The previous observation may
 // precede the range boundary; label this a scan-observed estimate, not exact.
 function killRange(p,b){
- const start=Date.parse(b.start+"T00:00:00Z"),end=Math.min(b.now,Date.parse(b.end+"T00:00:00Z"));
+ const start=b.startUtcMs??(Date.parse(b.start+"T00:00:00Z")+GAME_OFFSET_MS),end=Math.min(b.now,b.endUtcMs??(Date.parse(b.end+"T00:00:00Z")+GAME_OFFSET_MS));
  const points=new Map();
  let conflict=false;
  function add(at,value){const t=Date.parse(at),n=count(value);if(!Number.isFinite(t)||t>end||n===null)return;if(points.has(t)&&points.get(t)!==n)conflict=true;points.set(t,n);}
@@ -150,5 +159,6 @@ function rank(rows,weights){
  const others=scored.filter(r=>r.provisional||r.score===null).sort((a,b)=>(a.score??Infinity)-(b.score??Infinity)||a.name.localeCompare(b.name));
  return {rows:[...ranked,...others],enabled,total};
 }
-return {csv,key,count,roster,resolve,weekly,extract,rank,nextWeek,frenzySnapshots,frenzyBoard,bounds,extractRange,killRange};
+return {csv,key,count,roster,resolve,weekly,extract,rank,nextWeek,frenzySnapshots,frenzyBoard,bounds,extractRange,killRange,gameDay};
 });
+

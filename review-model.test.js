@@ -15,7 +15,7 @@ test('a past week does not turn a Wednesday donation snapshot into seven days',(
 });
 
 test('a capture after weekly reset covers all seven days of the selected week',()=>{
- const m=R.build({don:[donation('2026-11-16T00:01:00Z')]},{...opts,week:'2026-11-09'});
+ const m=R.build({don:[donation('2026-11-16T02:01:00Z')]},{...opts,week:'2026-11-09'});
  assert.equal(m.donationDays,7);
  assert.equal(m.rows[0].lowDon,true);
 });
@@ -84,4 +84,12 @@ test('unknown finalized donations remain unknown and override partial raw scores
  const m=R.build(input,opts);
  assert.equal(m.rows.find(r=>r.id==='id:1').don,null);
  assert.deepEqual(m.finalizedDays,['2026-11-19']);
+});
+
+test('donation snapshot coverage follows the fixed game UTC-2 day',()=>{
+ const m=R.build({don:[donation('2026-11-12T01:00:00Z')]},{...opts,week:'2026-11-09'});
+ assert.equal(m.donationDays,3);
+ assert.equal(R.gameDay('2026-11-20T01:59:59Z'),'2026-11-19');
+ assert.equal(R.gameDay('2026-11-20T02:00:00Z'),'2026-11-20');
+ assert.equal(R.gameDay('2026.11.20 01:00:00'),'2026-11-20');
 });

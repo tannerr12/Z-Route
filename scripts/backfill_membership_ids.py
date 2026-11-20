@@ -66,6 +66,7 @@ def recently_observed_names(path):
     Only timestamped evidence about that EXACT name counts.
     """
     seen=defaultdict(dict)
+    owners=defaultdict(set)
     with Path(path).open(newline="",encoding="utf-8-sig") as stream:
         for row in csv.DictReader(stream):
             if str(row.get("server") or "").strip()!="125":
@@ -75,6 +76,16 @@ def recently_observed_names(path):
                 continue
             observations=[]
             current=normalize(row.get("username"))
+            names=[current]
+            try:
+                aliases=json.loads(row.get("known_aliases_json") or "[]")
+                if isinstance(aliases,list):
+                    names.extend(normalize(a) for a in aliases if isinstance(a,str))
+            except (TypeError,ValueError):
+                pass
+            for name in names:
+                if name:
+                    owners[name].add(pid)
             current_time=str(row.get("name_observed_at_utc") or "").strip()
             if current and current_time:
                 observations.append((current,current_time))
@@ -91,6 +102,8 @@ def recently_observed_names(path):
                         ("new_name","first_new_observed_at_utc")):
                         name=normalize(change.get(name_field))
                         stamp=str(change.get(stamp_field) or "").strip()
+                        if name:
+                            owners[name].add(pid)
                         if name and stamp:
                             observations.append((name,stamp))
             for name,stamp in observations:
@@ -109,7 +122,9 @@ def recently_observed_names(path):
                     seen[name][pid]=epoch
     recent={}
     for name,entries in seen.items():
-        if len(entries)<2:
+        # Every competing owner needs dated evidence. Ignoring an undated
+        # alias would falsely make the newest of the remaining IDs unique.
+        if len(entries)<2 or set(entries)!=owners[name]:
             continue
         ranking=sorted(entries.items(),key=lambda entry:entry[1],reverse=True)
         # A tie cannot be disambiguated by recency.

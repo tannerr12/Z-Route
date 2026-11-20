@@ -1,0 +1,38 @@
+name: Dashboard regression checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**.js'
+      - '**.html'
+      - 'scripts/**'
+      - '.github/workflows/dashboard-checks.yml'
+  pull_request:
+    paths:
+      - '**.js'
+      - '**.html'
+      - 'scripts/**'
+      - '.github/workflows/dashboard-checks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check dashboard and inline JavaScript syntax
+        run: node scripts/check_javascript.js
+      - name: Run all JavaScript regression tests
+        run: node --test
+      - name: Run membership backfill regression tests
+        run: python -m unittest discover -v -s scripts -p 'test_*.py'

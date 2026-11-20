@@ -9,6 +9,28 @@ from backfill_membership_ids import enrich_file
 
 
 class BackfillTests(unittest.TestCase):
+    def test_undated_competing_alias_prevents_recency_resolution(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);world=root/"world.csv";changes=root/"changes.csv"
+            fields=["server","player_id","username","known_aliases_json",
+                    "name_observed_at_utc"]
+            with world.open("w",newline="",encoding="utf-8") as stream:
+                writer=csv.DictWriter(stream,fieldnames=fields);writer.writeheader()
+                for pid,stamp in [("101","2026-11-10T12:00:00Z"),
+                                  ("202","2026-11-12T12:00:00Z"),
+                                  ("303","")]:
+                    writer.writerow(dict(server="125",player_id=pid,
+                        username="Other" if pid=="303" else "Shared",known_aliases_json='["Shared"]',
+                        name_observed_at_utc=stamp))
+            with changes.open("w",newline="",encoding="utf-8") as stream:
+                writer=csv.DictWriter(stream,fieldnames=["player","event"])
+                writer.writeheader();writer.writerow(dict(player="Shared",event="removed"))
+            stats=enrich_file(world,changes,apply=True)
+            self.assertEqual(stats["recent_match_resolved"],0)
+            self.assertEqual(stats["ambiguous"],1)
+            with changes.open(newline="",encoding="utf-8") as stream:
+                self.assertEqual(list(csv.DictReader(stream))[0]["player_id"],"")
+
     def test_most_recent_timestamped_name_wins_when_exact_alias_shared(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);world=root/"world.csv";changes=root/"changes.csv"

@@ -20,7 +20,8 @@
 <section class="panel"><h2>Guild member rankings</h2><p class="muted" id="summary"></p><div class="scroll"><table><thead><tr id="heading"></tr></thead><tbody id="rows"></tbody></table></div></section>
 <details class="panel"><summary>Data and matching notes</summary><div id="notes"></div></details>
 </div>
-</main><script src="./chopping-block.js?v=20261120-gameclock"></script><script>
+</main><script src="./chopping-block.js?v=20261120-gameclock-identity"></script><script>
+
 "use strict";
 const $=id=>document.getElementById(id),Z=ZRouteChoppingBlock,el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=String(text);return n;},fmt=n=>n==null?"Unknown":Number(n).toLocaleString(undefined,{maximumFractionDigits:1}),stamp=s=>s?new Date(s).toLocaleString():"Unknown";
 let data,shown=[],sortKey="rank",direction=1,lastRange=null,lastSnapshot="";
@@ -53,3 +54,4 @@ for(const id of ["period","vsWeight","donWeight","frenzyWeight","killsWeight","b
 $("reset").onclick=()=>{$("vsWeight").value=30;$("donWeight").value=25;$("frenzyWeight").value=30;$("killsWeight").value=15;sortKey="rank";direction=1;render();};
 $("download").onclick=()=>{const escape=v=>{let s=String(v??"");if(/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};if(!lastRange)return;const headers=["period_days","start_game_utc_minus_2","end_date_game_utc_minus_2","player_id","risk_rank","member","score","vs","vs_percentile","donations","donations_percentile","kill_gains_observed","kill_baseline_at","kill_end_at","kills_percentile","missed_vs_days","frenzy_leaderboard_points","frenzy_percentile","frenzy_status","frenzy_snapshot_id","outgoing_attacks_observed","power","notes"];const records=shown.map(r=>[lastRange.length,lastRange.start,lastRange.today,r.id,r.rank,r.name,r.score,r.vs,r.scores.vs,r.donations,r.scores.donations,r.kills,r.killsFrom,r.killsTo,r.scores.kills,r.missed.join(";"),r.frenzy,r.scores.frenzy,frenzyLabel(r),lastSnapshot,r.war,r.power,flag(r)]);const blob=new Blob([[headers,...records].map(r=>r.map(escape).join(",")).join("\r\n")],{type:"text/csv;charset=utf-8"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="D3AD-chopping-block-"+lastRange.length+"d-"+lastRange.today+".csv";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
 init();</script><script defer src="./site-nav.js"></script></body></html>
+

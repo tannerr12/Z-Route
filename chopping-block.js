@@ -24,7 +24,23 @@ function roster(rows){
 }
 function resolve(name,model){const ids=model.names.get(key(name));return ids?.size===1?[...ids][0]:null;}
 function newest(rows){const valid=rows.filter(r=>key(r.username)&&count(r.points)!==null);const stamp=maxTime(valid);return {rows:stamp?valid.filter(r=>r.captured_at===stamp):valid,stamp};}
-function scores(rows,model){const {rows:latest,stamp}=newest(rows);const map=new Map(),ambiguous=new Set(),unmatched=new Set(),duplicates=new Set();const unknowns=rows.filter(r=>String(r.source||"").startsWith("UNKNOWN_"));for(const r of unknowns){const id=r.player_id?String(r.player_id):resolve(r.username,model);if(id)ambiguous.add(id);}for(const r of latest){const id=resolve(r.username,model);if(!id){unmatched.add(r.username);for(const candidate of model.names.get(key(r.username))||[])ambiguous.add(candidate);continue;}if(!map.has(id))map.set(id,count(r.points));else{duplicates.add(id);map.set(id,Math.max(map.get(id),count(r.points)));}}return {map,stamp,available:latest.length>0||unknowns.length>0,ambiguous,unmatched,duplicates,size:latest.length};}
+function scores(rows,model){
+ const {rows:latest,stamp}=newest(rows);
+ const map=new Map(),ambiguous=new Set(),unmatched=new Set(),duplicates=new Set();
+ // Finalized donation rows carry stable IDs. Use names only when no ID is
+ // supplied; shared historical aliases must not override a known account.
+ const identity=r=>r.player_id?String(r.player_id):resolve(r.username,model);
+ function protectAliases(r){if(!r.player_id)for(const candidate of model.names.get(key(r.username))||[])ambiguous.add(candidate);}
+ const unknowns=rows.filter(r=>String(r.source||"").startsWith("UNKNOWN_"));
+ for(const r of unknowns){const id=identity(r);if(id)ambiguous.add(id);else protectAliases(r);}
+ for(const r of latest){
+  const id=identity(r);
+  if(!id){unmatched.add(r.username);protectAliases(r);continue;}
+  if(!map.has(id))map.set(id,count(r.points));
+  else{duplicates.add(id);map.set(id,Math.max(map.get(id),count(r.points)));}
+ }
+ return {map,stamp,available:latest.length>0||unknowns.length>0,ambiguous,unmatched,duplicates,size:latest.length};
+}
 function weekly(week,vs,don,model){const v=vs.filter(r=>r.week_start===week),d=don.filter(r=>r.week_start===week);const total=scores(v.filter(r=>["WEEKLY","WEEK","TOTAL"].includes(String(r.day).toUpperCase())),model);const daily=days.map(day=>[day,scores(v.filter(r=>String(r.day).toUpperCase()===day),model)]).filter(([,x])=>x.available);const donation=scores(d,model);return {week,total,daily,donation,vsAvailable:total.available||daily.length>0};}
 function nextWeek(w){const t=Date.parse(w+"T00:00:00Z");return new Date(t+7*86400000).toISOString().slice(0,10);}
 function frenzySnapshots(store){
@@ -47,7 +63,7 @@ function extract(week,model,vs,don,attacks,events,changes,snapshot=null){
  const board=frenzyBoard(snapshot,model),w=weekly(week,vs,don,model),end=nextWeek(week),war=new Map(),frenzy=new Map(),joins=new Map(),seenWar=new Set(),seenEvent=new Set();const inWeek=d=>d>=week&&d<end;
  for(const x of attacks||[]){const t=date(x.game_event_time_utc||x.timestamp);if(!inWeek(t)||key(x.attacker_guild)!=="d3ad"||String(x.attacker_server)!=="125"||key(x.attack_direction)!=="outgoing")continue;const id=resolve(x.attacker,model);if(!id||!x.event_id||seenWar.has(x.event_id))continue;seenWar.add(x.event_id);war.set(id,(war.get(id)||0)+1);}
  for(const x of events||[]){if(x.category!=="player"||!inWeek(x.event_day_utc||date(x.timestamp_utc))||key(x.player_guild)!=="d3ad"||String(x.player_server)!=="125"||count(x.points)===null||!x.event_key||seenEvent.has(x.event_key))continue;seenEvent.add(x.event_key);const id=String(x.player_id);frenzy.set(id,(frenzy.get(id)||0)+Number(x.points));}
- for(const x of changes||[]){if(!["join","joined"].includes(key(x.event))||key(x.guild)&&key(x.guild)!=="d3ad")continue;const id=String(x.player_id||resolve(x.player,model)||"");const t=date(x.game_event_time_utc||x.timestamp);if(id&&validDay(t)&&(!joins.has(id)||t>joins.get(id)))joins.set(id,t);}
+ for(const x of changes||[]){if(x.player_id_source==="conflicting_identity"||!["join","joined"].includes(key(x.event))||key(x.guild)&&key(x.guild)!=="d3ad")continue;const id=String(x.player_id||resolve(x.player,model)||"");const t=date(x.game_event_time_utc||x.timestamp);if(id&&validDay(t)&&(!joins.has(id)||t>joins.get(id)))joins.set(id,t);}
  const rows=model.members.map(p=>{const id=p.id;
  let vp=null,dp=null;const vm=w.total.available?w.total:null;
  if(vm){if(!vm.ambiguous.has(id))vp=vm.map.get(id)??0;}
@@ -107,7 +123,7 @@ function extractRange(b,model,vs,donDaily,attacks,events,changes,snapshots,deriv
  const snapshot=(snapshots||[]).find(s=>inRange(date(s.captured_at_utc))&&Date.parse(s.captured_at_utc)<=b.now);
  const board=frenzyBoard(snapshot,model);
  const joins=new Map(),war=new Map(),seen=new Set();
- for(const x of changes||[]){if(!["join","joined"].includes(key(x.event))||key(x.guild)&&key(x.guild)!=="d3ad")continue;
+ for(const x of changes||[]){if(x.player_id_source==="conflicting_identity"||!["join","joined"].includes(key(x.event))||key(x.guild)&&key(x.guild)!=="d3ad")continue;
   const id=String(x.player_id||resolve(x.player,model)||""),t=date(x.game_event_time_utc||x.timestamp);
   if(id&&validDay(t)&&t<=b.today&&(!joins.has(id)||t>joins.get(id)))joins.set(id,t);}
  for(const x of attacks||[]){if(!inRange(date(x.game_event_time_utc||x.timestamp))||key(x.attacker_guild)!=="d3ad"||String(x.attacker_server)!=="125"||key(x.attack_direction)!=="outgoing"||!x.event_id||seen.has(x.event_id))continue;
@@ -145,3 +161,4 @@ function rank(rows,weights){
 }
 return {csv,key,count,roster,resolve,weekly,extract,rank,nextWeek,frenzySnapshots,frenzyBoard,bounds,extractRange,killRange,gameDay};
 });
+

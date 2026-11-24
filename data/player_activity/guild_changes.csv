@@ -231,3 +231,4 @@ timestamp,player,guild,event,scanned_at,actor,game_event_time_utc,event_epoch_ms
 2026.11.22 10:46:16,itselementary,,left,2026-11-23T04:22:18.611404+00:00,,2026-11-22T10:46:15.860+00:00,1795344375860,uop_4c4f66a2bd650eff33a9808470ecf06b,union_oplog_network,140590694525,unique_history_name_s125
 2026.11.23 02:13:59,rebthecowboy,,joined,2026-11-23T04:22:18.611404+00:00,,2026-11-23T02:13:58.134+00:00,1795400038134,uop_d4f9eab43e1d1087a0317c7ef174782a,union_oplog_network,138972774525,unique_history_name_s125
 2026.11.23 02:25:18,catchit,,removed,2026-11-23T04:22:18.611404+00:00,AmadoR~DL,2026-11-23T02:25:17.051+00:00,1795400717051,uop_c53ea66158352eaf03d2c9f70609c121,union_oplog_network,140848488573,unique_history_name_s125
+2026.11.24 00:35:13,ScreamingViking,,joined,2026-11-24T01:41:27.843775+00:00,,2026-11-24T00:35:12.870+00:00,1795480512870,uop_9ffb45642f17a4b3ed2bcd3dcb808979,union_oplog_network,140371378301,unique_history_name_s125

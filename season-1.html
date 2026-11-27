@@ -8,13 +8,14 @@
 <link rel="stylesheet" href="./season-1.css">
 <script defer src="./site-nav.js"></script>
 <script defer src="./season-1.js"></script>
+<script defer src="./season-1-payout.js"></script>
 </head>
 <body><main>
 <header class="hero">
   <div class="eyebrow">FIELD GUIDE / SEASON 01</div>
   <h1>Radiated Land</h1>
   <p>Build Virus Resistance across the roster, then move together on one connected city route. Use your live Warzone screens for dates, resistance requirements and protection timers.</p>
-  <nav class="jumps" aria-label="Guide sections"><a href="#checklist">Launch checklist</a><a href="#classes">Class picker</a><a href="#routes">Route worksheet</a><a href="#campaign">Campaign guide</a></nav>
+  <nav class="jumps" aria-label="Guide sections"><a href="#checklist">Launch checklist</a><a href="#classes">Class picker</a><a href="#payout-calculator">Payout calculator</a><a href="#routes">Route worksheet</a><a href="#campaign">Campaign guide</a></nav>
 </header>
 <noscript><p class="panel">The guide is readable without JavaScript. Enable it to save your checklist and route or use the class picker.</p></noscript>
 <section class="panel" id="checklist" aria-labelledby="launch-heading">
@@ -52,6 +53,72 @@
     <article class="tile" id="war-leader"><h3>War Leader</h3><p>Good for frontline combat, regular rally leads and troop recovery. Check live prerequisites before committing points to your combat build.</p></article>
   </div>
   <p class="note">The client reference lists a free class-reset item at class Lv.10. Use a skill reset instead if you only want to rebuild the same class.</p>
+</section>
+<section class="panel" id="payout-calculator" aria-labelledby="payout-heading">
+  <div class="eyebrow">Tools / Season 01</div><h2 id="payout-heading">Skill payout calculator</h2>
+  <p>Compare what one activation gives you at each rank. Use the production figures from your shelter, not the balances at the top of the screen.</p>
+  <noscript><p>Enable JavaScript to use the calculator.</p></noscript>
+  <div id="payout-controls" hidden>
+    <div class="calc-block">
+    <h3>Engineer: Accelerate Production</h3>
+    <p>Compare your normal Food, Metal and Oil payout with a temporary buff scenario. Cooldown: 23.5 hours.</p>
+    <div class="calc-settings calc-component"><label for="production-mode">How to enter production<select id="production-mode"><option value="levels">Producer building levels</option><option value="base">Unbuffed hourly production totals</option><option value="effective">Effective hourly rates from the game</option></select></label></div>
+    <div class="calc-resource-grid">
+      <fieldset><legend>Food</legend>
+        <label for="food-levels" data-production="levels">Farm levels<input type="text" id="food-levels" maxlength="90" placeholder="e.g. 26, 25, 24" autocomplete="off"><small>List every producer of this type, separated by commas.</small></label>
+        <div data-production="base"><label for="food-base">Unbuffed total / hour<input id="food-base" type="number" min="0" max="1000000000" step="any" placeholder="e.g. 125000"></label></div>
+        <div data-production="levels base"><label for="food-bonus">Normal total output bonus (%)<input id="food-bonus" type="number" min="-100" max="10000" step="any" placeholder="0"></label><label for="food-extra">Extra temporary bonus (percentage points)<input id="food-extra" type="number" min="-100" max="10000" step="any" placeholder="0"></label></div>
+        <div data-production="effective"><label for="food-effective">Normal effective rate / hour<input id="food-effective" type="number" min="0" max="1000000000" step="any" placeholder=""></label><label for="food-boosted">Buffed effective rate / hour (optional)<input id="food-boosted" type="number" min="0" max="1000000000" step="any" placeholder=""></label></div>
+      </fieldset>
+      <fieldset><legend>Metal</legend>
+        <label for="metal-levels" data-production="levels">Smelter levels<input type="text" id="metal-levels" maxlength="90" placeholder="e.g. 26, 25, 24" autocomplete="off"><small>List every producer of this type, separated by commas.</small></label>
+        <div data-production="base"><label for="metal-base">Unbuffed total / hour<input id="metal-base" type="number" min="0" max="1000000000" step="any" placeholder="e.g. 125000"></label></div>
+        <div data-production="levels base"><label for="metal-bonus">Normal total output bonus (%)<input id="metal-bonus" type="number" min="-100" max="10000" step="any" placeholder="0"></label><label for="metal-extra">Extra temporary bonus (percentage points)<input id="metal-extra" type="number" min="-100" max="10000" step="any" placeholder="0"></label></div>
+        <div data-production="effective"><label for="metal-effective">Normal effective rate / hour<input id="metal-effective" type="number" min="0" max="1000000000" step="any" placeholder=""></label><label for="metal-boosted">Buffed effective rate / hour (optional)<input id="metal-boosted" type="number" min="0" max="1000000000" step="any" placeholder=""></label></div>
+      </fieldset>
+      <fieldset><legend>Oil</legend>
+        <label for="oil-levels" data-production="levels">Oil well levels<input type="text" id="oil-levels" maxlength="90" placeholder="e.g. 26, 25, 24" autocomplete="off"><small>List every producer of this type, separated by commas.</small></label>
+        <div data-production="base"><label for="oil-base">Unbuffed total / hour<input id="oil-base" type="number" min="0" max="1000000000" step="any" placeholder="e.g. 125000"></label></div>
+        <div data-production="levels base"><label for="oil-bonus">Normal total output bonus (%)<input id="oil-bonus" type="number" min="-100" max="10000" step="any" placeholder="0"></label><label for="oil-extra">Extra temporary bonus (percentage points)<input id="oil-extra" type="number" min="-100" max="10000" step="any" placeholder="0"></label></div>
+        <div data-production="effective"><label for="oil-effective">Normal effective rate / hour<input id="oil-effective" type="number" min="0" max="1000000000" step="any" placeholder=""></label><label for="oil-boosted">Buffed effective rate / hour (optional)<input id="oil-boosted" type="number" min="0" max="1000000000" step="any" placeholder=""></label></div>
+      </fieldset>
+    </div>
+    <p class="note" id="production-note">Enter producer levels from 1 to 30. Use effective rates if your buildings differ from the reference table.</p>
+    <div class="calc-results" id="production-output" aria-label="Payout estimates by rank"></div>
+    </div>
+    <div class="grid calc-block">
+      <fieldset><legend>Engineer: Queue time saved</legend>
+        <label for="queue-skill">Skill<select id="queue-skill"><option value="research">Instant Research</option><option value="build">Build Now</option></select></label>
+        <label for="queue-rank">Skill rank<select id="queue-rank"><option value="1">Rank 1</option><option value="2">Rank 2</option><option value="3">Rank 3</option><option value="4">Rank 4</option><option value="5">Rank 5</option></select></label>
+        <div class="calc-fields"><label for="queue-a">Queue 1 remaining (hours)<input id="queue-a" type="number" min="0" max="1000000000" step="any" placeholder="e.g. 12.5"></label><label for="queue-b">Queue 2 remaining (hours)<input id="queue-b" type="number" min="0" max="1000000000" step="any" placeholder="e.g. 8"></label></div>
+        <p class="note">Use the remaining time shown in-game, after existing buffs. Leave idle queues blank. Cooldown: 47.5 hours.</p>
+        <output id="queue-output" class="calc-answer"></output>
+      </fieldset>
+      <fieldset><legend>Engineer: Stamina Recovery</legend>
+        <label for="free-stamina">Base free claim, before this skill<input id="free-stamina" type="number" min="0" max="1000000000" step="1" placeholder="e.g. 60"></label>
+        <p class="note">Applies to the eligible daily free claim, not all stamina sources.</p>
+        <output id="stamina-output" class="calc-answer"></output>
+      </fieldset>
+      <fieldset><legend>War Leader: Reserve Mobilization</legend>
+        <label for="reserve-rank">Skill rank<select id="reserve-rank"><option value="1">Rank 1</option><option value="2">Rank 2</option><option value="3">Rank 3</option><option value="4">Rank 4</option><option value="5">Rank 5</option></select></label>
+        <label for="reserve-space">Free Drill Ground slots<input id="reserve-space" type="number" min="0" max="1000000000" step="1" placeholder="Leave blank to see the maximum"></label>
+        <p class="note">Goes to your highest unlocked troop tier. Cooldown: 23.5 hours.</p>
+        <output id="reserve-output" class="calc-answer"></output>
+      </fieldset>
+      <fieldset><legend>War Leader: Field Emergency Care</legend>
+        <label for="heal-rank">Skill rank<select id="heal-rank"><option value="1">Rank 1</option><option value="2">Rank 2</option><option value="3">Rank 3</option><option value="4">Rank 4</option><option value="5">Rank 5</option></select></label>
+        <label for="untreated">Untreated troops in the Hospital<input id="untreated" type="number" min="0" max="1000000000" step="1" placeholder="Leave blank to see the maximum"></label>
+        <p class="note">Does not revive lost troops. Cooldown: 71.5 hours.</p>
+        <output id="heal-output" class="calc-answer"></output>
+      </fieldset>
+    </div>
+    <details><summary>Other Engineer activations and their effects</summary>
+      <p>Cooperative Research and Cooperative Construction (Lv.30): +10% or +20% speed to you and one ally for one hour, non-stacking. Cooldown: 23.5 hours.</p>
+      <p>Cooperative Healing (Lv.40): +10% to +50% Hospital capacity for you and one ally for four hours. Friendship Shield (Lv.40): 1, 2 or 4 hours of shield for you or one ally. Both are non-stacking and have a 71.5-hour cooldown.</p>
+    </details>
+    <p class="sources">Estimates are not live rewards. We do not model storage limits, event or Versus scoring, undocumented buff stacking, or server rounding. Use the effective rate option for in-game rates without reapplying buffs. Values are calculated in your browser and are not uploaded.</p>
+    <p class="sources"><a href="https://jeffxlabs.github.io/zrouteredemption/season-1/skills/">Class skill values and cooldowns</a> · <a href="https://github.com/JeffxLabs/zrouteredemption/blob/main/data/resources.json">Producer level reference (client data)</a></p>
+  </div>
 </section>
 <section class="panel" id="routes" aria-labelledby="routes-heading">
   <div class="eyebrow">03 / Officers</div><h2 id="routes-heading">First city route worksheet</h2>

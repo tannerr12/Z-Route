@@ -6,16 +6,21 @@
 <meta name="robots" content="noindex,nofollow,noarchive">
 <title>Z-Route | Season 1 Guide</title>
 <link rel="stylesheet" href="./season-1.css">
+<link rel="stylesheet" href="./season-1-skill-planner.css">
+<link rel="stylesheet" href="./season-1-resistance.css">
 <script defer src="./site-nav.js"></script>
 <script defer src="./season-1.js"></script>
 <script defer src="./season-1-payout.js"></script>
+<script defer src="./season-1-skill-planner.js"></script>
+<script defer src="./season-1-resistance.js"></script>
+<script defer src="./season-1-briefing.js"></script>
 </head>
 <body><main>
 <header class="hero">
   <div class="eyebrow">FIELD GUIDE / SEASON 01</div>
   <h1>Radiated Land</h1>
   <p>Build Virus Resistance across the roster, then move together on one connected city route. Use your live Warzone screens for dates, resistance requirements and protection timers.</p>
-  <nav class="jumps" aria-label="Guide sections"><a href="#checklist">Launch checklist</a><a href="#classes">Class picker</a><a href="#payout-calculator">Payout calculator</a><a href="#routes">Route worksheet</a><a href="#campaign">Campaign guide</a></nav>
+  <nav class="jumps" aria-label="Guide sections"><a href="#checklist">Launch checklist</a><a href="#classes">Class picker</a><a href="#payout-calculator">Payout calculator</a><a href="#skill-planner">Skill planner</a><a href="#resistance-planner">Resistance planner</a><a href="#routes">Route worksheet</a><a href="#battle-briefing">Battle briefing</a><a href="#campaign">Campaign guide</a></nav>
 </header>
 <noscript><p class="panel">The guide is readable without JavaScript. Enable it to save your checklist and route or use the class picker.</p></noscript>
 <section class="panel" id="checklist" aria-labelledby="launch-heading">
@@ -120,6 +125,67 @@
     <p class="sources"><a href="https://jeffxlabs.github.io/zrouteredemption/season-1/skills/">Class skill values and cooldowns</a> · <a href="https://github.com/JeffxLabs/zrouteredemption/blob/main/data/resources.json">Producer level reference (client data)</a></p>
   </div>
 </section>
+<section class="panel" id="skill-planner" aria-labelledby="skill-planner-title">
+  <div class="eyebrow">TOOLS / SEASON 01</div>
+  <h2 id="skill-planner-title">Skill-point planner</h2>
+  <p>Plan an Engineer or War Leader build with the shared Season 1 tree. Compare what your next point adds before spending it in-game.</p>
+  <noscript><p>Enable JavaScript to use the planner.</p></noscript>
+  <div id="skill-planner-controls" hidden>
+    <div class="skill-planner-inputs">
+      <label for="skill-class">Class<select id="skill-class"><option value="engineer">Engineer</option><option value="war">War Leader</option></select></label>
+      <label for="skill-level">Class level (1–40)<input type="number" min="1" max="40" step="1" id="skill-level" value="1"></label>
+      <label for="skill-budget">Total points (optional)<input type="number" min="0" max="1000" step="1" id="skill-budget" placeholder="Defaults to class level"></label>
+    </div>
+    <p class="note">Default budget: 1 point per class level. If your game shows a different total, enter allocated plus unspent points. Each class build is saved in this browser only. Allocations are never sent to the game.</p>
+    <p id="skill-summary" role="status"></p>
+    <p id="skill-warning" role="status"></p>
+    <p class="note" id="skill-milestone"></p>
+    <div class="skill-toolbar">
+      <label for="skill-only-unlocked"><input type="checkbox" id="skill-only-unlocked" checked> Hide skills locked by level</label>
+      <button type="button" id="skill-reset">Clear this build</button>
+    </div>
+    <article class="tile">
+      <h3>Accelerate Production: Rank 4 vs. 5</h3>
+      <p>Rank 4 pays 16 hours of shelter output; Rank 5 pays 24 hours. The extra point adds <strong>8 hours of Food, Metal and Oil production per use</strong>, or 50% more than Rank 4 at the same rates.</p>
+      <p id="skill-production-marginal"></p>
+      <p><a href="#payout-calculator">Set your rates in the payout calculator</a></p>
+    </article>
+    <div id="skill-rows"></div>
+    <p class="sources">Skill values and listed prerequisites: <a href="https://jeffxlabs.github.io/zrouteredemption/season-1/skills/">ZR:Reference game-client skill data</a>. Only documented prerequisite links are enforced; check your live Class Hall for server-specific restrictions.</p>
+  </div>
+</section>
+<section class="panel" id="resistance-planner" aria-labelledby="zr-resistance-heading">
+  <p class="eyebrow">Upgrade planning</p>
+  <h2 id="zr-resistance-heading">Virus Resistance planner</h2>
+  <p>See which Lab upgrades you can afford with your current Immune Protein, what it takes to reach a target, and how much your refineries contribute.</p>
+  <noscript><p>Enable JavaScript to use the planner.</p></noscript>
+  <div data-zr-resistance hidden>
+    <div class="zr-resistance-fields">
+      <label>Virus Lab level <input data-rp="lab" type="number" min="0" max="30" step="1" value="1"></label>
+      <label>Immune Protein on hand <input data-rp="protein" type="number" min="0" step="1" value="0"></label>
+      <label>Target resistance from the game <input data-rp="target" type="number" min="1" step="1" placeholder="Optional"></label>
+      <label>Additional resistance <input data-rp="bonus" type="number" min="0" step="1" value="0"><small>Optional flat bonus, such as a live pass bonus. Don’t include Lab resistance twice.</small></label>
+    </div>
+    <fieldset><legend>Current refineries</legend>
+      <p>Enter 0 if not built or no longer active. Your regular refineries use the same output table.</p>
+      <div class="zr-resistance-fields">
+        <label>Refinery I <input data-rp="r1" type="number" min="0" max="30" step="1" value="0"></label>
+        <label>Refinery II <input data-rp="r2" type="number" min="0" max="30" step="1" value="0"></label>
+        <label>Refinery III <input data-rp="r3" type="number" min="0" max="30" step="1" value="0"></label>
+        <label>Refinery IV <input data-rp="r4" type="number" min="0" max="30" step="1" value="0"></label>
+        <label>Weekly Pass refinery <input data-rp="pass" type="number" min="0" max="30" step="1" value="0"></label>
+        <label>Actual combined protein/hour <input data-rp="rate" type="number" min="0" step="any" placeholder="Optional override"><small>Use this instead of the table if your in-game rates differ.</small></label>
+      </div>
+    </fieldset>
+    <div data-rp-results class="zr-resistance-results" aria-live="polite" aria-atomic="true"></div>
+    <details>
+      <summary>Refinery upgrade options</summary>
+      <p>These show client-table output changes and Uranium Crystal costs, not a claim that every upgrade is available now.</p>
+      <ul data-rp-refineries class="zr-resistance-options"></ul>
+    </details>
+  </div>
+  <p class="sources">Source: <a href="https://github.com/JeffxLabs/zrouteredemption/blob/main/data/progression.json">ZR:Reference progression data</a> and <a href="https://jeffxlabs.github.io/zrouteredemption/season-1/">Season 1 field guide</a>. Verify costs and milestone locks in game. Production-only estimates assume regular collection at the same rate; they exclude stored production, event rewards, build time, and temporary rate changes. Recall and redeploy to apply newly upgraded resistance to a march.</p>
+</section>
 <section class="panel" id="routes" aria-labelledby="routes-heading">
   <div class="eyebrow">03 / Officers</div><h2 id="routes-heading">First city route worksheet</h2>
   <p>Work backward from your target city. You need an owned Military Stronghold adjacent to that city to declare. Start with a Lv.1 stronghold and trace a connected path. Mark a fallback before anybody relocates.</p>
@@ -145,6 +211,38 @@
     <label for="plan-text" id="plan-label" hidden>Route plan to copy</label><textarea id="plan-text" rows="9" readonly hidden></textarea>
   </form>
   <details><summary>When to commit or switch routes</summary><p><b>Go:</b> The path is connected, the adjacent stronghold is owned, the declaration window is open, and eligible marches and recovery coverage are ready. <b>Switch or wait:</b> A link is blocked, the target is protected, or coverage is short. Post the new marker before relocating.</p><p>The client guide lists Wednesday and Saturday city declarations. Confirm the live R4/R5 declaration screen for your target; neutral and occupied targets can differ.</p></details>
+</section>
+<section class="panel" id="battle-briefing" aria-labelledby="brief-heading">
+  <div class="eyebrow">Officers / Battle day</div>
+  <h2 id="brief-heading">Battle briefing builder</h2>
+  <p>Turn your route worksheet into a message you can paste into alliance chat. The builder never sends it and does not verify what is happening in-game.</p>
+  <noscript><p>Enable JavaScript to use this builder.</p></noscript>
+  <div id="brief-controls" hidden>
+    <p class="note">Fill in the <a href="#routes">primary and fallback routes</a> above first. Extra fields below stay in this browser. Clear them when you finish on a shared device.</p>
+    <div class="grid brief-field-grid">
+      <label for="brief-declarer">R4/R5 declarer and backup<input type="text" id="brief-declarer" maxlength="120" autocomplete="off" placeholder="Primary / backup"></label>
+      <label for="brief-rally">Rally leads and assignments<input type="text" id="brief-rally" maxlength="120" autocomplete="off" placeholder="Lead names and who fills"></label>
+      <label for="brief-garrison">Garrison lead and backup<input type="text" id="brief-garrison" maxlength="120" autocomplete="off" placeholder="Lead names and fallback"></label>
+      <label for="brief-support">Infection or recovery support<input type="text" id="brief-support" maxlength="120" autocomplete="off" placeholder="Optional"></label>
+      <label for="brief-protection">Protection status or expiry (State Time)<input type="text" id="brief-protection" maxlength="120" autocomplete="off" placeholder="Check the live declaration screen"></label>
+      <label for="brief-decision">Call
+        <select id="brief-decision"><option value="draft">Draft</option><option value="go">Go</option><option value="hold">Hold</option><option value="fallback">Use fallback route</option></select>
+      </label>
+    </div>
+    <fieldset class="brief-checks"><legend>Confirm against the game before calling Go</legend>
+      <label class="task"><input type="checkbox" id="brief-adjacent"><span>Our alliance owns a Military Stronghold next to the selected city.</span></label>
+      <label class="task"><input type="checkbox" id="brief-window"><span>The selected target's declaration window and protection are checked.</span></label>
+      <label class="task"><input type="checkbox" id="brief-ready"><span>Eligible marches and rally, garrison and recovery coverage are ready.</span></label>
+    </fieldset>
+    <div id="brief-warning" role="status"></div>
+    <label for="brief-text">Briefing preview</label>
+    <textarea id="brief-text" rows="10" readonly></textarea>
+    <div class="actions">
+      <button id="brief-copy" type="button">Copy briefing</button>
+      <button id="brief-clear" type="button">Clear briefing fields</button>
+      <span id="brief-status" role="status"></span>
+    </div>
+  </div>
 </section>
 <section class="panel" id="campaign" aria-labelledby="campaign-heading">
   <div class="eyebrow">04 / Campaign</div><h2 id="campaign-heading">Beyond the first city</h2>

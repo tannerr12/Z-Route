@@ -1,0 +1,23 @@
+/* Season 1 points planner */
+#skill-planner .skill-planner-inputs,.skill-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+#skill-planner .skill-planner-inputs select,#skill-planner .skill-planner-inputs input{width:100%;min-width:0}
+#skill-planner input[type=number]{font:inherit;min-height:44px;background:var(--bg);color:var(--ink);border:1px solid #60758a;border-radius:8px;padding:8px 10px;margin-top:4px}
+#skill-summary{color:var(--accent);font-weight:700;margin:.8em 0 .2em}
+#skill-warning{color:var(--warm);margin:0}
+#skill-warning:empty,#skill-planner .skill-reason:empty{display:none}
+#skill-planner .skill-toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:space-between;margin:14px 0}
+#skill-planner .skill-toolbar input{accent-color:var(--accent);width:18px;height:18px;vertical-align:middle}
+#skill-planner button:disabled{cursor:not-allowed;opacity:.55}
+#skill-planner .skill-tree{margin:18px 0}
+#skill-planner .skill-card{border:1px solid var(--border);border-radius:10px;background:var(--bg);padding:12px;min-width:0}
+#skill-planner .skill-card h4{margin:0 0 .2em}
+#skill-planner .skill-card p{margin:.25em 0}
+#skill-planner .skill-meta,#skill-planner .skill-reason,#skill-planner .skill-context{font-size:.875rem}
+#skill-planner .skill-effect{color:var(--ink)}
+#skill-planner .skill-reason{color:var(--warm)}
+#skill-planner .skill-buttons{display:flex;align-items:center;gap:10px;margin:.55em 0}
+#skill-planner .skill-buttons button{min-width:44px;justify-content:center}
+#skill-planner .skill-rank{font-variant-numeric:tabular-nums;font-weight:700}
+#skill-production-marginal{margin-top:.6em;color:var(--accent)}
+@media(max-width:850px){#skill-planner .skill-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){#skill-planner .skill-planner-inputs,#skill-planner .skill-cards{grid-template-columns:1fr}}

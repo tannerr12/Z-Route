@@ -46,3 +46,9 @@ test('both history URLs mark only their own link current, including project subp
     assert.deepEqual(current.map(a=>a.href),['./'+route]);
   }
 });
+
+test('Season 1 guide is linked from the World Map and marks itself active',()=>{
+  const links=render('/Z-Route/index.html');
+  assert.equal(links.filter(a=>a.href==='./season-1.html'&&a.textContent==='Season 1 Guide').length,1);
+  assert.deepEqual(render('/Z-Route/season-1.html').filter(a=>a.attributes['aria-current']==='page').map(a=>a.href),['./season-1.html']);
+});

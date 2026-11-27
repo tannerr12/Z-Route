@@ -9,6 +9,7 @@
     ["activity.html","Player Activity"],
     ["base-upgrades.html","Base Upgrades"],
     ["alliance-history.html","Alliance History"],
+    ["season-1.html","Season 1 Guide"],
     ["vs.html","VS Analytics"],
     ["expedition-frenzy.html","Expedition Frenzy"],
     ["expedition-guilds.html","Frenzy Guilds"],

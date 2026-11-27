@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>Z-Route | Season 1 Guide</title>
+<link rel="stylesheet" href="./season-1.css">
+<script defer src="./site-nav.js"></script>
+<script defer src="./season-1.js"></script>
+</head>
+<body><main>
+<header class="hero">
+  <div class="eyebrow">FIELD GUIDE / SEASON 01</div>
+  <h1>Radiated Land</h1>
+  <p>Build Virus Resistance across the roster, then move together on one connected city route. Use your live Warzone screens for dates, resistance requirements and protection timers.</p>
+  <nav class="jumps" aria-label="Guide sections"><a href="#checklist">Launch checklist</a><a href="#classes">Class picker</a><a href="#routes">Route worksheet</a><a href="#campaign">Campaign guide</a></nav>
+</header>
+<noscript><p class="panel">The guide is readable without JavaScript. Enable it to save your checklist and route or use the class picker.</p></noscript>
+<section class="panel" id="checklist" aria-labelledby="launch-heading">
+  <div class="section-head"><div><div class="eyebrow">01 / Launch</div><h2 id="launch-heading">Launch checklist</h2></div><output id="progress-text" aria-live="polite">0 of 8 complete</output></div>
+  <progress id="progress" max="8" value="0" aria-label="Launch checklist progress"></progress>
+  <div class="grid">
+    <div><h3>Before launch</h3>
+      <label class="task"><input type="checkbox" data-check="class-hall"><span><b>Build the Class Hall.</b> Choose a class based on the job you will actually do.</span></label>
+      <label class="task"><input type="checkbox" data-check="opening"><span><b>Check the opening timer.</b> Note the date and server time from the live Season screen.</span></label>
+      <label class="task"><input type="checkbox" data-check="reserves"><span><b>Prepare reserves.</b> Keep stamina, teleports, healing speedups and hospital space available.</span></label>
+      <label class="task"><input type="checkbox" data-check="officers"><span><b>Agree on coverage.</b> Pick a route owner, a backup declarer and rally, garrison and infection-support leads.</span></label>
+    </div>
+    <div><h3>First login</h3>
+      <label class="task"><input type="checkbox" data-check="lab"><span><b>Repair the Virus Lab, then Refinery I.</b> Crystals upgrade refineries, refineries make Immune Protein, and protein upgrades the Lab.</span></label>
+      <label class="task"><input type="checkbox" data-check="redeploy"><span><b>Recall and redeploy after a Lab upgrade.</b> Check your march's new resistance against the target's requirement.</span></label>
+      <label class="task"><input type="checkbox" data-check="rewards"><span><b>Claim the early rewards.</b> Look for first kills, Season Achievements, Quests and Alliance Milestones before spending stamina on repeats.</span></label>
+      <label class="task"><input type="checkbox" data-check="readiness"><span><b>Report readiness.</b> Tell officers your current resistance, available march and attendance.</span></label>
+    </div>
+  </div>
+  <p class="note">Warm-up boss resistance is separate from your seasonal Virus Lab and resets after that event.</p>
+</section>
+<section class="panel" id="classes" aria-labelledby="classes-heading">
+  <div class="eyebrow">02 / Roles</div><h2 id="classes-heading">Engineer or War Leader?</h2>
+  <label for="class-role">What will you do most often?</label>
+  <select id="class-role">
+    <option value="">Compare both classes</option>
+    <option value="growth">Build, research and grow</option>
+    <option value="support">Reinforce and support the alliance</option>
+    <option value="combat">Lead PvP rallies or fight on the front line</option>
+    <option value="flex">Fill whichever role is needed</option>
+  </select>
+  <p class="recommendation" id="class-result" role="status">Choose the class that matches your main assignment.</p>
+  <div class="grid">
+    <article class="tile" id="engineer"><h3>Engineer</h3><p>Good for regular research, production and ally support. At class Lv.15, rank 1 of Instant Research shortens each active research queue by four hours. Fill both queues before using it.</p></article>
+    <article class="tile" id="war-leader"><h3>War Leader</h3><p>Good for frontline combat, regular rally leads and troop recovery. Check live prerequisites before committing points to your combat build.</p></article>
+  </div>
+  <p class="note">The client reference lists a free class-reset item at class Lv.10. Use a skill reset instead if you only want to rebuild the same class.</p>
+</section>
+<section class="panel" id="routes" aria-labelledby="routes-heading">
+  <div class="eyebrow">03 / Officers</div><h2 id="routes-heading">First city route worksheet</h2>
+  <p>Work backward from your target city. You need an owned Military Stronghold adjacent to that city to declare. Start with a Lv.1 stronghold and trace a connected path. Mark a fallback before anybody relocates.</p>
+  <p class="note" id="privacy">This worksheet and checklist are saved only in this browser when storage is available. Entries are not sent to Z-Route or shared with other players. Avoid entering sensitive information on a shared device.</p>
+  <form id="route-form" aria-describedby="privacy">
+    <div class="grid">
+      <fieldset><legend>Primary route</legend>
+        <label for="primary-city">Target city, level and coordinates</label><input type="text" id="primary-city" maxlength="160" placeholder="Lv.1 city, X:___ Y:___" autocomplete="off" data-route="true">
+        <label for="primary-strongholds">Connected strongholds</label><input type="text" id="primary-strongholds" maxlength="160" placeholder="Start, links and city-adjacent stronghold" autocomplete="off" data-route="true">
+        <label for="primary-staging">Staging point and resistance</label><input type="text" id="primary-staging" maxlength="160" placeholder="Marker and live resistance requirement" autocomplete="off" data-route="true">
+        <label for="primary-window">Declaration window</label><input type="text" id="primary-window" maxlength="160" placeholder="Date, State Time and protection expiry" autocomplete="off" data-route="true">
+        <label for="primary-coverage">Ready marches and coverage</label><input type="text" id="primary-coverage" maxlength="160" placeholder="Declarer, rally lead, garrison and backup" autocomplete="off" data-route="true">
+      </fieldset>
+      <fieldset><legend>Fallback route</legend>
+        <label for="fallback-city">Target city, level and coordinates</label><input type="text" id="fallback-city" maxlength="160" placeholder="Lv.1 city, X:___ Y:___" autocomplete="off" data-route="true">
+        <label for="fallback-strongholds">Connected strongholds</label><input type="text" id="fallback-strongholds" maxlength="160" placeholder="Start, links and city-adjacent stronghold" autocomplete="off" data-route="true">
+        <label for="fallback-staging">Staging point and resistance</label><input type="text" id="fallback-staging" maxlength="160" placeholder="Marker and live resistance requirement" autocomplete="off" data-route="true">
+        <label for="fallback-window">Declaration window</label><input type="text" id="fallback-window" maxlength="160" placeholder="Date, State Time and protection expiry" autocomplete="off" data-route="true">
+        <label for="fallback-coverage">Ready marches and coverage</label><input type="text" id="fallback-coverage" maxlength="160" placeholder="Declarer, rally lead, garrison and backup" autocomplete="off" data-route="true">
+      </fieldset>
+    </div>
+    <div class="actions"><button id="copy-plan" type="button">Copy route plan</button><span id="route-status" role="status"></span></div>
+    <label for="plan-text" id="plan-label" hidden>Route plan to copy</label><textarea id="plan-text" rows="9" readonly hidden></textarea>
+  </form>
+  <details><summary>When to commit or switch routes</summary><p><b>Go:</b> The path is connected, the adjacent stronghold is owned, the declaration window is open, and eligible marches and recovery coverage are ready. <b>Switch or wait:</b> A link is blocked, the target is protected, or coverage is short. Post the new marker before relocating.</p><p>The client guide lists Wednesday and Saturday city declarations. Confirm the live R4/R5 declaration screen for your target; neutral and occupied targets can differ.</p></details>
+</section>
+<section class="panel" id="campaign" aria-labelledby="campaign-heading">
+  <div class="eyebrow">04 / Campaign</div><h2 id="campaign-heading">Beyond the first city</h2>
+  <details open><summary>Every reset</summary><p>Collect seasonal production, raise resistance, check seasonal quests and match your daily stamina spend to unlocked rewards. Before a fight, check hospital and Emergency Center room. Recon Aircraft can help infected allies; prioritize the rally and garrison leads.</p></details>
+  <details><summary>Territory and cross-Warzone expansion</summary><p>Keep the route you already own defensible. A captured Lv.1 to Lv.5 city adds one to the stronghold limit in the documented rules. Raid the Radiated Zone outposts are event objectives. The later Alliance Outpost opens cross-Warzone expansion and cannot be moved once placed, so confirm the nearby stronghold and garrison plan before placing it.</p></details>
+  <details><summary>Milestones, loot and settlement</summary><p>Use the in-game panel for Expedition, hero and weapon unlocks. City loot is allocated separately from contribution ranking; have an officer verify distributions. Claim available rewards before settlement closes. Seasonal buildings go away, and class level and Class EXP carry over under the documented rules.</p></details>
+  <p class="sources">Sources: <a href="https://jeffxlabs.github.io/zrouteredemption/season-1/">Client-based field guide</a> · <a href="https://jeffxlabs.github.io/zrouteredemption/season-1/skills/">Class skill reference</a> · <a href="https://www.scribd.com/document/1071138090/Z-Route-Redemption-Season-1-Complete-Strategy-Handbook-Published-2">Community handbook</a></p>
+</section>
+<footer>Season 1 planning reference · No alliance assignments, route coordinates or server dates are prefilled.</footer>
+</main></body>
+</html>

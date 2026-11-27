@@ -6,3 +6,5 @@
 #payout-controls input[type=number]{width:100%;max-width:100%;font:inherit;background:var(--bg);color:var(--ink);border:1px solid #60758a;border-radius:8px;padding:8px 10px;min-height:44px;margin:4px 0}
 #payout-controls label{margin:8px 0}#payout-controls small{display:block;color:var(--muted);font-size:.87rem;font-weight:400}.calc-results{margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,165px),1fr));gap:8px}.calc-rank{border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--bg);min-width:0}.calc-rank h4{margin:0 0 6px}.calc-rank ul{margin:0;padding:0;list-style:none}.calc-rank li{margin-top:5px}.calc-rank span{display:block;color:var(--muted);font-size:.88rem}.calc-answer{display:block;color:var(--accent);margin-top:8px;min-height:1.4em}
 @media(max-width:660px){.calc-resource-grid{grid-template-columns:1fr}}
+
+.brief-field-grid{margin:14px 0}.brief-checks{margin:12px 0}.brief-checks .task:last-child{border-bottom:0}#brief-warning{color:var(--warm);margin:12px 0}#brief-warning:empty{display:none}#brief-text{min-height:9rem;resize:vertical}

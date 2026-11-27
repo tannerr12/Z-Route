@@ -1,0 +1,8 @@
+#resistance-planner .zr-resistance-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;margin:.8rem 0}
+#resistance-planner label{display:flex;flex-direction:column;gap:.3rem;min-width:0;font-weight:700}
+#resistance-planner label input{width:100%;box-sizing:border-box;min-width:0;padding:.45rem;border:1px solid var(--border,#566178);border-radius:.35rem;background:var(--bg,#171923);color:inherit}
+#resistance-planner small{font-weight:400}
+#resistance-planner fieldset{min-width:0;border:1px solid var(--border,#566178);border-radius:.45rem;padding:.65rem}
+#resistance-planner .zr-resistance-results{margin:.9rem 0}
+#resistance-planner .zr-resistance-results p,#resistance-planner .zr-resistance-options li{margin:.45rem 0}
+@media(max-width:450px){#resistance-planner .zr-resistance-fields{grid-template-columns:1fr}}

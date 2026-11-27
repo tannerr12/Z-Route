@@ -81,6 +81,8 @@ function init(doc){
       card.append(list);return card;
     });
     grid.replaceChildren(...cards);
+    grid.zrProductionRates=records;
+    if(doc.defaultView?.CustomEvent)doc.dispatchEvent(new doc.defaultView.CustomEvent("zroute:production-rates",{detail:records}));
   }
   function updateOther(){
     const q=queueSavings(value("queue-skill"),value("queue-rank"),value("queue-a"),value("queue-b"));

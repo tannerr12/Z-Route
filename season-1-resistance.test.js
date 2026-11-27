@@ -1,0 +1,51 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const { plan } = require("./season-1-resistance.js");
+const base = { lab: 1, protein: 0, refinery: [0,0,0,0,0] };
+test("reachable level, exact next level, and cumulative target cost", () => {
+  const r = plan({ ...base, protein: 20000, target: 1800, refinery: [5,1,0,0,0] });
+  assert.equal(r.affordable, 3);
+  assert.equal(r.spend, 20000);
+  assert.equal(r.targetLevel, 4);
+  assert.equal(r.targetCost, 64800);
+  assert.equal(r.deficit, 44800);
+  assert.equal(r.hourly, 1000);
+  assert.equal(r.eta, 44.8);
+  assert.deepEqual(r.steps.map(s=>[s.level,s.cost,s.cumulative]), [[2,5000,5000],[3,15000,20000],[4,44800,64800]]);
+});
+test("bonus reduces target level, without altering the cost", () => {
+  const x = plan({ ...base, lab: 10, target: 8500, bonus: 250 });
+  assert.equal(x.current, 7350);
+  assert.equal(x.targetLevel, 11);
+  assert.equal(x.targetCost, 338100);
+  assert.equal(x.nextEta, null);
+  const met = plan({ ...base, lab: 10, target: 7300, bonus: 250, rate: 123.5 });
+  assert.equal(met.targetLevel, 10);
+  assert.equal(met.deficit, 0);
+  assert.equal(met.eta, 0);
+  assert.equal(met.hourly, 123.5);
+});
+test("uses all active refineries and shows known gates", () => {
+  const a = plan({ ...base, refinery: [5,10,10,1,1] });
+  assert.equal(a.hourly, 9500);
+  assert.equal(a.options[0].gate, "");
+  assert.equal(a.options[0].uranium, 16800);
+  assert.equal(a.options[0].gain, 400);
+  const b = plan({ ...base, lab: 0, refinery: [0,0,0,0,0] });
+  assert.equal(b.affordable, 1);
+  assert.match(b.options[0].gate, /Virus Lab/);
+  assert.match(b.options[4].gate, /active Weekly Pass/);
+  assert.equal(plan({ ...base, refinery: [5,3,0,0,0] }).options[0].gate.includes("Refinery II Lv. 5"), true);
+});
+test("max, overshoot, decimal levels and disabled production", () => {
+  const max = plan({ ...base, lab: 30, target: 108101, refinery: [30,30,30,30,30] });
+  assert.equal(max.ceiling, 108100);
+  assert.equal(max.next, null);
+  assert.equal(max.targetLevel, null);
+  assert.equal(max.hourly, 184500);
+  assert.equal(plan({ ...base, lab: 29.9 }), null);
+  assert.equal(plan({ ...base, rate: -1 }), null);
+  assert.equal(plan({ ...base, target: 0 }), null);
+  assert.equal(plan({ ...base, refinery: [1,1,1,,1] }), null);
+  assert.equal(plan({ ...base, refinery: [1,1,1,1,1], rate: 0 }).hourly, 0);
+});

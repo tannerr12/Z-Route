@@ -1,0 +1,25 @@
+/* Skill paths: layout scoped to this page. */
+.tree-inputs { display:grid; grid-template-columns:2fr 1fr 1fr; gap:1rem; }
+.tree-inputs label { display:grid; gap:.35rem; font-weight:700; }
+.tree-inputs select,.tree-inputs input { min-width:0; width:100%; min-height:44px; box-sizing:border-box; }
+.tree-hint { font-size:.94rem; }
+.tree-result { margin:1rem 0; padding:.75rem 1rem; background:#19312f; border:1px solid #5e887f; border-radius:.65rem; }
+.tree-result p { margin:.25rem 0; color:#e8fff4; }
+#tree-next { font-weight:700; }
+.tree-order { padding-inline-start:1.55rem; }
+.tree-order li { margin:.18rem 0; padding:.24rem .35rem; }
+.tree-order li[data-state="next"] { background:#214446; color:#effff9; border-radius:.35rem; }
+.tree-order li[data-state="later"] { color:#c4cbd3; }
+.tree-chip { display:inline-block; margin-inline-start:.4rem; font-size:.82em; color:#d4e4e2; }
+.tree-branches { display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr); gap:1.2rem; align-items:start; }
+.tree-tier { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.5rem; margin-bottom:.7rem; }
+.tree-tier h4 { grid-column:1/-1; margin:.25rem 0; }
+.tree-node { border:1px solid #52636e; border-radius:.65rem; padding:.65rem; background:#17212a; overflow-wrap:anywhere; }
+.tree-node p { margin:.2rem 0; font-size:.87rem; }
+.tree-node h5 { margin:0; font-size:1rem; }
+.tree-node[data-plan="true"] { border-color:#73c6a8; background:#19332e; }
+.tree-node[data-next="true"] { outline:2px solid #b7f4d7; outline-offset:1px; }
+.tree-shared { list-style:none; margin:0; padding:0; }
+.tree-shared li + li::before { content:"↓"; display:block; margin:.2rem 0; text-align:center; color:#a0dfcb; font-weight:700; }
+@media(max-width:700px){.tree-branches { grid-template-columns:1fr; }.tree-inputs { grid-template-columns:1fr 1fr; }.tree-inputs label:first-child { grid-column:1/-1; }}
+@media(max-width:360px){.tree-tier {grid-template-columns:1fr;}}

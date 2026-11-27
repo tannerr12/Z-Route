@@ -1,4 +1,16 @@
 /* Skill paths: layout scoped to this page. */
+.tree-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:.65rem; margin:.75rem 0; }
+.tree-toolbar button,.tree-import,.tree-rank-buttons button { min-height:44px; padding:.3rem .65rem; border:1px solid #68857e; border-radius:.4rem; background:#203237; color:#effff9; cursor:pointer; }
+.tree-toolbar label:first-child { display:flex; align-items:center; gap:.4rem; color:inherit; }
+.tree-toolbar input[type=checkbox] { width:1.15rem; height:1.15rem; }
+.tree-import { position:relative; box-sizing:border-box; display:flex; align-items:center; overflow:hidden; }
+.tree-import input { position:absolute; inset:0; opacity:0; width:100%; cursor:pointer; }
+.tree-import:focus-within { outline:2px solid #a0dfcb; outline-offset:2px; }
+.tree-rank-buttons { display:flex; align-items:center; flex-wrap:wrap; gap:.4rem; margin:.5rem 0; }
+.tree-rank-buttons button { min-width:44px; }
+.tree-rank-buttons button:disabled { opacity:.5; cursor:default; }
+#tree-file-status:empty { display:none; }
+#tree-file-status { color:#f1d1a0; }
 .tree-inputs { display:grid; grid-template-columns:2fr 1fr 1fr; gap:1rem; }
 .tree-inputs label { display:grid; gap:.35rem; font-weight:700; }
 .tree-inputs select,.tree-inputs input { min-width:0; width:100%; min-height:44px; box-sizing:border-box; }

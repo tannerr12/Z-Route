@@ -155,7 +155,7 @@
   }
   if(typeof module==="object"&&module.exports)module.exports={DATA,skills,normalize,spent,budgetOf,canAdd,canRemove,adjust,audit,outputDelta,milestone,init};
   else {
-    window.ZRouteSkillPlanner=Object.freeze({DATA,skills,normalize,spent,budgetOf,adjust,audit});
+    window.ZRouteSkillPlanner=Object.freeze({DATA,skills,normalize,spent,budgetOf,canAdd,canRemove,adjust,audit});
     init(document,window);
   }
 })();

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Z-Route | Alliance History</title>
+<style>
+:root{color-scheme:dark;background:#091321;color:#e9f1fc;font:15px/1.5 system-ui,sans-serif}*{box-sizing:border-box}body{margin:0;padding:20px}main{max-width:1400px;margin:auto}h1{font-size:clamp(26px,5vw,36px);margin:0}h2{font-size:20px;margin:0 0 6px}p{margin:8px 0}p,small{color:#aec0d4}a{color:#99ceff}.panel{margin:16px 0;padding:18px;background:#102035;border:1px solid #30465e;border-radius:12px}.controls{display:flex;gap:12px;flex-wrap:wrap;align-items:end}.controls label{display:grid;gap:5px;color:#c5d8ea}.controls select{min-height:42px;max-width:100%}.controls label:nth-child(2){flex:1 1 200px}button,select{font:inherit;background:#173149;color:#e9f1fc;border:1px solid #506c85;border-radius:8px;padding:8px 12px}button{cursor:pointer}button:disabled,select:disabled{opacity:.6;cursor:wait}.scroll{overflow:auto;max-width:100%;border-radius:6px}table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}th,td{text-align:left;padding:9px 12px;border-bottom:1px solid #30465e;white-space:nowrap}th{color:#bad3eb}.tabs{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}.tile{flex:1 1 155px;background:#162d44;border-radius:9px;padding:11px 14px}.tile strong{display:block;font-size:1.38rem}.note{border-left:3px solid #8cb9df;padding-left:12px}.muted{color:#aec0d4}.good{color:#a2e4c5}.status{overflow-wrap:anywhere}.more{margin-top:12px}[hidden]{display:none !important}:focus-visible{outline:2px solid #a4d2ff;outline-offset:3px}@media(max-width:650px){body{padding:12px}.panel{padding:13px}.controls label{flex:1 1 136px}}
+</style>
+<script defer src="./alliance-history.js"></script>
+<script defer src="./alliance-history-page.js"></script>
+<script defer src="./site-nav.js"></script>
+</head>
+<body><main>
+<header><h1>Alliance History</h1><p>See which alliance tags have been observed, and where recorded players moved on a server.</p></header>
+<section class="panel controls" aria-label="Alliance history filters">
+ <label>Server <select id="allianceServer" disabled><option>Loading servers…</option></select></label>
+ <label>Alliance tag <select id="allianceTag" disabled><option value="">All alliances</option></select></label>
+ <label>Archive period <select id="alliancePeriod"><option value="0">Entire archive</option><option value="7">Last 7 archive days</option><option value="14">Last 14 archive days</option><option value="30">Last 30 archive days</option></select></label>
+ <button id="allianceRetry" type="button" hidden>Retry</button>
+</section>
+<p id="allianceStatus" class="status" role="status" aria-live="polite">Loading published alliance observations…</p>
+<noscript><p>Alliance History needs JavaScript to read the published observations.</p></noscript>
+<div id="alliancePanels" hidden>
+<section class="panel" aria-labelledby="allianceMovesTitle">
+ <h2 id="allianceMovesTitle">Observed roster movement</h2>
+ <p id="alliancePattern"></p>
+ <div class="tabs" id="allianceMeasures"></div>
+ <details><summary>How movement is calculated</summary>
+  <p>Routes compare consecutive observations of the same player when a change of alliance tag was recorded and both tags are known. The move happened <em>between</em> those observations. Missing or conflicting observations are not counted as moves; a route can also reflect a tag change, not a transfer, because the map archive has no stable alliance IDs.</p>
+  <p>Each player counts once per origin-to-destination route in the selected period. With at least 10 player-route pairs and four distinct origin or destination tags, a gap of at least 15 percentage points between the top three destination and origin shares is described as concentration or spreading. This is an observation pattern, not proof of a merger or of activity across the full server. Periods use UTC and end on the day of the latest dated observation.</p>
+ </details>
+ <div class="scroll" role="region" tabindex="0" aria-label="Observed moves by origin and destination">
+ <table><thead><tr><th scope="col">From</th><th scope="col">To</th><th scope="col">Players</th><th scope="col">First detected (UTC)</th><th scope="col">Last detected (UTC)</th></tr></thead><tbody id="allianceRoutes"></tbody></table>
+ </div>
+ <button class="more" id="allianceMoreRoutes" type="button" hidden>Show more routes</button>
+</section>
+<section class="panel" aria-labelledby="allianceTagsTitle">
+ <h2 id="allianceTagsTitle">Alliance activity by tag</h2>
+ <p class="note">The archive’s earliest UTC day is the baseline, not an alliance-creation log. A tag first detected later may have already existed, been renamed or been reused. No observed members in a map snapshot means coverage is unknown, not that the alliance died.</p>
+ <div class="scroll" role="region" tabindex="0" aria-label="Alliance activity by tag table">
+ <table><thead><tr><th scope="col">Alliance tag</th><th scope="col">First observed (UTC)</th><th scope="col">Last archived observation (UTC)</th><th scope="col">First-seen context</th><th scope="col">Latest published roster</th></tr></thead><tbody id="allianceTags"></tbody></table>
+ </div>
+ <button class="more" id="allianceMoreTags" type="button" hidden>Show more alliances</button>
+</section>
+<section class="panel" aria-labelledby="allianceVerifiedTitle">
+ <h2 id="allianceVerifiedTitle">Verified roster changes</h2>
+ <p id="allianceVerifiedNote" class="note"></p>
+ <div id="allianceVerifiedTable" class="scroll" role="region" tabindex="0" aria-label="Verified roster events" hidden>
+ <table><thead><tr><th scope="col">Alliance</th><th scope="col">What changed</th><th scope="col">Previous verified roster (UTC)</th><th scope="col">Observed at (UTC)</th><th scope="col">Members as observed</th></tr></thead><tbody id="allianceVerified"></tbody></table>
+ </div>
+ <button class="more" id="allianceMoreVerified" type="button" hidden>Show more verified changes</button>
+</section>
+</div>
+</main></body></html>

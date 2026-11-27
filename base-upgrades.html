@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>Z-Route | Base Upgrades</title>
+<style>
+:root{color-scheme:dark;background:#091321;color:#e9f1fc;font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;padding:20px}
+main{max-width:1450px;margin:auto}
+h1{font-size:29px;margin:0 0 2px}
+p{margin:5px 0;color:#9eb1c8}
+.panel{background:#102035;border:1px solid #30465e;border-radius:12px;padding:15px;margin:14px 0}
+.filters{display:flex;align-items:end;flex-wrap:wrap;gap:14px}
+.filters label{display:grid;gap:4px;font-weight:600}
+.filters select,button{font:inherit;background:#15263a;color:#f1f5fa;border:1px solid #40556d;border-radius:8px;min-height:44px;padding:7px 12px}
+.filters select{max-width:100%;min-width:150px}
+select:disabled,button:disabled{opacity:.65}
+.filters .check{display:flex;align-items:center;gap:7px;min-height:44px}
+.filters input{accent-color:#6cd5ff;inline-size:18px;block-size:18px}
+.scroller{overflow-x:auto}
+.scroller:focus-visible{outline:2px solid #80d8ff;outline-offset:3px}
+table{border-collapse:collapse;width:100%;min-width:650px}
+th,td{padding:9px 11px;border-bottom:1px solid #30465e;text-align:left;vertical-align:top}
+th{color:#c5d8ea;background:#15263a}
+td time{white-space:nowrap}
+.detail{display:block;color:#9eb1c8;font-size:.86rem}
+.delta{color:#8ce8b4;font-weight:600;white-space:nowrap}
+.unknown{color:#f5d28c}
+.error{color:#ffb2ae}
+.group{margin-top:12px;border:1px solid #30465e;border-radius:9px}
+summary{cursor:pointer;padding:9px 12px;font-weight:600}
+.group .scroller{padding:0 5px 5px}
+#more{margin-top:12px}
+@media(max-width:640px){body{padding:12px}.panel{padding:12px}.filters label:not(.check){flex:1 1 125px;min-width:0}.filters select{min-width:0}.filters .check{flex-basis:100%}}
+</style>
+<script defer src="./site-nav.js"></script>
+<script defer src="./base-upgrades-model.js"></script>
+<script defer src="./base-upgrades-page.js"></script>
+</head>
+<body><main>
+<header>
+  <h1>Base Upgrades</h1>
+  <p>Track observed base-level increases by server, alliance, or player.</p>
+</header>
+<section class="panel" aria-label="Base upgrade filters">
+  <div class="filters">
+    <label for="server">Server<select id="server" disabled><option>Loading…</option></select></label>
+    <label for="alliance">Alliance<select id="alliance" disabled><option value="">All alliances</option></select></label>
+    <label class="check"><input type="checkbox" id="group" disabled> Group by player</label>
+  </div>
+  <p>Times are UTC. An upgrade happened between the last lower-level observation and the first higher-level observation, not necessarily at the displayed time.</p>
+  <p>Alliance is attributed only when the same tag is recorded at both observations and no membership change is recorded at detection. Other events are marked unknown.</p>
+</section>
+<section class="panel" aria-label="Base upgrade results">
+  <p id="coverage" aria-live="polite">Loading server directory…</p>
+  <p id="summary" role="status"></p>
+  <div id="results"></div>
+  <button id="more" type="button" hidden>Show more</button>
+</section>
+</main></body>
+</html>

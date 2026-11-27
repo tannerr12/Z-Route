@@ -7,6 +7,8 @@
     ["index.html","World Map"],
     ["recruitment.html","Recruitment"],
     ["activity.html","Player Activity"],
+    ["base-upgrades.html","Base Upgrades"],
+    ["alliance-history.html","Alliance History"],
     ["vs.html","VS Analytics"],
     ["expedition-frenzy.html","Expedition Frenzy"],
     ["expedition-guilds.html","Frenzy Guilds"],

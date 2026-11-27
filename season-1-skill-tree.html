@@ -31,7 +31,10 @@
     <label for="tree-extra">Bonus points already earned<input id="tree-extra" type="number" min="0" max="10" step="1" value="0" inputmode="numeric"></label>
   </div>
   <p class="tree-hint" id="tree-about"></p>
-  <p class="tree-hint">These builds start from zero ranks. Use your class level, not base level. Bonus inputs model the documented Season I point item (up to 10). To audit your existing ranks, use the <a href="./season-1.html#skill-planner">custom point planner</a>.</p>
+  <p class="tree-hint">The numbered route shows the recommended build from zero. Switch to My build to record what you actually took and see your next legal pick. Use your class level, not base level. Bonus inputs model the documented Season I point item (up to 10). To audit your existing ranks, use the <a href="./season-1.html#skill-planner">custom point planner</a>.</p>
+  <div class="tree-toolbar"><label for="tree-track"><input type="checkbox" id="tree-track"> My build</label><button type="button" id="tree-export">Export JSON</button><label class="tree-import" for="tree-import">Import JSON<input id="tree-import" type="file" accept=".json,application/json"></label></div>
+  <p class="tree-hint">My build autosaves on this browser. Engineer and War Leader builds are saved separately. Import replaces only the matching class’s build on this device.</p>
+  <p id="tree-file-status" role="status"></p>
   <div class="tree-result" aria-live="polite"><p id="tree-budget"></p><p id="tree-next"></p></div>
   <h3>Spend in this order</h3>
   <ol id="tree-order" class="tree-order"></ol>
@@ -39,14 +42,18 @@
 <section class="panel" aria-labelledby="tree-heading">
   <div class="eyebrow">02 / CHECK REQUIREMENTS</div>
   <h2 id="tree-heading">Skill tree</h2>
-  <p class="tree-hint">The class lanes are grouped by unlock level, not by prerequisites. Only the shared lane has linked prerequisites in the reference. Highlighted cards are part of the selected build.</p>
+  <p class="tree-hint">The class lanes are grouped by unlock level, not by prerequisites. Only the shared lane has linked prerequisites in the reference. Shared ranks use points in the class you’re viewing. In game, a Class Reset Certificate refunds your points when changing class, including points spent in the shared branch. In My build, use the plus and minus buttons on each card to record your ranks. Highlighted cards are part of the selected build. Compare each route’s rank with the original community target on the card.</p>
   <div id="tree-branches" class="tree-branches"></div>
 </section>
 <section class="panel" aria-labelledby="source-title">
   <div class="eyebrow">03 / SOURCES AND LIMITS</div>
   <h2 id="source-title">Recommendations vs. game rules</h2>
   <p>Role priorities were adapted from community skill sheets. They are recommendations, not a single build or a promise that every allocation fits your budget. The Engineer sheet alone asks for 63 ranks.</p>
-  <p>The <a href="https://jeffxlabs.github.io/zrouteredemption/season-1/skills/">client-derived Season 1 reference</a> documents a class cap of 40, so the sheets’ level 45 and 50 entries are omitted. The reference also lists Cooperative Healing at +10% to +50% across five ranks; the community sheet lists only +10% to +30% in its description. If your live Class Hall differs, use what your game shows.</p>
+  <p>The <a href="https://jeffxlabs.github.io/zrouteredemption/season-1/skills/">client-derived Season 1 reference</a> documents a class cap of 40, so the sheets’ level 45 and 50 entries are omitted from the spendable builds. The reference also lists Cooperative Healing at +10% to +50% across five ranks; the community sheet lists only +10% to +30% in its description. If your live Class Hall differs, use what your game shows.</p>
+  <details><summary>Community picks above the documented cap</summary>
+    <p><b>Engineer:</b> Lv.45 Supply Drop 5, Hold the Line 0. Lv.50 Random Visitor 0, Siege Mine 0.</p>
+    <p><b>War Leader:</b> Lv.45 Base Fortification 5, Rally Defense 0. Lv.50 Assault 5, Anti-Infantry Mine 0.</p>
+  </details>
 </section>
 </main></body>
 </html>
